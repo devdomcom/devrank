@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from impact.domain.models import CanonicalBundle
-from impact.ingestion.github import GitHubAdapter  # reusing adapter for parsing canonical dump
+from impact.adapters.github import GitHubAdapter  # reusing adapter for parsing canonical dump
 from impact.providers.github.client import GitHubClient
 from impact.providers.github.fetcher import GitHubFetcher
 from impact.persistence.filesystem import FileSystemDumpWriter
