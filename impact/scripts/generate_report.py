@@ -14,6 +14,7 @@ from impact.metrics import get_metrics
 from impact.domain.models import MetricContext
 from impact.celery_app import app as celery_app
 from celery.exceptions import TimeoutError as CeleryTimeout
+from impact.providers.github_live import GitHubLiveFetcher, LiveFetchConfig
 
 
 def main():
@@ -32,41 +33,56 @@ def main():
 
     args = parser.parse_args()
 
-    # Optional: live fetch via Celery
+    # Optional: live fetch via Celery (fallback to inline fetch if worker absent)
     if args.fetch_repos and args.fetch_user:
         token = args.fetch_token or os.environ.get("GITHUB_TOKEN")
         if not token:
             raise SystemExit("fetch requested but no GitHub token provided (--fetch-token or GITHUB_TOKEN)")
+        repos = [r.strip() for r in args.fetch_repos.split(",") if r.strip()]
+        now = datetime.now(timezone.utc)
+        start_iso = args.fetch_from or (now - timedelta(days=365)).isoformat()
+        end_iso = args.fetch_to or now.isoformat()
+
+        use_celery = True
         if args.broker:
             celery_app.conf.broker_url = args.broker
             celery_app.conf.result_backend = os.environ.get("CELERY_BACKEND_URL", "redis://localhost:6379/1")
 
-        # Ensure a worker is reachable before enqueueing
         insp = celery_app.control.inspect(timeout=5)
         ping = insp.ping() if insp else None
         if not ping:
-            raise SystemExit("Celery worker not reachable. Start it with: docker compose up -d worker")
+            print("Celery worker not reachable, falling back to inline fetch.")
+            use_celery = False
 
-        now = datetime.now(timezone.utc)
-        start = args.fetch_from or (now - timedelta(days=365)).isoformat()
-        end = args.fetch_to or now.isoformat()
-        task = celery_app.send_task(
-            "impact.tasks.fetch.run_fetch",
-            kwargs={
-                "user_login": args.fetch_user,
-                "repos": [r.strip() for r in args.fetch_repos.split(",") if r.strip()],
-                "token": token,
-                "out_dir": args.dump_path,
-                "start_iso": start,
-                "end_iso": end,
-            },
-        )
-        print(f"Queued fetch task {task.id}, waiting for completion...")
-        try:
-            result = task.get(timeout=args.fetch_timeout)
-        except CeleryTimeout:
-            raise SystemExit(f"Fetch task {task.id} did not finish within {args.fetch_timeout}s. Check worker logs.")
-        print(f"Fetch completed: {result}")
+        if use_celery:
+            task = celery_app.send_task(
+                "impact.tasks.fetch.run_fetch",
+                kwargs={
+                    "user_login": args.fetch_user,
+                    "repos": repos,
+                    "token": token,
+                    "out_dir": args.dump_path,
+                    "start_iso": start_iso,
+                    "end_iso": end_iso,
+                },
+            )
+            print(f"Queued fetch task {task.id}, waiting for completion...")
+            try:
+                result = task.get(timeout=args.fetch_timeout)
+            except CeleryTimeout:
+                raise SystemExit(f"Fetch task {task.id} did not finish within {args.fetch_timeout}s. Check worker logs.")
+            print(f"Fetch completed: {result}")
+        else:
+            cfg = LiveFetchConfig(
+                user_login=args.fetch_user,
+                repos=repos,
+                start=datetime.fromisoformat(start_iso.replace("Z", "+00:00")),
+                end=datetime.fromisoformat(end_iso.replace("Z", "+00:00")),
+                token=token,
+                out_dir=Path(args.dump_path),
+            )
+            bundle = GitHubLiveFetcher(cfg).run()
+            print(f"Inline fetch completed. Users: {len(bundle.users)}, PRs: {len(bundle.pull_requests)}")
 
     ingestion = DumpIngestion(args.dump_path)
     bundle = ingestion.ingest()
