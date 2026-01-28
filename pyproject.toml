@@ -5,6 +5,8 @@ description = "DevRank: SaaS for vetting candidates through scenario-based inter
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.0.0",
+    "httpx>=0.27.0",
+    "tenacity>=8.2.3",
 ]
 
 [tool.uv]
