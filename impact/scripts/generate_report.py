@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # Add the project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -12,6 +12,7 @@ from impact.ingestion.dump import DumpIngestion
 from impact.ledger.ledger import Ledger
 from impact.metrics import get_metrics
 from impact.domain.models import MetricContext
+from impact.celery_app import app as celery_app
 
 
 def main():
@@ -19,8 +20,41 @@ def main():
     parser.add_argument('--dump-path', required=True, help='Path to the dump data directory')
     parser.add_argument('--metrics', nargs='*', help='Metric slugs to run (e.g., pr_merge_effectiveness review_leverage)')
     parser.add_argument('--out', help='Output path for the report (not implemented yet)')
+    # Optional: trigger live fetch via Celery before running report
+    parser.add_argument('--fetch-user', help='User login to fetch (assessed user)')
+    parser.add_argument('--fetch-repos', help='Comma-separated repos to fetch (owner/repo)')
+    parser.add_argument('--fetch-token', help='GitHub token; defaults to GITHUB_TOKEN env')
+    parser.add_argument('--fetch-from', dest='fetch_from', help='ISO start date (default: 365 days ago)')
+    parser.add_argument('--fetch-to', dest='fetch_to', help='ISO end date (default: now)')
+    parser.add_argument('--broker', help='Celery broker URL override (default env CELERY_BROKER_URL)')
 
     args = parser.parse_args()
+
+    # Optional: live fetch via Celery
+    if args.fetch_repos and args.fetch_user:
+        token = args.fetch_token or os.environ.get("GITHUB_TOKEN")
+        if not token:
+            raise SystemExit("fetch requested but no GitHub token provided (--fetch-token or GITHUB_TOKEN)")
+        if args.broker:
+            celery_app.conf.broker_url = args.broker
+            celery_app.conf.result_backend = os.environ.get("CELERY_BACKEND_URL", "redis://localhost:6379/1")
+        now = datetime.now(timezone.utc)
+        start = args.fetch_from or (now - timedelta(days=365)).isoformat()
+        end = args.fetch_to or now.isoformat()
+        task = celery_app.send_task(
+            "impact.tasks.fetch.run_fetch",
+            kwargs={
+                "user_login": args.fetch_user,
+                "repos": [r.strip() for r in args.fetch_repos.split(",") if r.strip()],
+                "token": token,
+                "out_dir": args.dump_path,
+                "start_iso": start,
+                "end_iso": end,
+            },
+        )
+        print(f"Queued fetch task {task.id}, waiting for completion...")
+        result = task.get(timeout=900)
+        print(f"Fetch completed: {result}")
 
     ingestion = DumpIngestion(args.dump_path)
     bundle = ingestion.ingest()
