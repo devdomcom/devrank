@@ -1,8 +1,8 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from impact.domain.models import CanonicalBundle, PullRequest, ReviewRecord, CommentRecord, Commit, User
+from impact.domain.models import CanonicalBundle, PullRequest, ReviewRecord, CommentRecord, Commit, User, TimelineEvent, FileRecord
 
 
 class Ledger:
@@ -22,9 +22,12 @@ class Ledger:
 
         # pr_number -> sorted list of comments by created_at
         self.pr_comments: Dict[int, List[CommentRecord]] = defaultdict(list)
+        self.review_comments_by_review: Dict[int, List[CommentRecord]] = defaultdict(list)
 
         # pr_number -> sorted list of commits by date
         self.pr_commits: Dict[int, List[Commit]] = defaultdict(list)
+        # pr_number -> files
+        self.pr_files: Dict[int, List[FileRecord]] = defaultdict(list)
 
         # user_login -> sorted list of commits by date
         self.user_commits: Dict[str, List[Commit]] = defaultdict(list)
@@ -34,6 +37,11 @@ class Ledger:
 
         # Populate indexes
         self._build_indexes()
+        # PR lookup
+        self.pr_by_number: Dict[int, PullRequest] = {pr.number: pr for pr in self.bundle.pull_requests}
+        # Timeline indexes
+        self.pr_timeline: Dict[int, List] = defaultdict(list)
+        self._build_timeline_indexes()
 
     def _build_indexes(self):
         # PRs by user
@@ -58,8 +66,12 @@ class Ledger:
         for comment in self.bundle.comments:
             if comment.pull_request_number:
                 self.pr_comments[comment.pull_request_number].append(comment)
+            if comment.review_id:
+                self.review_comments_by_review[comment.review_id].append(comment)
 
         for comments in self.pr_comments.values():
+            comments.sort(key=lambda c: c.created_at)
+        for comments in self.review_comments_by_review.values():
             comments.sort(key=lambda c: c.created_at)
 
         # Commits by PR and by user
@@ -74,10 +86,31 @@ class Ledger:
         for commits in self.user_commits.values():
             commits.sort(key=lambda c: c.date)
 
+        # Files by PR
+        if hasattr(self.bundle, "files"):
+            for file in self.bundle.files:
+                self.pr_files[file.pull_request_number].append(file)
+
+    def _build_timeline_indexes(self):
+        if not hasattr(self.bundle, "timeline"):
+            return
+        for evt in getattr(self.bundle, "timeline", []):
+            self.pr_timeline[evt.pull_request_number].append(evt)
+        for events in self.pr_timeline.values():
+            events.sort(key=lambda e: e.created_at)
+
     def get_prs_for_user(self, user_login: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[PullRequest]:
         """Get PRs for a user within an optional time period."""
         prs = self.user_prs.get(user_login, [])
         if start_date or end_date:
+            if prs:
+                tz = prs[0].created_at.tzinfo or timezone.utc
+            else:
+                tz = timezone.utc
+            if start_date and start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=tz)
+            if end_date and end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=tz)
             filtered = []
             for pr in prs:
                 if start_date and pr.created_at < start_date:
@@ -104,6 +137,11 @@ class Ledger:
         """Get commits for a user within an optional time period."""
         commits = self.user_commits.get(user_login, [])
         if start_date or end_date:
+            tz = commits[0].date.tzinfo if commits else timezone.utc
+            if start_date and start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=tz)
+            if end_date and end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=tz)
             filtered = []
             for commit in commits:
                 if start_date and commit.date < start_date:
@@ -118,6 +156,11 @@ class Ledger:
         """Get reviews for a user within an optional time period."""
         reviews = self.user_reviews.get(user_login, [])
         if start_date or end_date:
+            tz = reviews[0].submitted_at.tzinfo if reviews else timezone.utc
+            if start_date and start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=tz)
+            if end_date and end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=tz)
             filtered = []
             for review in reviews:
                 if start_date and review.submitted_at < start_date:
@@ -127,3 +170,16 @@ class Ledger:
                 filtered.append(review)
             return filtered
         return reviews
+
+    def get_timeline_for_pr(self, pr_number: int) -> List:
+        """Get timeline events for a PR, time-ordered."""
+        return self.pr_timeline.get(pr_number, [])
+
+    def get_pr(self, pr_number: int) -> Optional[PullRequest]:
+        return self.pr_by_number.get(pr_number)
+
+    def get_files_for_pr(self, pr_number: int) -> List[FileRecord]:
+        return self.pr_files.get(pr_number, [])
+
+    def get_review_comments_for_review(self, review_id: int) -> List[CommentRecord]:
+        return self.review_comments_by_review.get(review_id, [])

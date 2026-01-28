@@ -11,10 +11,10 @@ def test_dump_ingestion():
     assert isinstance(bundle, CanonicalBundle)
     assert len(bundle.users) == 4  # alice, acme, bob, carol
     assert len(bundle.repositories) == 1
-    assert len(bundle.pull_requests) == 2  # alice's PRs
-    assert len(bundle.commits) == 5  # alice's commits
-    assert len(bundle.reviews) == 5  # alice's reviews + received on her PRs
-    assert len(bundle.comments) == 5  # alice's comments + on her PRs
+    assert len(bundle.pull_requests) == 6  # alice's PRs + reviewed PRs
+    assert len(bundle.commits) == 18  # commits on alice's PRs and reviewed PRs
+    assert len(bundle.reviews) == 9  # alice's reviews + reviews on her PRs
+    assert len(bundle.comments) == 16  # review + issue comments in scope
 
     # Check specific PR
     pr = next(pr for pr in bundle.pull_requests if pr.number == 42)

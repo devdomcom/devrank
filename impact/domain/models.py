@@ -105,6 +105,31 @@ class CommentRecord(BaseModel):
     position: Optional[int] = None
 
 
+class FileRecord(BaseModel):
+    sha: str
+    filename: str
+    additions: int
+    deletions: int
+    changes: int
+    status: str
+    pull_request_number: int
+
+
+class TimelineEvent(BaseModel):
+    id: int
+    node_id: Optional[str] = None
+    url: Optional[str] = None
+    event: str
+    actor: User
+    created_at: datetime
+    pull_request_number: int
+    commit_id: Optional[str] = None
+    commit_url: Optional[str] = None
+    comment_id: Optional[int] = None
+    state: Optional[str] = None
+    html_url: Optional[str] = None
+
+
 class CanonicalBundle(BaseModel):
     users: List[User]
     repositories: List[Repository]
@@ -112,6 +137,8 @@ class CanonicalBundle(BaseModel):
     commits: List[Commit]
     reviews: List[ReviewRecord]
     comments: List[CommentRecord]
+    files: List[FileRecord]
+    timeline: List[TimelineEvent]
 
 
 class MetricContext(BaseModel):

@@ -9,9 +9,9 @@ def test_github_adapter_parse_dump():
     bundle = adapter.parse_dump(dump_path)
 
     assert len(bundle.users) == 4
-    assert len(bundle.pull_requests) == 2
-    assert len(bundle.reviews) == 5
-    assert len(bundle.comments) == 5
+    assert len(bundle.pull_requests) == 6
+    assert len(bundle.reviews) == 9
+    assert len(bundle.comments) == 16
 
     # Users: alice and acme
     alice = next(u for u in bundle.users if u.login == "alice")
