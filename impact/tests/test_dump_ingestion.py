@@ -4,7 +4,7 @@ from impact.domain.models import CanonicalBundle
 
 
 def test_dump_ingestion():
-    dump_path = "samples/github_test/dump_2024-12"
+    dump_path = "impact/samples/github_test/dump_2024-12"
     ingestion = DumpIngestion(dump_path)
     bundle = ingestion.ingest()
 

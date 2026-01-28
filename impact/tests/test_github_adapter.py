@@ -4,7 +4,7 @@ from impact.domain.models import PullRequestState, ReviewState, CommentType
 
 
 def test_github_adapter_parse_dump():
-    dump_path = "samples/github_test/dump_2024-12"
+    dump_path = "impact/samples/github_test/dump_2024-12"
     adapter = GitHubAdapter()
     bundle = adapter.parse_dump(dump_path)
 

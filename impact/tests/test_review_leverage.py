@@ -6,7 +6,7 @@ from impact.domain.models import MetricContext
 
 
 def test_review_leverage_metric():
-    dump_path = "samples/github_test/dump_2024-12"
+    dump_path = "impact/samples/github_test/dump_2024-12"
     ingestion = DumpIngestion(dump_path)
     bundle = ingestion.ingest()
     ledger = Ledger(bundle)

@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from impact.ingestion.github_live import GitHubLiveIngestion, LiveFetchConfig
+from impact.providers.github_live import GitHubLiveFetcher, LiveFetchConfig
 
 
 def parse_args():
@@ -48,8 +48,8 @@ def main():
         token=token,
         out_dir=out_dir,
     )
-    ingestion = GitHubLiveIngestion(cfg)
-    bundle = ingestion.ingest()
+    fetcher = GitHubLiveFetcher(cfg)
+    bundle = fetcher.run()
     print(f"Wrote dump to {out_dir}. Users: {len(bundle.users)}, PRs: {len(bundle.pull_requests)}")
 
 

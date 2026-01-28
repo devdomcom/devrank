@@ -5,7 +5,7 @@ from impact.ingestion.dump import DumpIngestion
 
 
 def test_ledger_indexes():
-    dump_path = "samples/github_test/dump_2024-12"
+    dump_path = "impact/samples/github_test/dump_2024-12"
     ingestion = DumpIngestion(dump_path)
     bundle = ingestion.ingest()
     ledger = Ledger(bundle)
@@ -30,7 +30,7 @@ def test_ledger_indexes():
 
 
 def test_ledger_time_filtering():
-    dump_path = "samples/github_test/dump_2024-12"
+    dump_path = "impact/samples/github_test/dump_2024-12"
     ingestion = DumpIngestion(dump_path)
     bundle = ingestion.ingest()
     ledger = Ledger(bundle)
