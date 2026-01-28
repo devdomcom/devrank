@@ -3,8 +3,14 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+# Ensure repo root on sys.path
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from impact.providers.github_live import GitHubLiveFetcher, LiveFetchConfig
 
