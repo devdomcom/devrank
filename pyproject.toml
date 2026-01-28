@@ -1,0 +1,13 @@
+[project]
+name = "devrank"
+version = "0.1.0"
+description = "DevRank: SaaS for vetting candidates through scenario-based interviews and impact assessment"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+]
