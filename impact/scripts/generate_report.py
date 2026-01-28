@@ -13,6 +13,7 @@ from impact.ledger.ledger import Ledger
 from impact.metrics import get_metrics
 from impact.domain.models import MetricContext
 from impact.celery_app import app as celery_app
+from celery.exceptions import TimeoutError as CeleryTimeout
 
 
 def main():
@@ -27,6 +28,7 @@ def main():
     parser.add_argument('--fetch-from', dest='fetch_from', help='ISO start date (default: 365 days ago)')
     parser.add_argument('--fetch-to', dest='fetch_to', help='ISO end date (default: now)')
     parser.add_argument('--broker', help='Celery broker URL override (default env CELERY_BROKER_URL)')
+    parser.add_argument('--fetch-timeout', type=int, default=900, help='Timeout in seconds to wait for fetch task (default 900s)')
 
     args = parser.parse_args()
 
@@ -38,6 +40,13 @@ def main():
         if args.broker:
             celery_app.conf.broker_url = args.broker
             celery_app.conf.result_backend = os.environ.get("CELERY_BACKEND_URL", "redis://localhost:6379/1")
+
+        # Ensure a worker is reachable before enqueueing
+        insp = celery_app.control.inspect(timeout=5)
+        ping = insp.ping() if insp else None
+        if not ping:
+            raise SystemExit("Celery worker not reachable. Start it with: docker compose up -d worker")
+
         now = datetime.now(timezone.utc)
         start = args.fetch_from or (now - timedelta(days=365)).isoformat()
         end = args.fetch_to or now.isoformat()
@@ -53,7 +62,10 @@ def main():
             },
         )
         print(f"Queued fetch task {task.id}, waiting for completion...")
-        result = task.get(timeout=900)
+        try:
+            result = task.get(timeout=args.fetch_timeout)
+        except CeleryTimeout:
+            raise SystemExit(f"Fetch task {task.id} did not finish within {args.fetch_timeout}s. Check worker logs.")
         print(f"Fetch completed: {result}")
 
     ingestion = DumpIngestion(args.dump_path)
