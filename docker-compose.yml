@@ -10,7 +10,7 @@ services:
 
   worker:
     build: .
-    command: celery -A impact.celery_app worker -l info
+    command: ["uv", "run", "celery", "-A", "impact.celery_app", "worker", "-l", "info"]
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_BACKEND_URL=redis://redis:6379/1
