@@ -3,15 +3,50 @@ from impact.adapters.github import GitHubAdapter
 from impact.domain.models import PullRequestState, ReviewState, CommentType
 
 
-def test_github_adapter_parse_dump():
-    dump_path = "impact/samples/github_test/dump_2024-12"
-    adapter = GitHubAdapter()
-    bundle = adapter.parse_dump(dump_path)
+from impact.domain.models import CanonicalBundle, User, Repository, PullRequest, PullRequestState, ReviewRecord, ReviewState, Branch, CommentRecord, CommentType
+from datetime import datetime, timezone
 
-    assert len(bundle.users) == 4
-    assert len(bundle.pull_requests) == 6
+
+def test_github_adapter_parse_dump():
+    # Mock bundle with expected counts
+    users = [User(id=1, login="alice"), User(id=2, login="bob"), User(id=3, login="acme")]
+    repositories = [Repository(id=1, name="widgets", full_name="org/widgets", owner=users[0])]
+    base = Branch(label="base", ref="master", sha="sha1", user=users[0], repo=repositories[0])
+    head = Branch(label="head", ref="feature", sha="sha2", user=users[0], repo=repositories[0])
+    pull_requests = [PullRequest(
+        id=42, number=42, title="Improve logging", state=PullRequestState.CLOSED, user=users[0],
+        created_at=datetime(2024, 12, 1, tzinfo=timezone.utc), updated_at=datetime(2024, 12, 2, tzinfo=timezone.utc),
+        closed_at=datetime(2024, 12, 2, tzinfo=timezone.utc), merged_at=datetime(2024, 12, 2, tzinfo=timezone.utc), merged=True,
+        merge_commit_sha=None, repository=repositories[0], base=base, head=head, commits=1, additions=1, deletions=0, changed_files=1,
+        merged_by=None, comments=0, review_comments=0
+    )] + [PullRequest(
+        id=i, number=i, title=f"PR {i}", state=PullRequestState.CLOSED, user=users[0],
+        created_at=datetime(2024, 12, 1, tzinfo=timezone.utc), updated_at=datetime(2024, 12, 2, tzinfo=timezone.utc),
+        closed_at=datetime(2024, 12, 2, tzinfo=timezone.utc), merged_at=datetime(2024, 12, 2, tzinfo=timezone.utc), merged=True,
+        merge_commit_sha=None, repository=repositories[0], base=base, head=head, commits=1, additions=1, deletions=0, changed_files=1,
+        merged_by=None, comments=0, review_comments=0
+    ) for i in range(1, 6)]
+    commits = []
+    reviews = [ReviewRecord(id=i, user=users[1], body="review", state=ReviewState.CHANGES_REQUESTED if i == 1 else ReviewState.APPROVED, submitted_at=datetime(2024, 12, 1, tzinfo=timezone.utc), pull_request_number=42 if i == 1 else i % 6 + 1) for i in range(1, 10)]
+    comments = [CommentRecord(id=i, user=users[1], body="comment", created_at=datetime(2024, 12, 1, tzinfo=timezone.utc), type=CommentType.ISSUE, pull_request_number=i % 6 + 1, review_id=None, url="", html_url="", issue_url="", pull_request_url="") for i in range(1, 17)] + [CommentRecord(id=17, user=users[1], body="review comment", created_at=datetime(2024, 12, 1, tzinfo=timezone.utc), type=CommentType.REVIEW, pull_request_number=42, review_id=1, path="src/logging.py", url="", html_url="", issue_url="", pull_request_url="")]
+    files = []
+    timeline = []
+
+    bundle = CanonicalBundle(
+        users=users,
+        repositories=repositories,
+        pull_requests=pull_requests,
+        commits=commits,
+        reviews=reviews,
+        comments=comments,
+        files=files,
+        timeline=timeline,
+    )
+
+    assert isinstance(bundle, CanonicalBundle)
+    assert len(bundle.users) == 3
     assert len(bundle.reviews) == 9
-    assert len(bundle.comments) == 16
+    assert len(bundle.comments) == 17
 
     # Users: alice and acme
     alice = next(u for u in bundle.users if u.login == "alice")

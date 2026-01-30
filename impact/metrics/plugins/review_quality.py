@@ -2,6 +2,7 @@ from datetime import timedelta
 from typing import Dict, List
 
 from impact.metrics.base import Metric
+from impact.metrics.utils import is_change_request
 from impact.domain.models import MetricContext, MetricResult, ReviewState
 
 
@@ -38,7 +39,7 @@ class ReviewIterations(Metric):
         counts: List[int] = []
         for pr in merged:
             reviews = context.ledger.get_reviews_for_pr(pr.number)
-            changes_requested = [r for r in reviews if r.state == ReviewState.CHANGES_REQUESTED]
+            changes_requested = [r for r in reviews if is_change_request(r, context.ledger)]
             per_pr.append({"number": pr.number, "iterations": len(changes_requested)})
             counts.append(len(changes_requested))
 

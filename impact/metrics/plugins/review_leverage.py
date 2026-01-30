@@ -2,6 +2,7 @@ from datetime import timedelta
 from typing import Dict
 
 from impact.metrics.base import Metric
+from impact.metrics.utils import has_pr_event_after, is_pr_merged_after, is_change_request
 from impact.domain.models import MetricContext, MetricResult
 
 
@@ -14,10 +15,7 @@ class ReviewLeverage(Metric):
     def name(self) -> str:
         return "Review Leverage"
 
-    def _has_inline_comments(self, review, context: MetricContext) -> bool:
-        # Inline/file comments are stored as review comments linked by review_id.
-        comments = context.ledger.get_review_comments_for_review(review.id)
-        return any(comments)
+
 
     def _is_effective_change_request(self, review, context):
         pr = context.ledger.get_pr(review.pull_request_number)
@@ -62,10 +60,7 @@ class ReviewLeverage(Metric):
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(context.user_login, context.start_date, context.end_date)
         # Treat formal change requests OR inline-comment reviews as “change requests” for leverage.
-        change_requests = [
-            r for r in reviews
-            if r.state.value == "changes_requested" or self._has_inline_comments(r, context)
-        ]
+        change_requests = [r for r in reviews if is_change_request(r, context.ledger)]
 
         if not change_requests:
             summary = "No change requests made."
@@ -76,20 +71,8 @@ class ReviewLeverage(Metric):
             percentage = (effective_changes / total_change_requests) * 100 if total_change_requests > 0 else 0
 
             # Track whether reviewed PRs were updated or merged after the review
-            updated_after_review = 0
-            merged_after_review = 0
-            for r in reviews:
-                pr = context.ledger.get_pr(r.pull_request_number)
-                timeline = context.ledger.get_timeline_for_pr(r.pull_request_number)
-                if any(evt.created_at > r.submitted_at for evt in timeline):
-                    updated_after_review += 1
-                merged_flag = False
-                if pr and pr.merged and (not pr.merged_at or pr.merged_at >= r.submitted_at):
-                    merged_flag = True
-                else:
-                    merged_flag = any(evt.event == "merged" and evt.created_at >= r.submitted_at for evt in timeline)
-                if merged_flag:
-                    merged_after_review += 1
+            updated_after_review = sum(1 for r in reviews if has_pr_event_after(context.ledger, r.pull_request_number, r.submitted_at))
+            merged_after_review = sum(1 for r in reviews if is_pr_merged_after(context.ledger, r.pull_request_number, r.submitted_at))
 
             summary = (
                 f"{len(reviews)} PRs reviewed, {effective_changes} effective change requests "

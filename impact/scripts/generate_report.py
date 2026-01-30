@@ -19,6 +19,74 @@ from celery.exceptions import TimeoutError as CeleryTimeout
 from impact.providers.github_live import GitHubLiveFetcher, LiveFetchConfig
 
 
+# Thresholds for rating metrics (using best judgment for defaults)
+METRIC_THRESHOLDS = {
+    'pr_throughput': {
+        'key': 'merge_ratio',
+        'excellent': lambda x: x >= 0.9,
+        'good': lambda x: 0.7 <= x < 0.9,
+        'neutral': lambda x: 0.5 <= x < 0.7,
+        'bad': lambda x: x < 0.5,
+    },
+    'cycle_time': {
+        'key': 'median_hours',
+        'excellent': lambda x: x <= 1,
+        'good': lambda x: 1 < x <= 3,
+        'neutral': lambda x: 3 < x <= 7,
+        'bad': lambda x: x > 7,
+    },
+    'pr_merge_effectiveness': {
+        'key': 'average_back_and_forth',
+        'excellent': lambda x: x <= 1,
+        'good': lambda x: 1 < x <= 2,
+        'neutral': lambda x: 2 < x <= 4,
+        'bad': lambda x: x > 4,
+    },
+    'review_leverage': {
+        'key': 'effectiveness_percentage',
+        'excellent': lambda x: x >= 80,
+        'good': lambda x: 60 <= x < 80,
+        'neutral': lambda x: 30 <= x < 60,
+        'bad': lambda x: x < 30,
+    },
+    'review_iterations': {
+        'key': 'average_iterations',
+        'excellent': lambda x: x <= 1,
+        'good': lambda x: 1 < x <= 2,
+        'neutral': lambda x: 2 < x <= 4,
+        'bad': lambda x: x > 4,
+    },
+    'time_to_first_review': {
+        'key': 'median_hours',
+        'excellent': lambda x: x <= 1,
+        'good': lambda x: 1 < x <= 6,
+        'neutral': lambda x: 6 < x <= 24,
+        'bad': lambda x: x > 24,
+    },
+    'slow_review_response': {
+        'key': 'median_hours',
+        'excellent': lambda x: x <= 2,
+        'good': lambda x: 2 < x <= 12,
+        'neutral': lambda x: 12 < x <= 48,
+        'bad': lambda x: x > 48,
+    },
+}
+
+
+def get_metric_rating(metric_slug, details):
+    if metric_slug not in METRIC_THRESHOLDS:
+        return 'unknown'
+    thresh = METRIC_THRESHOLDS[metric_slug]
+    key = thresh['key']
+    if key not in details:
+        return 'unknown'
+    val = details[key]
+    for level in ['excellent', 'good', 'neutral', 'bad']:
+        if thresh[level](val):
+            return level
+    return 'unknown'
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(description='Generate DevRank impact report.')
@@ -85,24 +153,36 @@ def main():
     ingestion = DumpIngestion(str(dump_dir))
     bundle = ingestion.ingest()
 
-    # For now, just print a summary
-    print(f"Successfully ingested data:")
-    print(f"  Users: {len(bundle.users)}")
-    print(f"  Repositories: {len(bundle.repositories)}")
-    print(f"  Pull Requests: {len(bundle.pull_requests)}")
-    print(f"  Commits: {len(bundle.commits)}")
-    print(f"  Reviews: {len(bundle.reviews)}")
-    print(f"  Comments: {len(bundle.comments)}")
-    print()
-
+    # Read manifest for user and dates if metrics are requested
+    user_login = None
+    start_date = None
+    end_date = None
     if args.metrics:
-        # Read manifest for user and dates
         manifest_path = os.path.join(dump_dir, 'dump_manifest.json')
         with open(manifest_path, 'r') as f:
             manifest = json.load(f)
         user_login = manifest['user']
         start_date = datetime.fromisoformat(manifest['from'].replace('Z', '+00:00')) if 'from' in manifest else None
         end_date = datetime.fromisoformat(manifest['to'].replace('Z', '+00:00')) if 'to' in manifest else None
+
+    # Header
+    print("🚀 DevRank Impact Report")
+    print("=" * 80)
+    if user_login:
+        print(f"👤 User: {user_login}")
+    if start_date and end_date:
+        print(f"📅 Period: {start_date} to {end_date}")
+    print()
+    print("📊 Data Summary:")
+    print(f"  👥 Users: {len(bundle.users)}")
+    print(f"  📁 Repositories: {len(bundle.repositories)}")
+    print(f"  🔄 Pull Requests: {len(bundle.pull_requests)}")
+    print(f"  💾 Commits: {len(bundle.commits)}")
+    print(f"  👀 Reviews: {len(bundle.reviews)}")
+    print(f"  💬 Comments: {len(bundle.comments)}")
+    print()
+
+    if args.metrics:
 
         # Create ledger
         ledger = Ledger(bundle)
@@ -126,10 +206,24 @@ def main():
             metric = metric_class()
             result = metric.run(context)
 
-            # Print result
-            print(f"Metric: {metric.name} ({metric.slug})")
-            print(f"Summary: {result.summary}")
-            print(f"Details: {result.details}")
+            # Compute rating
+            rating = get_metric_rating(metric.slug, result.details)
+
+            # Print result with modern formatting
+            print("=" * 80)
+            print(f"📊 {metric.name} ({metric.slug})")
+            print("=" * 80)
+            print(f"🏆 Rating: {rating.upper()}")
+            print(f"💡 Summary: {result.summary}")
+            print()
+            print("📈 Details:")
+            for key, value in result.details.items():
+                if isinstance(value, list):
+                    print(f"  • {key}:")
+                    for item in value:
+                        print(f"    - {item}")
+                else:
+                    print(f"  • {key}: {value}")
             print()
 
     if args.out:

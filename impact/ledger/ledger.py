@@ -183,3 +183,24 @@ class Ledger:
 
     def get_review_comments_for_review(self, review_id: int) -> List[CommentRecord]:
         return self.review_comments_by_review.get(review_id, [])
+
+    def get_merged_prs_for_user(self, user_login: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[PullRequest]:
+        """Get merged PRs for a user within an optional time period (filtered by merged_at)."""
+        prs = self.user_prs.get(user_login, [])
+        if not prs:
+            return []
+        tz = prs[0].created_at.tzinfo or timezone.utc
+        if start_date and start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=tz)
+        if end_date and end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=tz)
+        filtered = []
+        for pr in prs:
+            if not pr.merged or not pr.merged_at:
+                continue
+            if start_date and pr.merged_at < start_date:
+                continue
+            if end_date and pr.merged_at > end_date:
+                continue
+            filtered.append(pr)
+        return filtered

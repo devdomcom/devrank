@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Dict
 
 from impact.metrics.base import Metric
@@ -14,20 +13,11 @@ class PRThroughput(Metric):
     def name(self) -> str:
         return "PR Throughput"
 
-    def _in_window(self, ts: datetime, context: MetricContext) -> bool:
-        if ts is None:
-            return False
-        if context.start_date and ts < context.start_date:
-            return False
-        if context.end_date and ts > context.end_date:
-            return False
-        return True
-
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(context.user_login, context.start_date, context.end_date)
+        merged_prs = context.ledger.get_merged_prs_for_user(context.user_login, context.start_date, context.end_date)
 
         opened_count = len(prs)
-        merged_prs = [pr for pr in prs if pr.merged and pr.merged_at and self._in_window(pr.merged_at, context)]
         merged_count = len(merged_prs)
         merge_ratio = merged_count / opened_count if opened_count else 0.0
 

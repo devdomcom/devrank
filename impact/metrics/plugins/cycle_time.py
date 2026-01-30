@@ -1,7 +1,7 @@
-from datetime import timedelta
 from typing import Dict, List
 
 from impact.metrics.base import Metric
+from impact.metrics.utils import calculate_merge_time_hours
 from impact.domain.models import MetricContext, MetricResult
 
 
@@ -29,16 +29,15 @@ class CycleTime(Metric):
         return "Cycle Time"
 
     def run(self, context: MetricContext) -> MetricResult:
-        prs = context.ledger.get_prs_for_user(context.user_login, context.start_date, context.end_date)
-        merged_prs = [pr for pr in prs if pr.merged and pr.merged_at]
+        merged_prs = context.ledger.get_merged_prs_for_user(context.user_login, context.start_date, context.end_date)
 
         durations_hours: List[float] = []
         per_pr = []
         for pr in merged_prs:
-            delta: timedelta = pr.merged_at - pr.created_at
-            hours = delta.total_seconds() / 3600
-            durations_hours.append(hours)
-            per_pr.append({"number": pr.number, "hours": hours})
+            hours = calculate_merge_time_hours(pr)
+            if hours is not None:
+                durations_hours.append(hours)
+                per_pr.append({"number": pr.number, "hours": hours})
 
         median = _percentile(durations_hours, 0.5) if durations_hours else 0.0
         p75 = _percentile(durations_hours, 0.75) if durations_hours else 0.0

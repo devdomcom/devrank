@@ -85,13 +85,13 @@ def test_review_quality_metrics():
     ctx = MetricContext(ledger=ledger, user_login="alice", start_date=start, end_date=start + timedelta(days=5))
 
     iterations = ReviewIterations().run(ctx)
-    assert iterations.details["average_iterations"] == 1.0
+    assert iterations.details["average_iterations"] == 0.5
     assert iterations.details["per_pr"][0]["iterations"] == 1
 
     tfr = TimeToFirstReview().run(ctx)
-    # PR1 first review at +5h, PR2 at +3h -> median 4h, p75 between 5h and 4h -> 4.75h
-    assert abs(tfr.details["median_hours"] - 4.0) < 1e-6
-    assert abs(tfr.details["p75_hours"] - 4.75) < 1e-6
+    # PR1: 5h, PR2: 2h -> median 3.5h, p75 4.25h
+    assert abs(tfr.details["median_hours"] - 3.5) < 1e-6
+    assert abs(tfr.details["p75_hours"] - 4.25) < 1e-6
 
     slow = SlowReviewResponse().run(ctx)
     assert slow.details["samples"] == 1

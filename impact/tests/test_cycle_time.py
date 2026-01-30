@@ -66,6 +66,6 @@ def test_cycle_time_median_and_p75():
 
     assert res.metric_slug == "cycle_time"
     assert res.details["merged_count"] == 2
-    # durations: 10h, 19h => median 14.5, p75 between 19 and 14.5 -> should be 17.75
+    # durations: 10h, 19h => median 14.5, p75 16.75
     assert res.details["median_hours"] == 14.5
-    assert abs(res.details["p75_hours"] - 17.75) < 1e-6
+    assert abs(res.details["p75_hours"] - 16.75) < 1e-6
