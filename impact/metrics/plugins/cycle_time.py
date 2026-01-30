@@ -1,25 +1,25 @@
 from typing import Dict, List
 
 from impact.metrics.base import Metric
-from impact.metrics.utils import calculate_merge_time_hours
+from impact.metrics.utils import calculate_merge_time_hours, percentile
 from impact.domain.models import MetricContext, MetricResult
 
 
-def _percentile(values: List[float], pct: float) -> float:
-    if not values:
-        return 0.0
-    values = sorted(values)
-    k = (len(values) - 1) * pct
-    f = int(k)
-    c = min(f + 1, len(values) - 1)
-    if f == c:
-        return values[f]
-    d0 = values[f] * (c - k)
-    d1 = values[c] * (k - f)
-    return d0 + d1
-
-
 class CycleTime(Metric):
+    """
+    Measures the time from PR creation to merge for a user's pull requests.
+
+    This metric calculates the median and 75th percentile of merge times (in hours)
+    for all PRs authored by the user that were merged within the specified time window.
+    Lower cycle times generally indicate faster iteration and delivery.
+
+    Details returned:
+        - merged_count: Number of merged PRs
+        - median_hours: Median time to merge
+        - p75_hours: 75th percentile time to merge
+        - per_pr_hours: Breakdown per PR
+    """
+
     @property
     def slug(self) -> str:
         return "cycle_time"
@@ -39,8 +39,8 @@ class CycleTime(Metric):
                 durations_hours.append(hours)
                 per_pr.append({"number": pr.number, "hours": hours})
 
-        median = _percentile(durations_hours, 0.5) if durations_hours else 0.0
-        p75 = _percentile(durations_hours, 0.75) if durations_hours else 0.0
+        median = percentile(durations_hours, 0.5) if durations_hours else 0.0
+        p75 = percentile(durations_hours, 0.75) if durations_hours else 0.0
 
         summary = f"{len(merged_prs)} merged PRs. Median: {median:.2f}h, p75: {p75:.2f}h."
         details: Dict[str, object] = {

@@ -6,6 +6,21 @@ from impact.domain.models import MetricContext, MetricResult
 
 
 class PRMergeEffectiveness(Metric):
+    """
+    Measures the effectiveness of a user's merged pull requests.
+
+    This metric combines merge time with the amount of back-and-forth interaction
+    (reviews, comments, timeline events) that occurred before merge. It helps
+    identify how smoothly PRs are being merged - fewer interactions with faster
+    merge times indicate more effective PRs.
+
+    Details returned:
+        - merged_pr_count: Number of merged PRs
+        - average_merge_time_hours: Average time from creation to merge
+        - average_back_and_forth: Average number of interactions before merge
+        - pr_details: Per-PR breakdown with interaction types
+    """
+
     @property
     def slug(self) -> str:
         return "pr_merge_effectiveness"

@@ -1,88 +1,49 @@
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 
 from impact.metrics.plugins.review_quality import ReviewIterations, TimeToFirstReview, SlowReviewResponse
-from impact.domain.models import (
-    User, Repository, Branch, PullRequest, PullRequestState,
-    CanonicalBundle, ReviewRecord, ReviewState, Commit
+from impact.domain.models import ReviewState
+from impact.tests.conftest import (
+    DEFAULT_START,
+    make_user,
+    make_repo,
+    make_pr,
+    make_review,
+    make_commit,
+    make_bundle,
+    make_context,
 )
-from impact.ledger.ledger import Ledger
-from impact.domain.models import MetricContext
-
-
-def _make_pr(number: int, created: datetime, merged_at: datetime | None, author: User, repo: Repository):
-    base = Branch(label="base", ref="master", sha="sha1", user=author, repo=repo)
-    head = Branch(label="head", ref=f"f{number}", sha="sha2", user=author, repo=repo)
-    merged_flag = merged_at is not None
-    return PullRequest(
-        id=number,
-        number=number,
-        title=f"PR {number}",
-        state=PullRequestState.CLOSED if merged_flag else PullRequestState.OPEN,
-        user=author,
-        created_at=created,
-        updated_at=merged_at or created,
-        closed_at=merged_at,
-        merged_at=merged_at,
-        merged=merged_flag,
-        merge_commit_sha=None,
-        repository=repo,
-        base=base,
-        head=head,
-        commits=1,
-        additions=1,
-        deletions=0,
-        changed_files=1,
-        merged_by=None,
-        comments=0,
-        review_comments=0,
-    )
 
 
 def test_review_quality_metrics():
-    author = User(id=1, login="alice")
-    reviewer = User(id=2, login="bob")
-    owner = User(id=3, login="org")
-    repo = Repository(id=10, name="repo", full_name="org/repo", owner=owner)
+    author = make_user(id=1, login="alice")
+    reviewer = make_user(id=2, login="bob")
+    owner = make_user(id=3, login="org")
+    repo = make_repo(id=10, name="repo", owner=owner)
 
-    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    pr1 = _make_pr(1, start, start + timedelta(hours=24), author, repo)
-    pr2 = _make_pr(2, start + timedelta(hours=1), start + timedelta(hours=48), author, repo)
+    start = DEFAULT_START
+    pr1 = make_pr(1, author, repo, created_at=start, merged_at=start + timedelta(hours=24))
+    pr2 = make_pr(2, author, repo, created_at=start + timedelta(hours=1), merged_at=start + timedelta(hours=48))
 
-    review1 = ReviewRecord(
-        id=101, user=reviewer, body=None, state=ReviewState.CHANGES_REQUESTED,
-        submitted_at=start + timedelta(hours=5), pull_request_number=1
-    )
-    review2 = ReviewRecord(
-        id=102, user=reviewer, body=None, state=ReviewState.APPROVED,
-        submitted_at=start + timedelta(hours=6), pull_request_number=1
-    )
-    review3 = ReviewRecord(
-        id=103, user=reviewer, body=None, state=ReviewState.COMMENTED,
-        submitted_at=start + timedelta(hours=3), pull_request_number=2
-    )
+    review1 = make_review(101, 1, reviewer, start + timedelta(hours=5), ReviewState.CHANGES_REQUESTED, body=None)
+    review2 = make_review(102, 1, reviewer, start + timedelta(hours=6), ReviewState.APPROVED, body=None)
+    review3 = make_review(103, 2, reviewer, start + timedelta(hours=3), ReviewState.COMMENTED, body=None)
 
-    commit_after_review = Commit(
+    commit_after_review = make_commit(
         sha="c1",
         author=author,
-        committer=author,
-        message="fix",
         date=start + timedelta(hours=7),
-        pull_request_number=1,
-        idx=None,
+        pr_number=1,
+        message="fix",
     )
 
-    bundle = CanonicalBundle(
+    bundle = make_bundle(
         users=[author, reviewer, owner],
         repositories=[repo],
         pull_requests=[pr1, pr2],
         commits=[commit_after_review],
         reviews=[review1, review2, review3],
-        comments=[],
-        files=[],
-        timeline=[],
     )
-    ledger = Ledger(bundle)
-    ctx = MetricContext(ledger=ledger, user_login="alice", start_date=start, end_date=start + timedelta(days=5))
+    ctx = make_context(bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=5))
 
     iterations = ReviewIterations().run(ctx)
     assert iterations.details["average_iterations"] == 0.5

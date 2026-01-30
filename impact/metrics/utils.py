@@ -11,6 +11,28 @@ class Interaction(TypedDict):
     created_at: Any
 
 
+def percentile(values: List[float], pct: float) -> float:
+    """
+    Calculate the percentile of a list of values using linear interpolation.
+
+    Args:
+        values: List of numeric values.
+        pct: Percentile to compute (0.0 to 1.0, e.g., 0.5 for median, 0.75 for p75).
+
+    Returns:
+        The interpolated percentile value, or 0.0 if the list is empty.
+    """
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    k = (len(sorted_values) - 1) * pct
+    f = int(k)
+    c = min(f + 1, len(sorted_values) - 1)
+    if f == c:
+        return sorted_values[f]
+    return sorted_values[f] * (c - k) + sorted_values[c] * (k - f)
+
+
 def calculate_merge_time_hours(pr) -> Optional[float]:
     """Calculate merge time in hours for a PR, or None if not merged."""
     if pr.merged and pr.merged_at and pr.created_at:

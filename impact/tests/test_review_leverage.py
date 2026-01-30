@@ -1,43 +1,50 @@
-import pytest
 from datetime import datetime, timezone
+
 from impact.metrics.plugins.review_leverage import ReviewLeverage
-from impact.ledger.ledger import Ledger
-from impact.domain.models import MetricContext, User, Repository, PullRequest, PullRequestState, ReviewRecord, ReviewState, Branch, CanonicalBundle
+from impact.domain.models import ReviewState
+from impact.tests.conftest import (
+    make_user,
+    make_repo,
+    make_pr,
+    make_review,
+    make_bundle,
+    make_context,
+)
 
 
 def test_review_leverage_metric():
     # Mock data with change requests
-    user = User(id=1, login="alice")
-    reviewer = User(id=2, login="bob")
-    owner = User(id=3, login="org")
-    repo = Repository(id=1, name="repo", full_name="org/repo", owner=owner)
-    base = Branch(label="base", ref="master", sha="sha1", user=user, repo=repo)
-    head = Branch(label="head", ref="feature", sha="sha2", user=user, repo=repo)
-    pr1 = PullRequest(
-        id=1, number=1, title="PR 1", state=PullRequestState.CLOSED, user=user,
-        created_at=datetime(2024, 12, 1, tzinfo=timezone.utc), updated_at=datetime(2024, 12, 2, tzinfo=timezone.utc),
-        closed_at=datetime(2024, 12, 2, tzinfo=timezone.utc), merged_at=datetime(2024, 12, 2, tzinfo=timezone.utc), merged=True,
-        merge_commit_sha=None, repository=repo, base=base, head=head, commits=1, additions=1, deletions=0, changed_files=1,
-        merged_by=None, comments=0, review_comments=0
-    )
-    review1 = ReviewRecord(id=1, user=reviewer, body="Changes requested", state=ReviewState.CHANGES_REQUESTED, submitted_at=datetime(2024, 12, 1, tzinfo=timezone.utc), pull_request_number=1)
+    user = make_user(id=1, login="alice")
+    reviewer = make_user(id=2, login="bob")
+    owner = make_user(id=3, login="org")
+    repo = make_repo(id=1, name="repo", owner=owner)
 
-    bundle = CanonicalBundle(
+    created = datetime(2024, 12, 1, tzinfo=timezone.utc)
+    merged = datetime(2024, 12, 2, tzinfo=timezone.utc)
+    pr1 = make_pr(1, user, repo, created_at=created, merged_at=merged)
+
+    review1 = make_review(
+        id=1,
+        pr_number=1,
+        user=reviewer,
+        submitted_at=datetime(2024, 12, 1, tzinfo=timezone.utc),
+        state=ReviewState.CHANGES_REQUESTED,
+        body="Changes requested",
+    )
+
+    bundle = make_bundle(
         users=[user, reviewer, owner],
         repositories=[repo],
         pull_requests=[pr1],
-        commits=[],
         reviews=[review1],
-        comments=[],
-        files=[],
-        timeline=[],
     )
-    ledger = Ledger(bundle)
 
-    # Mock context
-    context = MetricContext(
-        ledger=ledger,
-        user_login='bob'  # reviewer
+    # Context for reviewer (bob) - use matching date range
+    context = make_context(
+        bundle,
+        user_login="bob",
+        start_date=datetime(2024, 11, 1, tzinfo=timezone.utc),
+        end_date=datetime(2024, 12, 31, tzinfo=timezone.utc),
     )
 
     metric = ReviewLeverage()

@@ -1,65 +1,32 @@
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 
 from impact.metrics.plugins.cycle_time import CycleTime
-from impact.domain.models import (
-    User, Repository, Branch, PullRequest, PullRequestState,
-    CanonicalBundle
+from impact.tests.conftest import (
+    DEFAULT_START,
+    make_user,
+    make_repo,
+    make_pr,
+    make_bundle,
+    make_context,
 )
-from impact.ledger.ledger import Ledger
-from impact.domain.models import MetricContext
-
-
-def _make_pr(number: int, created: datetime, merged_at: datetime | None, user: User, repo: Repository):
-    base = Branch(label="base", ref="master", sha="sha1", user=user, repo=repo)
-    head = Branch(label="head", ref=f"feature-{number}", sha="sha2", user=user, repo=repo)
-    merged_flag = merged_at is not None
-    return PullRequest(
-        id=number,
-        number=number,
-        title=f"PR {number}",
-        state=PullRequestState.CLOSED if merged_flag else PullRequestState.OPEN,
-        user=user,
-        created_at=created,
-        updated_at=merged_at or created,
-        closed_at=merged_at,
-        merged_at=merged_at,
-        merged=merged_flag,
-        merge_commit_sha=None,
-        repository=repo,
-        base=base,
-        head=head,
-        commits=1,
-        additions=1,
-        deletions=0,
-        changed_files=1,
-        merged_by=None,
-        comments=0,
-        review_comments=0,
-    )
 
 
 def test_cycle_time_median_and_p75():
-    user = User(id=1, login="alice")
-    owner = User(id=2, login="org")
-    repo = Repository(id=1, name="repo", full_name="org/repo", owner=owner)
+    user = make_user(id=1, login="alice")
+    owner = make_user(id=2, login="org")
+    repo = make_repo(id=1, name="repo", owner=owner)
 
-    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    pr1 = _make_pr(1, start, start + timedelta(hours=10), user, repo)
-    pr2 = _make_pr(2, start + timedelta(hours=1), start + timedelta(hours=20), user, repo)
-    pr3 = _make_pr(3, start + timedelta(hours=2), None, user, repo)  # open, ignored
+    start = DEFAULT_START
+    pr1 = make_pr(1, user, repo, created_at=start, merged_at=start + timedelta(hours=10))
+    pr2 = make_pr(2, user, repo, created_at=start + timedelta(hours=1), merged_at=start + timedelta(hours=20))
+    pr3 = make_pr(3, user, repo, created_at=start + timedelta(hours=2), merged_at=None)  # open, ignored
 
-    bundle = CanonicalBundle(
+    bundle = make_bundle(
         users=[user, owner],
         repositories=[repo],
         pull_requests=[pr1, pr2, pr3],
-        commits=[],
-        reviews=[],
-        comments=[],
-        files=[],
-        timeline=[],
     )
-    ledger = Ledger(bundle)
-    context = MetricContext(ledger=ledger, user_login="alice", start_date=start, end_date=start + timedelta(days=10))
+    context = make_context(bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=10))
 
     metric = CycleTime()
     res = metric.run(context)

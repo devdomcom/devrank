@@ -5,6 +5,21 @@ from impact.domain.models import MetricContext, MetricResult
 
 
 class PRThroughput(Metric):
+    """
+    Measures the volume of pull requests opened and merged by a user.
+
+    This metric tracks how many PRs were opened and how many were merged within
+    the specified time window, along with the merge ratio. Higher throughput
+    with a good merge ratio indicates productive contribution.
+
+    Details returned:
+        - opened_count: Number of PRs opened in the window
+        - merged_count: Number of PRs merged in the window
+        - merge_ratio: Ratio of merged to opened PRs
+        - opened_pr_numbers: List of opened PR numbers
+        - merged_pr_numbers: List of merged PR numbers
+    """
+
     @property
     def slug(self) -> str:
         return "pr_throughput"

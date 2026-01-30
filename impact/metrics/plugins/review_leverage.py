@@ -7,6 +7,29 @@ from impact.domain.models import MetricContext, MetricResult
 
 
 class ReviewLeverage(Metric):
+    """
+    Measures how effective a reviewer's change requests are at driving improvements.
+
+    This metric analyzes reviews where the user requested changes (formally or via
+    inline comments) and determines how many of those requests led to actual code
+    changes by the PR author within a 72-hour window. A higher effectiveness rate
+    indicates impactful code review feedback.
+
+    An "effective" change request is one where:
+        - The PR was eventually merged
+        - The PR author committed changes after the review
+        - No other reviews occurred between the change request and the follow-up commit
+        - If inline comments targeted specific files, those files were modified
+
+    Details returned:
+        - total_reviews: Total reviews by the user
+        - change_requests: Number of change-request reviews
+        - effective_changes: Change requests that led to follow-up commits
+        - effectiveness_percentage: Percentage of effective change requests
+        - updated_after_review: PRs with activity after review
+        - merged_after_review: PRs merged after review
+    """
+
     @property
     def slug(self) -> str:
         return "review_leverage"

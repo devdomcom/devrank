@@ -1,9 +1,13 @@
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Set
 
 from impact.adapters.base import ProviderAdapter
+from impact.exceptions import DataValidationError, ManifestError, ParseError
+
+log = logging.getLogger(__name__)
 from impact.domain.models import (
     CanonicalBundle,
     CommentRecord,
@@ -37,7 +41,13 @@ class GitHubAdapter(ProviderAdapter):
         path = Path(dump_path)
 
         # Manifest drives user + date window
-        manifest = json.loads((path / "dump_manifest.json").read_text())
+        manifest_path = path / "dump_manifest.json"
+        if not manifest_path.exists():
+            raise ManifestError(f"Manifest file not found: {manifest_path}", path=str(manifest_path))
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except json.JSONDecodeError as e:
+            raise ManifestError(f"Invalid JSON in manifest: {e}", path=str(manifest_path)) from e
         user_login: str = manifest["user"]
         start_dt = datetime.fromisoformat(manifest["from"].replace("Z", "+00:00"))
         end_dt = datetime.fromisoformat(manifest["to"].replace("Z", "+00:00"))
@@ -151,7 +161,8 @@ class GitHubAdapter(ProviderAdapter):
                     try:
                         author = ensure_user(author_dict)
                         committer = ensure_user(committer_dict)
-                    except Exception:
+                    except (ValueError, KeyError, TypeError) as e:
+                        log.debug("Skipping commit %s: invalid user data - %s", commit_dict.get("sha", "unknown"), e)
                         continue
 
                     message = meta.get("message")
@@ -255,7 +266,8 @@ class GitHubAdapter(ProviderAdapter):
                     url = tl_dict.get("url", "")
                     try:
                         pr_number = int(url.rstrip("/").split("/")[-2])
-                    except Exception:
+                    except (ValueError, IndexError) as e:
+                        log.debug("Skipping timeline event: cannot parse PR number from URL %r - %s", url, e)
                         continue
                     if pr_number not in pr_raw:
                         continue
@@ -268,7 +280,8 @@ class GitHubAdapter(ProviderAdapter):
                     actor_dict = tl_dict.get("actor") or {}
                     try:
                         actor = ensure_user(actor_dict)
-                    except Exception:
+                    except (ValueError, KeyError, TypeError) as e:
+                        log.debug("Skipping timeline event %s: invalid actor data - %s", tl_dict.get("id", "unknown"), e)
                         continue
 
                     timeline_events.append(

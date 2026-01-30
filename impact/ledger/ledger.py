@@ -1,8 +1,11 @@
+import logging
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from impact.domain.models import CanonicalBundle, PullRequest, ReviewRecord, CommentRecord, Commit, User, TimelineEvent, FileRecord
+
+log = logging.getLogger(__name__)
 
 
 class Ledger:
@@ -12,7 +15,18 @@ class Ledger:
     """
 
     def __init__(self, bundle: CanonicalBundle):
+        if bundle is None:
+            raise ValueError("CanonicalBundle cannot be None")
+
         self.bundle = bundle
+
+        log.debug(
+            "Initializing Ledger with %d PRs, %d reviews, %d commits, %d comments",
+            len(bundle.pull_requests),
+            len(bundle.reviews),
+            len(bundle.commits),
+            len(bundle.comments),
+        )
 
         # Indexes: user_login -> sorted list of PRs by created_at
         self.user_prs: Dict[str, List[PullRequest]] = defaultdict(list)

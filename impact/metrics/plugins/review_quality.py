@@ -1,21 +1,8 @@
-from datetime import timedelta
 from typing import Dict, List
 
 from impact.metrics.base import Metric
-from impact.metrics.utils import is_change_request
+from impact.metrics.utils import is_change_request, percentile
 from impact.domain.models import MetricContext, MetricResult, ReviewState
-
-
-def _percentile(values: List[float], pct: float) -> float:
-    if not values:
-        return 0.0
-    values = sorted(values)
-    k = (len(values) - 1) * pct
-    f = int(k)
-    c = min(f + 1, len(values) - 1)
-    if f == c:
-        return values[f]
-    return values[f] * (c - k) + values[c] * (k - f)
 
 
 class ReviewIterations(Metric):
@@ -82,8 +69,8 @@ class TimeToFirstReview(Metric):
             durations.append(hours)
             per_pr.append({"number": pr.number, "hours": hours})
 
-        median = _percentile(durations, 0.5) if durations else 0.0
-        p75 = _percentile(durations, 0.75) if durations else 0.0
+        median = percentile(durations, 0.5) if durations else 0.0
+        p75 = percentile(durations, 0.75) if durations else 0.0
         summary = f"{len([p for p in per_pr if p['hours'] is not None])} PRs reviewed; median: {median:.2f}h, p75: {p75:.2f}h"
         details: Dict[str, object] = {
             "reviewed_prs": len([p for p in per_pr if p["hours"] is not None]),
@@ -131,8 +118,8 @@ class SlowReviewResponse(Metric):
                 response_times.append(hours)
                 per_review.append({"pr": pr.number, "review_id": review.id, "hours": hours})
 
-        median = _percentile(response_times, 0.5) if response_times else 0.0
-        p75 = _percentile(response_times, 0.75) if response_times else 0.0
+        median = percentile(response_times, 0.5) if response_times else 0.0
+        p75 = percentile(response_times, 0.75) if response_times else 0.0
         summary = f"{len(response_times)} responses measured; median: {median:.2f}h, p75: {p75:.2f}h"
         details: Dict[str, object] = {
             "samples": len(response_times),
