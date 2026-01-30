@@ -29,17 +29,15 @@ class GitHubFetcher:
             "sort": "updated",
             "direction": "desc",
         }
-        if since:
-            params["since"] = self._since_param(since)
         results = []
         for pr in self.client.paginate(f"/repos/{repo}/pulls", params=params):
             updated_at = datetime.fromisoformat(pr["updated_at"].replace("Z", "+00:00"))
-            if until and updated_at < until - timedelta(days=365 * 50):  # unlikely, but guard
+            # API returns in descending updated order; stop when we fall below the lower bound.
+            if since and updated_at < since:
                 break
-            if until and updated_at < until:
-                results.append(pr)
-            else:
-                results.append(pr)
+            if until and updated_at > until:
+                continue
+            results.append(pr)
         return results
 
     def fetch_pr_bundle(self, repo: str, number: int) -> Dict[str, Any]:

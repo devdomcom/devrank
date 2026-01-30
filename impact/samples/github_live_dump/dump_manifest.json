@@ -1,0 +1,12 @@
+{
+  "provider": "github",
+  "api_version": "2022-11-28",
+  "user": "msyavuz",
+  "from": "2026-01-19T00:00:00Z",
+  "to": "2026-01-29T00:00:00Z",
+  "repositories": [
+    "apache/superset"
+  ],
+  "generated_at": "2026-01-29T18:07:01.905872Z",
+  "notes": "Live fetch dump"
+}

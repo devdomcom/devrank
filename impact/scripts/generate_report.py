@@ -3,6 +3,7 @@ import argparse
 import json
 import sys
 import os
+import logging
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
@@ -19,8 +20,10 @@ from impact.providers.github_live import GitHubLiveFetcher, LiveFetchConfig
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(description='Generate DevRank impact report.')
-    parser.add_argument('--dump-path', required=True, help='Path to the dump data directory')
+    parser.add_argument('--dump-path', help='Target path for new fetch dumps (optional if --existing-dump is provided)')
+    parser.add_argument('--existing-dump', help='Use an existing dump directory; skips live fetch even if fetch flags are provided')
     parser.add_argument('--metrics', nargs='*', help='Metric slugs to run (e.g., pr_merge_effectiveness review_leverage)')
     parser.add_argument('--out', help='Output path for the report (not implemented yet)')
     # Optional: trigger live fetch via Celery before running report
@@ -34,8 +37,14 @@ def main():
 
     args = parser.parse_args()
 
-    # Optional: live fetch via Celery (required if fetch flags provided)
-    if args.fetch_repos and args.fetch_user:
+    if not args.dump_path and not args.existing_dump:
+        raise SystemExit("Provide --existing-dump to reuse a dump, or --dump-path plus fetch flags to create one.")
+
+    # Decide dump directory (existing vs new fetch target)
+    dump_dir = Path(args.existing_dump or args.dump_path)
+
+    # Optional: live fetch via Celery (required if fetch flags provided and not reusing)
+    if args.fetch_repos and args.fetch_user and not args.existing_dump:
         token = args.fetch_token or os.environ.get("GITHUB_TOKEN")
         if not token:
             raise SystemExit("fetch requested but no GitHub token provided (--fetch-token or GITHUB_TOKEN)")
@@ -59,7 +68,7 @@ def main():
                 "user_login": args.fetch_user,
                 "repos": repos,
                 "token": token,
-                "out_dir": args.dump_path,
+                "out_dir": str(dump_dir),
                 "start_iso": start_iso,
                 "end_iso": end_iso,
             },
@@ -70,8 +79,10 @@ def main():
         except CeleryTimeout:
             raise SystemExit(f"Fetch task {task.id} did not finish within {args.fetch_timeout}s. Check worker logs.")
         print(f"Fetch completed: {result}")
+    elif args.existing_dump and (args.fetch_repos or args.fetch_user):
+        print("Existing dump specified; ignoring fetch flags.")
 
-    ingestion = DumpIngestion(args.dump_path)
+    ingestion = DumpIngestion(str(dump_dir))
     bundle = ingestion.ingest()
 
     # For now, just print a summary
@@ -86,7 +97,7 @@ def main():
 
     if args.metrics:
         # Read manifest for user and dates
-        manifest_path = os.path.join(args.dump_path, 'dump_manifest.json')
+        manifest_path = os.path.join(dump_dir, 'dump_manifest.json')
         with open(manifest_path, 'r') as f:
             manifest = json.load(f)
         user_login = manifest['user']

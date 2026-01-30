@@ -7,6 +7,7 @@ from enum import Enum
 class UserType(str, Enum):
     USER = "User"
     ORGANIZATION = "Organization"
+    BOT = "Bot"
 
 
 class PullRequestState(str, Enum):

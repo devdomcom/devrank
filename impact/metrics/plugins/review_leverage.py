@@ -1,8 +1,8 @@
+from datetime import timedelta
 from typing import Dict
 
 from impact.metrics.base import Metric
 from impact.domain.models import MetricContext, MetricResult
-from datetime import timedelta
 
 
 class ReviewLeverage(Metric):
@@ -13,6 +13,11 @@ class ReviewLeverage(Metric):
     @property
     def name(self) -> str:
         return "Review Leverage"
+
+    def _has_inline_comments(self, review, context: MetricContext) -> bool:
+        # Inline/file comments are stored as review comments linked by review_id.
+        comments = context.ledger.get_review_comments_for_review(review.id)
+        return any(comments)
 
     def _is_effective_change_request(self, review, context):
         pr = context.ledger.get_pr(review.pull_request_number)
@@ -56,7 +61,11 @@ class ReviewLeverage(Metric):
 
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(context.user_login, context.start_date, context.end_date)
-        change_requests = [r for r in reviews if r.state.value == "changes_requested"]
+        # Treat formal change requests OR inline-comment reviews as “change requests” for leverage.
+        change_requests = [
+            r for r in reviews
+            if r.state.value == "changes_requested" or self._has_inline_comments(r, context)
+        ]
 
         if not change_requests:
             summary = "No change requests made."

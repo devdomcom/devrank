@@ -20,6 +20,7 @@ class FileSystemDumpWriter:
 
     def write_pr_bundle(self, bundle: Dict):
         # Each key writes to its respective jsonl
+        pr_number = bundle.get("pull_request", {}).get("number")
         files = {
             "pull_request": "pull_requests.jsonl",
             "reviews": "reviews.jsonl",
@@ -36,7 +37,15 @@ class FileSystemDumpWriter:
             path = self.canonical_dir / fname
             with path.open("a") as f:
                 if isinstance(data, list):
-                    for item in data:
+                    for idx, item in enumerate(data):
+                        # Enrich commits and files with PR context for downstream parsing.
+                        if key == "commits":
+                            item = dict(item)
+                            item["pull_request_number"] = pr_number
+                            item["idx"] = idx
+                        if key == "files":
+                            item = dict(item)
+                            item["pull_request_number"] = pr_number
                         f.write(json.dumps(item) + "\n")
                 else:
                     f.write(json.dumps(data) + "\n")

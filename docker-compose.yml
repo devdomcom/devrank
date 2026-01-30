@@ -3,22 +3,26 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "16379:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
 
   worker:
     build: .
-    command: ["uv", "run", "celery", "-A", "impact.celery_app", "worker", "-l", "info"]
+    command: ["/usr/local/bin/uv", "run", "celery", "-A", "impact.celery_app", "worker", "-l", "info", "-c", "1"]
     environment:
-      - CELERY_BROKER_URL=redis://localhost:6379/0
-      - CELERY_BACKEND_URL=redis://localhost:6379/1
+      # Use the docker network hostname for Redis so the worker can connect inside the compose network.
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_BACKEND_URL=redis://redis:6379/1
       - PYTHONPATH=/app
     depends_on:
       - redis
     volumes:
       - .:/app
+      - /tmp:/tmp  # share host /tmp so fetched dumps are visible on host
+      # Use container venv (Linux) to avoid host macOS .venv incompatibility
+      - /app/.venv
 
 volumes:
   redis-data:
