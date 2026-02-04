@@ -109,3 +109,23 @@ def is_change_request(review, ledger) -> bool:
     # Check for inline comments
     comments = ledger.get_review_comments_for_review(review.id)
     return any(comments)
+
+
+def get_pr_size_category(changes: int) -> str:
+    """
+    Categorize a PR based on total lines changed.
+
+    Categories:
+        - trivial: < 10 changes
+        - small: 10-99 changes
+        - medium: 100-999 changes
+        - large: >= 1000 changes
+    """
+    if changes < 10:
+        return 'trivial'
+    elif changes < 100:
+        return 'small'
+    elif changes < 1000:
+        return 'medium'
+    else:
+        return 'large'

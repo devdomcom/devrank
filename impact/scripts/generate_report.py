@@ -14,63 +14,13 @@ from impact.ingestion.dump import DumpIngestion
 from impact.ledger.ledger import Ledger
 from impact.metrics import get_metrics
 from impact.domain.models import MetricContext
+from impact.thresholds import METRIC_THRESHOLDS
 from impact.celery_app import app as celery_app
 from celery.exceptions import TimeoutError as CeleryTimeout
 from impact.providers.github_live import GitHubLiveFetcher, LiveFetchConfig
 
 
-# Thresholds for rating metrics (using best judgment for defaults)
-METRIC_THRESHOLDS = {
-    'pr_throughput': {
-        'key': 'merge_ratio',
-        'excellent': lambda x: x >= 0.9,
-        'good': lambda x: 0.7 <= x < 0.9,
-        'neutral': lambda x: 0.5 <= x < 0.7,
-        'bad': lambda x: x < 0.5,
-    },
-    'cycle_time': {
-        'key': 'median_hours',
-        'excellent': lambda x: x <= 1,
-        'good': lambda x: 1 < x <= 3,
-        'neutral': lambda x: 3 < x <= 7,
-        'bad': lambda x: x > 7,
-    },
-    'pr_merge_effectiveness': {
-        'key': 'average_back_and_forth',
-        'excellent': lambda x: x <= 1,
-        'good': lambda x: 1 < x <= 2,
-        'neutral': lambda x: 2 < x <= 4,
-        'bad': lambda x: x > 4,
-    },
-    'review_leverage': {
-        'key': 'effectiveness_percentage',
-        'excellent': lambda x: x >= 80,
-        'good': lambda x: 60 <= x < 80,
-        'neutral': lambda x: 30 <= x < 60,
-        'bad': lambda x: x < 30,
-    },
-    'review_iterations': {
-        'key': 'average_iterations',
-        'excellent': lambda x: x <= 1,
-        'good': lambda x: 1 < x <= 2,
-        'neutral': lambda x: 2 < x <= 4,
-        'bad': lambda x: x > 4,
-    },
-    'time_to_first_review': {
-        'key': 'median_hours',
-        'excellent': lambda x: x <= 1,
-        'good': lambda x: 1 < x <= 6,
-        'neutral': lambda x: 6 < x <= 24,
-        'bad': lambda x: x > 24,
-    },
-    'slow_review_response': {
-        'key': 'median_hours',
-        'excellent': lambda x: x <= 2,
-        'good': lambda x: 2 < x <= 12,
-        'neutral': lambda x: 12 < x <= 48,
-        'bad': lambda x: x > 48,
-    },
-}
+
 
 
 def get_metric_rating(metric_slug, details):

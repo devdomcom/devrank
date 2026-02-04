@@ -18,6 +18,7 @@ from impact.domain.models import (
     CommentRecord,
     CommentType,
     Commit,
+    FileRecord,
     CanonicalBundle,
 )
 from impact.ledger.ledger import Ledger
@@ -47,6 +48,8 @@ def make_pr(
     created_at: Optional[datetime] = None,
     merged_at: Optional[datetime] = None,
     *,
+    additions: int = 1,
+    deletions: int = 0,
     created_delta_hours: Optional[float] = None,
     merged_delta_hours: Optional[float] = None,
     base_time: Optional[datetime] = None,
@@ -62,6 +65,8 @@ def make_pr(
         repo: The repository.
         created_at: Direct datetime for when PR was created.
         merged_at: Direct datetime for when PR was merged (None = not merged).
+        additions: Number of lines added.
+        deletions: Number of lines deleted.
         created_delta_hours: Hours offset from base_time for created_at.
         merged_delta_hours: Hours offset from base_time for merged_at.
         base_time: Base datetime for delta calculations (defaults to DEFAULT_START).
@@ -99,8 +104,8 @@ def make_pr(
         base=base_branch,
         head=head_branch,
         commits=1,
-        additions=1,
-        deletions=0,
+        additions=additions,
+        deletions=deletions,
         changed_files=1,
         merged_by=None,
         comments=0,
@@ -169,6 +174,27 @@ def make_commit(
         date=date,
         pull_request_number=pr_number,
         idx=None,
+    )
+
+
+def make_file(
+    sha: str,
+    filename: str,
+    additions: int = 1,
+    deletions: int = 0,
+    changes: int = 1,
+    status: str = "modified",
+    pr_number: int = 1,
+) -> FileRecord:
+    """Create a FileRecord for testing."""
+    return FileRecord(
+        sha=sha,
+        filename=filename,
+        additions=additions,
+        deletions=deletions,
+        changes=changes,
+        status=status,
+        pull_request_number=pr_number,
     )
 
 
