@@ -1,6 +1,6 @@
 # DevRank
 
-DevRank is a SaaS platform for vetting candidates through scenario-based interviews and impact assessment. This repository contains the core impact assessment tool that evaluates engineering quality and impact across code repositories using GitHub data.
+DevRank is a Scenario-Driven Evaluation Framework for Engineering Excellence and Impact that vets candidates using real-world metrics.
 
 ## Overview
 
