@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 
-from impact.metrics.plugins.trivial_contribution_rate import TrivialContributionRate
+from impact.metrics.plugins.authored.trivial_contribution_rate import TrivialContributionRate
 from impact.tests.conftest import (
     DEFAULT_START,
     make_user,

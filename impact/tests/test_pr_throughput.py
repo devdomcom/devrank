@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 
-from impact.metrics.plugins.pr_throughput import PRThroughput
+from impact.metrics.plugins.authored.pr_throughput import PRThroughput
 from impact.tests.conftest import (
     DEFAULT_START,
     make_user,

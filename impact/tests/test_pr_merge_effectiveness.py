@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from impact.metrics.plugins.pr_merge_effectiveness import PRMergeEffectiveness
+from impact.metrics.plugins.authored.pr_merge_effectiveness import PRMergeEffectiveness
 from impact.domain.models import ReviewState, CommentType
 from impact.tests.conftest import (
     DEFAULT_START,

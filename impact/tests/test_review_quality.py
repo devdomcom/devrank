@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from impact.metrics.plugins.review_quality import ReviewIterations, TimeToFirstReview, SlowReviewResponse
+from impact.metrics.plugins.authored.review_quality import ReviewIterations, TimeToFirstReview, SlowReviewResponse
 from impact.domain.models import ReviewState
 from impact.tests.conftest import (
     DEFAULT_START,

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 
-from impact.metrics.plugins.module_area_breadth import ModuleAreaBreadth, normalize_path_to_area
+from impact.metrics.plugins.authored.module_area_breadth import ModuleAreaBreadth, normalize_path_to_area
 from impact.tests.conftest import (
     DEFAULT_START,
     make_user,

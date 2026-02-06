@@ -94,6 +94,15 @@ The script will:
 - `review_iterations`: Average review iterations per PR.
 - `time_to_first_review`: Median time to first review.
 - `slow_review_response`: Median response time to review comments.
+- `active_weeks`: Granular active/inactive weeks + gaps to detect disengagement/absences (lower max gap better).
+- `burstiness`: Distribution of activity within active weeks (lower burst ratio = steadier contributions).
+- `reviews_given`: Review volume given (collaboration; opinionated rate by period).
+- `pr_merge_rate`: % of reviews leading to merge (proximity/no-intervening for clear influence).
+- `change_inducing_review_rate`: % reviews inducing immediate commits (clear correlation).
+- `approval_to_merge_ratio`: % approvals that were final (no reworks, direct merge).
+- `review_turnaround_time`: Median time to act on opened PRs (fast response; period-balanced).
+- `blocking_comment_rate`: % blocking CRs (ownership vs cosmetic feedback).
+- `unblock_time`: Median time to re-review after blocking CR (unblock speed).
 
 ## Data Format
 

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 
-from impact.metrics.plugins.pr_size_distribution import PRSizeDistribution
+from impact.metrics.plugins.authored.pr_size_distribution import PRSizeDistribution
 from impact.tests.conftest import (
     DEFAULT_START,
     make_user,

@@ -1,0 +1,98 @@
+from typing import Dict, List, Set
+
+from impact.metrics.base import Metric
+from impact.domain.models import MetricContext, MetricResult, PullRequest
+
+
+def normalize_path_to_area(filename: str, levels: int = 1) -> str:
+    """
+    Normalize a file path to an area by truncating to N directory levels.
+
+    Args:
+        filename: The file path (e.g., "frontend/components/Button.js")
+        levels: Number of directory levels to keep (default 1)
+
+    Returns:
+        Normalized area string (e.g., "frontend" for levels=1, "root" for files in root)
+    """
+    if not filename:
+        return "unknown"
+    parts = filename.split('/')
+    # Filter out empty parts
+    parts = [p for p in parts if p]
+    if not parts:
+        return "root"
+    # Take up to levels parts
+    area_parts = parts[:levels]
+    return '/'.join(area_parts)
+
+
+class ModuleAreaBreadth(Metric):
+    """
+    Measures the breadth of codebase understanding by counting distinct areas touched per PR.
+
+    This metric analyzes the average number of unique codebase areas (directories) modified
+    per PR in the period. Areas are determined by truncating file paths to N directory levels
+    for stability. Higher average indicates wider understanding across contributions.
+
+    Areas are normalized from file paths (e.g., "frontend/components/Button.js" -> "frontend").
+    The rating normalizes by PR count for fair comparison across different contribution volumes.
+
+    Details returned:
+        - total_pr_count: Total number of PRs analyzed
+        - total_files_touched: Total unique files modified
+        - distinct_areas_count: Number of unique areas touched
+        - distinct_areas: List of unique area names
+        - areas_per_pr: Average areas touched per PR (used for rating)
+        - truncation_levels: Number of directory levels used for normalization
+    """
+
+    @property
+    def slug(self) -> str:
+        return "module_area_breadth"
+
+    @property
+    def name(self) -> str:
+        return "Module / Area Breadth"
+
+    @property
+    def description(self) -> str:
+        return "Avg distinct codebase areas touched per PR (measures understanding breadth)."
+
+    def run(self, context: MetricContext) -> MetricResult:
+        prs = context.ledger.get_prs_for_user(context.user_login, context.start_date, context.end_date)
+        # Ensure only PRs authored by the user
+        prs = [pr for pr in prs if pr.user.login == context.user_login]
+
+        truncation_levels = 1  # Configurable, but hardcoded for now
+        all_areas: Set[str] = set()
+        total_files = 0
+
+        for pr in prs:
+            pr_areas: Set[str] = set()
+            files = context.ledger.get_files_for_pr(pr.number)
+            for file in files:
+                area = normalize_path_to_area(file.filename, truncation_levels)
+                pr_areas.add(area)
+            all_areas.update(pr_areas)
+            total_files += len(files)
+
+        distinct_areas_count = len(all_areas)
+        total_pr_count = len(prs)
+        areas_per_pr = distinct_areas_count / total_pr_count if total_pr_count > 0 else 0.0
+
+        summary = f"Touched {distinct_areas_count} distinct areas"
+        details: Dict[str, object] = {
+            "total_pr_count": total_pr_count,
+            "total_files_touched": total_files,
+            "distinct_areas_count": distinct_areas_count,
+            "distinct_areas": sorted(list(all_areas)),
+            "areas_per_pr": areas_per_pr,
+            "truncation_levels": truncation_levels,
+        }
+
+        return MetricResult(
+            metric_slug=self.slug,
+            summary=summary,
+            details=details,
+        )

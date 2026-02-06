@@ -15,6 +15,12 @@ class Metric(ABC):
         """Human-readable name."""
         pass
 
+    @property
+    @abstractmethod
+    def description(self) -> str:
+        """Short unique purpose (shows in report)."""
+        pass
+
     @abstractmethod
     def run(self, context: MetricContext) -> MetricResult:
         """Run the metric and return the result."""

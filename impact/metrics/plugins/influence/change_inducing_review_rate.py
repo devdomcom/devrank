@@ -1,0 +1,57 @@
+from typing import Dict, List
+
+from impact.metrics.base import Metric
+from impact.metrics.utils import review_led_to_commit
+from impact.domain.models import MetricContext, MetricResult
+
+
+class ChangeInducingReviewRate(Metric):
+    """
+    Rate of reviews inducing immediate author commits (clear correlation).
+    """
+
+    @property
+    def slug(self) -> str:
+        return "change_inducing_review_rate"
+
+    @property
+    def name(self) -> str:
+        return "Change-Inducing Review Rate"
+
+    @property
+    def description(self) -> str:
+        return "% reviews followed by immediate commit (proximity/no-intervening)."
+
+    def run(self, context: MetricContext) -> MetricResult:
+        reviews = context.ledger.get_reviews_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
+
+        inducing_count = 0
+        per_review: List[dict] = []
+        for rev in reviews:
+            induced_change = review_led_to_commit(context.ledger, rev)
+            if induced_change:
+                inducing_count += 1
+            per_review.append({
+                "review_id": rev.id,
+                "pr_number": rev.pull_request_number,
+                "induced_change": induced_change,
+            })
+
+        total_reviews = len(reviews)
+        inducing_rate = inducing_count / total_reviews if total_reviews else 0.0
+
+        summary = f"{inducing_count}/{total_reviews} reviews induced changes ({inducing_rate:.2f} rate)."
+        details: Dict[str, object] = {
+            "total_reviews": total_reviews,
+            "inducing_count": inducing_count,
+            "inducing_rate": inducing_rate,
+            "per_review": per_review,
+        }
+
+        return MetricResult(
+            metric_slug=self.slug,
+            summary=summary,
+            details=details,
+        )

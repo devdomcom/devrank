@@ -161,7 +161,8 @@ def main():
 
             # Print result with modern formatting
             print("=" * 80)
-            print(f"📊 {metric.name} ({metric.slug})")
+            # Short desc after name for clarity (unique purpose per metric analysis)
+            print(f"📊 {metric.name} ({metric.slug}): {metric.description}")
             print("=" * 80)
             print(f"🏆 Rating: {rating.upper()}")
             print(f"💡 Summary: {result.summary}")

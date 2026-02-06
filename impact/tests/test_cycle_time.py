@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from impact.metrics.plugins.cycle_time import CycleTime
+from impact.metrics.plugins.authored.cycle_time import CycleTime
 from impact.tests.conftest import (
     DEFAULT_START,
     make_user,

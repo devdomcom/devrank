@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from impact.metrics.plugins.review_leverage import ReviewLeverage
+from impact.metrics.plugins.influence.review_leverage import ReviewLeverage
 from impact.domain.models import ReviewState
 from impact.tests.conftest import (
     make_user,
