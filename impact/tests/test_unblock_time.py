@@ -3,13 +3,13 @@ from datetime import timedelta
 from impact.metrics.plugins.influence.unblock_time import UnblockTime
 from impact.tests.conftest import (
     DEFAULT_START,
-    make_user,
-    make_repo,
-    make_pr,
-    make_review,
-    make_commit,
     make_bundle,
+    make_commit,
     make_context,
+    make_pr,
+    make_repo,
+    make_review,
+    make_user,
 )
 
 
@@ -41,7 +41,7 @@ def test_unblock_fast():
 
     assert res.metric_slug == "unblock_time"
     assert res.details["cr_count"] == 1
-    assert res.details["median_hours"] <= 4.0  # fast
+    assert res.details["median_hours"] <= 2.0  # fast (excludes author lag)
     assert "unblock" in res.summary
 
 

@@ -1,8 +1,6 @@
-from typing import Dict
-
+from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import get_week_activity_details
-from impact.domain.models import MetricContext, MetricResult
 
 
 class ActiveWeeks(Metric):
@@ -49,7 +47,7 @@ class ActiveWeeks(Metric):
         )
 
         summary = f"{week_details['active_count']} active weeks / {week_details['total_weeks']} total. Max gap: {week_details['max_gap_weeks']} weeks (disengagement marker)."
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             **week_details,
             "activity_sources": {
                 "prs": len(prs),

@@ -1,25 +1,23 @@
 from __future__ import annotations
 
-import json
 import concurrent.futures
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import List, Optional
 
-from impact.domain.models import CanonicalBundle
 from impact.adapters.github import GitHubAdapter  # reusing adapter for parsing canonical dump
+from impact.domain.models import CanonicalBundle
+from impact.persistence.filesystem import FileSystemDumpWriter
 from impact.providers.github.client import GitHubClient
 from impact.providers.github.fetcher import GitHubFetcher
-from impact.persistence.filesystem import FileSystemDumpWriter
 
 
 @dataclass
 class LiveFetchConfig:
     user_login: str
-    repos: List[str]
+    repos: list[str]
     start: datetime
     end: datetime
     token: str
@@ -48,8 +46,12 @@ class GitHubLiveFetcher:
             remaining = rate.get("remaining", 0)
             reset = rate.get("reset")
             if remaining < 50 and reset:
-                sleep_for = max(int(reset) - int(datetime.now(timezone.utc).timestamp()), 0) + 5
-                log.warning("Low rate limit (%s remaining). Sleeping %ss before fetch.", remaining, sleep_for)
+                sleep_for = max(int(reset) - int(datetime.now(UTC).timestamp()), 0) + 5
+                log.warning(
+                    "Low rate limit (%s remaining). Sleeping %ss before fetch.",
+                    remaining,
+                    sleep_for,
+                )
                 time.sleep(sleep_for)
         except Exception as exc:  # noqa: BLE001
             log.warning("Could not preflight rate limit check: %s", exc)
@@ -61,7 +63,7 @@ class GitHubLiveFetcher:
             "from": self.cfg.start.isoformat().replace("+00:00", "Z"),
             "to": self.cfg.end.isoformat().replace("+00:00", "Z"),
             "repositories": self.cfg.repos,
-            "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "notes": "Live fetch dump",
         }
         writer.write_manifest(manifest)
@@ -85,7 +87,9 @@ class GitHubLiveFetcher:
 
                 if include:
                     pr_numbers.append((repo, pr["number"]))
-        log.info("Queued %s pull requests for fetch after author/activity prefilter", len(pr_numbers))
+        log.info(
+            "Queued %s pull requests for fetch after author/activity prefilter", len(pr_numbers)
+        )
 
         # Parallelize lightly to avoid hammering the API; also we rely on client backoff.
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:

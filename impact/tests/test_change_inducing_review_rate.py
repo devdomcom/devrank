@@ -3,13 +3,13 @@ from datetime import timedelta
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
 from impact.tests.conftest import (
     DEFAULT_START,
-    make_user,
-    make_repo,
-    make_pr,
-    make_commit,
-    make_review,
     make_bundle,
+    make_commit,
     make_context,
+    make_pr,
+    make_repo,
+    make_review,
+    make_user,
 )
 
 

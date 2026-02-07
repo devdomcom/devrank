@@ -1,9 +1,6 @@
-from typing import Dict, List
-from datetime import timedelta
-
+from impact.domain.models import MetricContext, MetricResult, PullRequest
 from impact.metrics.base import Metric
 from impact.metrics.utils import get_pr_size_category
-from impact.domain.models import MetricContext, MetricResult, PullRequest
 
 
 class TrivialContributionRate(Metric):
@@ -36,14 +33,14 @@ class TrivialContributionRate(Metric):
         return "Daily rate of tiny PRs (<10 lines) to detect low-impact/gaming behavior."
 
     def run(self, context: MetricContext) -> MetricResult:
-        prs = context.ledger.get_prs_for_user(context.user_login, context.start_date, context.end_date)
-        # Ensure only PRs authored by the user (should already be the case, but verify)
-        prs = [pr for pr in prs if pr.user.login == context.user_login]
+        prs = context.ledger.get_prs_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
 
-        trivial_prs: List[PullRequest] = []
+        trivial_prs: list[PullRequest] = []
         for pr in prs:
             changes = pr.additions + pr.deletions
-            if get_pr_size_category(changes) == 'trivial':
+            if get_pr_size_category(changes) == "trivial":
                 trivial_prs.append(pr)
 
         total_pr_count = len(prs)
@@ -61,7 +58,7 @@ class TrivialContributionRate(Metric):
         trivial_prs_per_day = trivial_pr_count / days
 
         summary = f"{trivial_prs_per_day:.2f} trivial PRs per day"
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "total_pr_count": total_pr_count,
             "trivial_pr_count": trivial_pr_count,
             "trivial_rate": trivial_rate,

@@ -1,8 +1,6 @@
-from typing import Dict, List
-
+from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import review_led_to_commit
-from impact.domain.models import MetricContext, MetricResult
 
 
 class ChangeInducingReviewRate(Metric):
@@ -28,22 +26,26 @@ class ChangeInducingReviewRate(Metric):
         )
 
         inducing_count = 0
-        per_review: List[dict] = []
+        per_review: list[dict] = []
         for rev in reviews:
             induced_change = review_led_to_commit(context.ledger, rev)
             if induced_change:
                 inducing_count += 1
-            per_review.append({
-                "review_id": rev.id,
-                "pr_number": rev.pull_request_number,
-                "induced_change": induced_change,
-            })
+            per_review.append(
+                {
+                    "review_id": rev.id,
+                    "pr_number": rev.pull_request_number,
+                    "induced_change": induced_change,
+                }
+            )
 
         total_reviews = len(reviews)
         inducing_rate = inducing_count / total_reviews if total_reviews else 0.0
 
-        summary = f"{inducing_count}/{total_reviews} reviews induced changes ({inducing_rate:.2f} rate)."
-        details: Dict[str, object] = {
+        summary = (
+            f"{inducing_count}/{total_reviews} reviews induced changes ({inducing_rate:.2f} rate)."
+        )
+        details: dict[str, object] = {
             "total_reviews": total_reviews,
             "inducing_count": inducing_count,
             "inducing_rate": inducing_rate,

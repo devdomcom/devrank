@@ -1,8 +1,6 @@
-from typing import Dict
-
+from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import get_weekly_activity_counts
-from impact.domain.models import MetricContext, MetricResult
 
 
 class Burstiness(Metric):
@@ -53,7 +51,7 @@ class Burstiness(Metric):
         burst_ratio = max_weekly / avg_weekly if avg_weekly > 0 else 0.0
 
         summary = f"Burst ratio: {burst_ratio:.2f} (max/avg weekly activity). Lower = steadier."
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "burst_ratio": burst_ratio,
             "active_weeks": active_weeks,
             "total_activities": total_activities,

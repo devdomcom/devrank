@@ -1,13 +1,13 @@
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 
 from impact.metrics.plugins.authored.pr_size_distribution import PRSizeDistribution
 from impact.tests.conftest import (
     DEFAULT_START,
-    make_user,
-    make_repo,
-    make_pr,
     make_bundle,
     make_context,
+    make_pr,
+    make_repo,
+    make_user,
 )
 
 
@@ -18,11 +18,21 @@ def test_pr_size_distribution_with_various_sizes():
 
     start = DEFAULT_START
     # PRs with different sizes
-    pr1 = make_pr(1, user, repo, base_time=start, created_delta_hours=0, additions=10, deletions=5)  # small, trivial
-    pr2 = make_pr(2, user, repo, base_time=start, created_delta_hours=24, additions=50, deletions=20)  # small
-    pr3 = make_pr(3, user, repo, base_time=start, created_delta_hours=48, additions=200, deletions=100)  # medium
-    pr4 = make_pr(4, user, repo, base_time=start, created_delta_hours=72, additions=500, deletions=600)  # large (1100 changes)
-    pr5 = make_pr(5, user, repo, base_time=start, created_delta_hours=96, additions=0, deletions=0)  # trivial
+    pr1 = make_pr(
+        1, user, repo, base_time=start, created_delta_hours=0, additions=10, deletions=5
+    )  # small, trivial
+    pr2 = make_pr(
+        2, user, repo, base_time=start, created_delta_hours=24, additions=50, deletions=20
+    )  # small
+    pr3 = make_pr(
+        3, user, repo, base_time=start, created_delta_hours=48, additions=200, deletions=100
+    )  # medium
+    pr4 = make_pr(
+        4, user, repo, base_time=start, created_delta_hours=72, additions=500, deletions=600
+    )  # large (1100 changes)
+    pr5 = make_pr(
+        5, user, repo, base_time=start, created_delta_hours=96, additions=0, deletions=0
+    )  # trivial
 
     bundle = make_bundle(
         users=[user, owner],

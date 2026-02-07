@@ -1,8 +1,6 @@
-from typing import Dict, List
-
+from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import is_change_request
-from impact.domain.models import MetricContext, MetricResult
 
 
 class BlockingCommentRate(Metric):
@@ -28,16 +26,18 @@ class BlockingCommentRate(Metric):
         )
 
         blocking_count = 0
-        per_review: List[dict] = []
+        per_review: list[dict] = []
         for rev in reviews:
             is_blocking = is_change_request(rev, context.ledger)  # DRY reuse
             if is_blocking:
                 blocking_count += 1
-            per_review.append({
-                "review_id": rev.id,
-                "pr_number": rev.pull_request_number,
-                "is_blocking": is_blocking,
-            })
+            per_review.append(
+                {
+                    "review_id": rev.id,
+                    "pr_number": rev.pull_request_number,
+                    "is_blocking": is_blocking,
+                }
+            )
 
         total_reviews = len(reviews)
         blocking_rate = blocking_count / total_reviews if total_reviews else 0.0
@@ -50,7 +50,7 @@ class BlockingCommentRate(Metric):
         blocking_per_day = blocking_count / period_days if period_days > 0 else 0.0
 
         summary = f"{blocking_count}/{total_reviews} blocking ({blocking_rate:.2f} rate, {blocking_per_day:.2f}/day)."
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "total_reviews": total_reviews,
             "blocking_count": blocking_count,
             "blocking_rate": blocking_rate,

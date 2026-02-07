@@ -4,29 +4,28 @@ Shared test fixtures and factory functions for impact tests.
 These factories help reduce duplication across test modules and provide
 consistent test data creation patterns.
 """
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+
+from datetime import UTC, datetime, timedelta
 
 from impact.domain.models import (
-    User,
-    Repository,
     Branch,
-    PullRequest,
-    PullRequestState,
-    ReviewRecord,
-    ReviewState,
+    CanonicalBundle,
     CommentRecord,
     CommentType,
     Commit,
     FileRecord,
-    CanonicalBundle,
+    MetricContext,
+    PullRequest,
+    PullRequestState,
+    Repository,
+    ReviewRecord,
+    ReviewState,
+    User,
 )
 from impact.ledger.ledger import Ledger
-from impact.domain.models import MetricContext
-
 
 # Default base datetime for tests
-DEFAULT_START = datetime(2026, 1, 1, tzinfo=timezone.utc)
+DEFAULT_START = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def make_user(id: int = 1, login: str = "alice", type: str = "User") -> User:
@@ -34,7 +33,7 @@ def make_user(id: int = 1, login: str = "alice", type: str = "User") -> User:
     return User(id=id, login=login, type=type)
 
 
-def make_repo(id: int = 1, name: str = "repo", owner: Optional[User] = None) -> Repository:
+def make_repo(id: int = 1, name: str = "repo", owner: User | None = None) -> Repository:
     """Create a Repository for testing."""
     if owner is None:
         owner = make_user(id=999, login="org")
@@ -45,14 +44,14 @@ def make_pr(
     number: int,
     user: User,
     repo: Repository,
-    created_at: Optional[datetime] = None,
-    merged_at: Optional[datetime] = None,
+    created_at: datetime | None = None,
+    merged_at: datetime | None = None,
     *,
     additions: int = 1,
     deletions: int = 0,
-    created_delta_hours: Optional[float] = None,
-    merged_delta_hours: Optional[float] = None,
-    base_time: Optional[datetime] = None,
+    created_delta_hours: float | None = None,
+    merged_delta_hours: float | None = None,
+    base_time: datetime | None = None,
 ) -> PullRequest:
     """
     Create a PullRequest for testing.
@@ -119,7 +118,7 @@ def make_review(
     user: User,
     submitted_at: datetime,
     state: ReviewState = ReviewState.APPROVED,
-    body: Optional[str] = "Review",
+    body: str | None = "Review",
 ) -> ReviewRecord:
     """Create a ReviewRecord for testing."""
     return ReviewRecord(
@@ -138,7 +137,7 @@ def make_comment(
     user: User,
     created_at: datetime,
     type: CommentType = CommentType.ISSUE,
-    review_id: Optional[int] = None,
+    review_id: int | None = None,
     body: str = "Comment",
 ) -> CommentRecord:
     """Create a CommentRecord for testing."""
@@ -163,7 +162,7 @@ def make_commit(
     date: datetime,
     pr_number: int,
     message: str = "commit",
-    committer: Optional[User] = None,
+    committer: User | None = None,
 ) -> Commit:
     """Create a Commit for testing."""
     return Commit(
@@ -199,14 +198,14 @@ def make_file(
 
 
 def make_bundle(
-    users: Optional[list] = None,
-    repositories: Optional[list] = None,
-    pull_requests: Optional[list] = None,
-    commits: Optional[list] = None,
-    reviews: Optional[list] = None,
-    comments: Optional[list] = None,
-    files: Optional[list] = None,
-    timeline: Optional[list] = None,
+    users: list | None = None,
+    repositories: list | None = None,
+    pull_requests: list | None = None,
+    commits: list | None = None,
+    reviews: list | None = None,
+    comments: list | None = None,
+    files: list | None = None,
+    timeline: list | None = None,
 ) -> CanonicalBundle:
     """Create a CanonicalBundle for testing with sensible defaults."""
     return CanonicalBundle(
@@ -224,8 +223,8 @@ def make_bundle(
 def make_context(
     bundle: CanonicalBundle,
     user_login: str,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
 ) -> MetricContext:
     """Create a MetricContext for testing."""
     ledger = Ledger(bundle)

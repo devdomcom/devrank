@@ -46,14 +46,16 @@ The metrics pipeline processes GitHub data through ingestion, indexing, metric c
 **Purpose**: Compute quantitative metrics from ledger data.
 
 - **Base Metric Class**: Abstract interface with `slug`, `name`, `run()`.
-- **Metric Plugins** (`plugins/`):
-  - **PRThroughput**: Opened/merged counts and ratio.
+- **Metric Plugins** (`plugins/`): Organized in `authored/` (own contributions) and `influence/` (impact on others); cleaned of duplicates.
+  - **PRThroughput**: Opened/merged counts and ratio (handles backlog merges).
   - **CycleTime**: Median time from PR creation to merge.
   - **PRMergeEffectiveness**: Back-and-forth review rounds.
-  - **ReviewLeverage**: Review impact (approvals, rejections).
+  - **ReviewLeverage**: Review impact (approvals, rejections; improved attribution).
   - **ReviewIterations**: Average review rounds per PR.
   - **TimeToFirstReview**: Median time to initial review.
   - **SlowReviewResponse**: Median response to review comments.
+  - **ModuleAreaBreadth**: Avg unique areas per PR (true per-PR calc).
+  - **UnblockTime**: Re-review speed after CR (excludes author lag).
 
 - **Context**: `MetricContext` bundles ledger, user, dates for each run.
 - **Results**: `MetricResult` with summary, details dict.

@@ -3,12 +3,12 @@ from datetime import timedelta
 from impact.metrics.plugins.influence.review_turnaround_time import ReviewTurnaroundTime
 from impact.tests.conftest import (
     DEFAULT_START,
-    make_user,
-    make_repo,
-    make_pr,
-    make_review,
     make_bundle,
     make_context,
+    make_pr,
+    make_repo,
+    make_review,
+    make_user,
 )
 
 

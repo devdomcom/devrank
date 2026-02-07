@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict
 
 
 class FileSystemDumpWriter:
@@ -15,10 +14,10 @@ class FileSystemDumpWriter:
         self.canonical_dir = self.base_dir / "canonical"
         self.canonical_dir.mkdir(parents=True, exist_ok=True)
 
-    def write_manifest(self, manifest: Dict):
+    def write_manifest(self, manifest: dict):
         (self.base_dir / "dump_manifest.json").write_text(json.dumps(manifest, indent=2))
 
-    def write_pr_bundle(self, bundle: Dict):
+    def write_pr_bundle(self, bundle: dict):
         # Each key writes to its respective jsonl
         pr_number = bundle.get("pull_request", {}).get("number")
         files = {

@@ -4,12 +4,12 @@ from impact.domain.models import ReviewState
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
 from impact.tests.conftest import (
     DEFAULT_START,
-    make_user,
-    make_repo,
-    make_pr,
-    make_review,
     make_bundle,
     make_context,
+    make_pr,
+    make_repo,
+    make_review,
+    make_user,
 )
 
 
@@ -22,7 +22,9 @@ def test_blocking_rate_ownership():
     # Mix: 1 blocking CR, 1 approval
     pr1 = make_pr(1, make_user(id=3), repo)
     review1 = make_review(10, 1, user, DEFAULT_START, state=ReviewState.CHANGES_REQUESTED)
-    review2 = make_review(11, 1, user, DEFAULT_START + timedelta(hours=1), state=ReviewState.APPROVED)
+    review2 = make_review(
+        11, 1, user, DEFAULT_START + timedelta(hours=1), state=ReviewState.APPROVED
+    )
 
     bundle = make_bundle(
         users=[user, owner],

@@ -1,8 +1,6 @@
-from typing import Dict, List
-
-from impact.metrics.base import Metric
-from impact.metrics.utils import percentile, get_pr_size_category
 from impact.domain.models import MetricContext, MetricResult, PullRequest
+from impact.metrics.base import Metric
+from impact.metrics.utils import get_pr_size_category, percentile
 
 
 class PRSizeDistribution(Metric):
@@ -52,17 +50,17 @@ class PRSizeDistribution(Metric):
         return "Analyzes PR size distribution and % large changes (flags risk/monoliths)."
 
     def run(self, context: MetricContext) -> MetricResult:
-        prs = context.ledger.get_prs_for_user(context.user_login, context.start_date, context.end_date)
-        # Ensure only PRs authored by the user (should already be the case, but verify)
-        prs = [pr for pr in prs if pr.user.login == context.user_login]
+        prs = context.ledger.get_prs_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
 
-        additions: List[float] = []
-        deletions: List[float] = []
-        changes: List[float] = []
-        small_prs: List[PullRequest] = []
-        medium_prs: List[PullRequest] = []
-        large_prs: List[PullRequest] = []
-        trivial_prs: List[PullRequest] = []
+        additions: list[float] = []
+        deletions: list[float] = []
+        changes: list[float] = []
+        small_prs: list[PullRequest] = []
+        medium_prs: list[PullRequest] = []
+        large_prs: list[PullRequest] = []
+        trivial_prs: list[PullRequest] = []
 
         for pr in prs:
             add = pr.additions
@@ -73,11 +71,11 @@ class PRSizeDistribution(Metric):
             changes.append(ch)
 
             category = get_pr_size_category(ch)
-            if category == 'trivial':
+            if category == "trivial":
                 trivial_prs.append(pr)
-            if category in ('trivial', 'small'):
+            if category in ("trivial", "small"):
                 small_prs.append(pr)
-            elif category == 'medium':
+            elif category == "medium":
                 medium_prs.append(pr)
             else:  # large
                 large_prs.append(pr)
@@ -85,7 +83,7 @@ class PRSizeDistribution(Metric):
         pr_count = len(prs)
         if pr_count == 0:
             summary = "No PRs found in the window."
-            details: Dict[str, object] = {
+            details: dict[str, object] = {
                 "pr_count": 0,
                 "additions_median": 0.0,
                 "deletions_median": 0.0,
@@ -122,7 +120,7 @@ class PRSizeDistribution(Metric):
             large_percent = (large_count / pr_count) * 100
 
             summary = f"{changes_median:.2f} median changes. Small: {small_percent:.1f}%, Medium: {medium_percent:.1f}%, Large: {large_percent:.1f}%"
-            details: Dict[str, object] = {
+            details: dict[str, object] = {
                 "pr_count": pr_count,
                 "additions_median": additions_median,
                 "deletions_median": deletions_median,

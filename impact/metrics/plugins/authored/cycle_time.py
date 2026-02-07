@@ -1,8 +1,6 @@
-from typing import Dict, List
-
+from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import calculate_merge_time_hours, percentile
-from impact.domain.models import MetricContext, MetricResult
 
 
 class CycleTime(Metric):
@@ -33,9 +31,11 @@ class CycleTime(Metric):
         return "Measures median time from PR open to merge (speed of delivery)."
 
     def run(self, context: MetricContext) -> MetricResult:
-        merged_prs = context.ledger.get_merged_prs_for_user(context.user_login, context.start_date, context.end_date)
+        merged_prs = context.ledger.get_merged_prs_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
 
-        durations_hours: List[float] = []
+        durations_hours: list[float] = []
         per_pr = []
         for pr in merged_prs:
             hours = calculate_merge_time_hours(pr)
@@ -47,7 +47,7 @@ class CycleTime(Metric):
         p75 = percentile(durations_hours, 0.75) if durations_hours else 0.0
 
         summary = f"{len(merged_prs)} merged PRs. Median: {median:.2f}h, p75: {p75:.2f}h."
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "merged_count": len(merged_prs),
             "median_hours": median,
             "p75_hours": p75,

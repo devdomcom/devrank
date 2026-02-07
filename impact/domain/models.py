@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, List, Any, Dict
 from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel
 
 
 class UserType(str, Enum):
@@ -29,7 +30,7 @@ class CommentType(str, Enum):
 class User(BaseModel):
     id: int
     login: str
-    avatar_url: Optional[str] = None
+    avatar_url: str | None = None
     type: UserType = UserType.USER
 
 
@@ -52,15 +53,15 @@ class PullRequest(BaseModel):
     id: int
     number: int
     title: str
-    body: Optional[str] = None
+    body: str | None = None
     state: PullRequestState
     user: User
     created_at: datetime
-    updated_at: Optional[datetime] = None
-    closed_at: Optional[datetime] = None
-    merged_at: Optional[datetime] = None
+    updated_at: datetime | None = None
+    closed_at: datetime | None = None
+    merged_at: datetime | None = None
     merged: bool = False
-    merge_commit_sha: Optional[str] = None
+    merge_commit_sha: str | None = None
     repository: Repository
     base: Branch
     head: Branch
@@ -68,7 +69,7 @@ class PullRequest(BaseModel):
     additions: int
     deletions: int
     changed_files: int
-    merged_by: Optional[User] = None
+    merged_by: User | None = None
     comments: int
     review_comments: int
 
@@ -79,14 +80,14 @@ class Commit(BaseModel):
     committer: User
     message: str
     date: datetime
-    pull_request_number: Optional[int] = None
-    idx: Optional[int] = None
+    pull_request_number: int | None = None
+    idx: int | None = None
 
 
 class ReviewRecord(BaseModel):
     id: int
     user: User
-    body: Optional[str] = None
+    body: str | None = None
     state: ReviewState
     submitted_at: datetime
     pull_request_number: int
@@ -97,13 +98,13 @@ class CommentRecord(BaseModel):
     user: User
     body: str
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
     type: CommentType
-    pull_request_number: Optional[int] = None
-    review_id: Optional[int] = None
-    in_reply_to_id: Optional[int] = None
-    path: Optional[str] = None
-    position: Optional[int] = None
+    pull_request_number: int | None = None
+    review_id: int | None = None
+    in_reply_to_id: int | None = None
+    path: str | None = None
+    position: int | None = None
 
 
 class FileRecord(BaseModel):
@@ -118,38 +119,38 @@ class FileRecord(BaseModel):
 
 class TimelineEvent(BaseModel):
     id: int
-    node_id: Optional[str] = None
-    url: Optional[str] = None
+    node_id: str | None = None
+    url: str | None = None
     event: str
     actor: User
     created_at: datetime
     pull_request_number: int
-    commit_id: Optional[str] = None
-    commit_url: Optional[str] = None
-    comment_id: Optional[int] = None
-    state: Optional[str] = None
-    html_url: Optional[str] = None
+    commit_id: str | None = None
+    commit_url: str | None = None
+    comment_id: int | None = None
+    state: str | None = None
+    html_url: str | None = None
 
 
 class CanonicalBundle(BaseModel):
-    users: List[User]
-    repositories: List[Repository]
-    pull_requests: List[PullRequest]
-    commits: List[Commit]
-    reviews: List[ReviewRecord]
-    comments: List[CommentRecord]
-    files: List[FileRecord]
-    timeline: List[TimelineEvent]
+    users: list[User]
+    repositories: list[Repository]
+    pull_requests: list[PullRequest]
+    commits: list[Commit]
+    reviews: list[ReviewRecord]
+    comments: list[CommentRecord]
+    files: list[FileRecord]
+    timeline: list[TimelineEvent]
 
 
 class MetricContext(BaseModel):
     ledger: Any  # Ledger instance
     user_login: str
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
 
 
 class MetricResult(BaseModel):
     metric_slug: str
     summary: str
-    details: Dict[str, Any]
+    details: dict[str, Any]

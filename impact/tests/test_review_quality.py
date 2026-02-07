@@ -1,16 +1,20 @@
 from datetime import timedelta
 
-from impact.metrics.plugins.authored.review_quality import ReviewIterations, TimeToFirstReview, SlowReviewResponse
 from impact.domain.models import ReviewState
+from impact.metrics.plugins.authored.review_quality import (
+    ReviewIterations,
+    SlowReviewResponse,
+    TimeToFirstReview,
+)
 from impact.tests.conftest import (
     DEFAULT_START,
-    make_user,
-    make_repo,
-    make_pr,
-    make_review,
-    make_commit,
     make_bundle,
+    make_commit,
     make_context,
+    make_pr,
+    make_repo,
+    make_review,
+    make_user,
 )
 
 
@@ -22,11 +26,23 @@ def test_review_quality_metrics():
 
     start = DEFAULT_START
     pr1 = make_pr(1, author, repo, created_at=start, merged_at=start + timedelta(hours=24))
-    pr2 = make_pr(2, author, repo, created_at=start + timedelta(hours=1), merged_at=start + timedelta(hours=48))
+    pr2 = make_pr(
+        2,
+        author,
+        repo,
+        created_at=start + timedelta(hours=1),
+        merged_at=start + timedelta(hours=48),
+    )
 
-    review1 = make_review(101, 1, reviewer, start + timedelta(hours=5), ReviewState.CHANGES_REQUESTED, body=None)
-    review2 = make_review(102, 1, reviewer, start + timedelta(hours=6), ReviewState.APPROVED, body=None)
-    review3 = make_review(103, 2, reviewer, start + timedelta(hours=3), ReviewState.COMMENTED, body=None)
+    review1 = make_review(
+        101, 1, reviewer, start + timedelta(hours=5), ReviewState.CHANGES_REQUESTED, body=None
+    )
+    review2 = make_review(
+        102, 1, reviewer, start + timedelta(hours=6), ReviewState.APPROVED, body=None
+    )
+    review3 = make_review(
+        103, 2, reviewer, start + timedelta(hours=3), ReviewState.COMMENTED, body=None
+    )
 
     commit_after_review = make_commit(
         sha="c1",
@@ -43,7 +59,9 @@ def test_review_quality_metrics():
         commits=[commit_after_review],
         reviews=[review1, review2, review3],
     )
-    ctx = make_context(bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=5))
+    ctx = make_context(
+        bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=5)
+    )
 
     iterations = ReviewIterations().run(ctx)
     assert iterations.details["average_iterations"] == 0.5

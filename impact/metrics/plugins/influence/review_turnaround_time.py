@@ -1,8 +1,6 @@
-from typing import Dict, List
-
+from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import percentile
-from impact.domain.models import MetricContext, MetricResult
 
 
 class ReviewTurnaroundTime(Metric):
@@ -35,11 +33,15 @@ class ReviewTurnaroundTime(Metric):
                 if pr:
                     reviewed_prs[r.pull_request_number] = pr
 
-        durations: List[float] = []
+        durations: list[float] = []
         per_pr = []
         for pr_num, pr in reviewed_prs.items():
             # User's first review on this PR
-            user_reviews = [r for r in context.ledger.get_reviews_for_pr(pr_num) if r.user.login == context.user_login]
+            user_reviews = [
+                r
+                for r in context.ledger.get_reviews_for_pr(pr_num)
+                if r.user.login == context.user_login
+            ]
             if not user_reviews:
                 continue
             first_user_review = min(user_reviews, key=lambda r: r.submitted_at)
@@ -59,7 +61,7 @@ class ReviewTurnaroundTime(Metric):
         # e.g., response rate per day, but keep median time primary
 
         summary = f"{len(per_pr)} PRs reviewed; median: {median:.1f}h (period {period_days:.0f}d)."
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "reviewed_prs": len(per_pr),
             "median_hours": median,
             "p75_hours": p75,

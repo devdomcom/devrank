@@ -20,6 +20,7 @@ build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.pre-commit-cache/  # Pre-commit hooks cache
 .coverage
 coverage.xml
 htmlcov/

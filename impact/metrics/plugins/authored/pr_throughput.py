@@ -1,7 +1,5 @@
-from typing import Dict
-
-from impact.metrics.base import Metric
 from impact.domain.models import MetricContext, MetricResult
+from impact.metrics.base import Metric
 
 
 class PRThroughput(Metric):
@@ -14,8 +12,8 @@ class PRThroughput(Metric):
 
     Details returned:
         - opened_count: Number of PRs opened in the window
-        - merged_count: Number of PRs merged in the window
-        - merge_ratio: Ratio of merged to opened PRs
+        - merged_count: Number of PRs merged in the window (can include pre-period opens)
+        - merge_ratio: Ratio of merged to opened PRs (can exceed 1.0 for backlog clearing)
         - opened_pr_numbers: List of opened PR numbers
         - merged_pr_numbers: List of merged PR numbers
     """
@@ -33,15 +31,19 @@ class PRThroughput(Metric):
         return "Quantifies PR volume (opened/merged counts) and success ratio for productivity."
 
     def run(self, context: MetricContext) -> MetricResult:
-        prs = context.ledger.get_prs_for_user(context.user_login, context.start_date, context.end_date)
-        merged_prs = context.ledger.get_merged_prs_for_user(context.user_login, context.start_date, context.end_date)
+        prs = context.ledger.get_prs_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
+        merged_prs = context.ledger.get_merged_prs_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
 
         opened_count = len(prs)
         merged_count = len(merged_prs)
         merge_ratio = merged_count / opened_count if opened_count else 0.0
 
         summary = f"{opened_count} PRs opened, {merged_count} merged in window. Merge ratio: {merge_ratio:.2f}"
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "opened_count": opened_count,
             "merged_count": merged_count,
             "merge_ratio": merge_ratio,

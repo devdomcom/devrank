@@ -1,14 +1,14 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from impact.metrics.plugins.influence.review_leverage import ReviewLeverage
 from impact.domain.models import ReviewState
+from impact.metrics.plugins.influence.review_leverage import ReviewLeverage
 from impact.tests.conftest import (
-    make_user,
-    make_repo,
-    make_pr,
-    make_review,
     make_bundle,
     make_context,
+    make_pr,
+    make_repo,
+    make_review,
+    make_user,
 )
 
 
@@ -19,15 +19,15 @@ def test_review_leverage_metric():
     owner = make_user(id=3, login="org")
     repo = make_repo(id=1, name="repo", owner=owner)
 
-    created = datetime(2024, 12, 1, tzinfo=timezone.utc)
-    merged = datetime(2024, 12, 2, tzinfo=timezone.utc)
+    created = datetime(2024, 12, 1, tzinfo=UTC)
+    merged = datetime(2024, 12, 2, tzinfo=UTC)
     pr1 = make_pr(1, user, repo, created_at=created, merged_at=merged)
 
     review1 = make_review(
         id=1,
         pr_number=1,
         user=reviewer,
-        submitted_at=datetime(2024, 12, 1, tzinfo=timezone.utc),
+        submitted_at=datetime(2024, 12, 1, tzinfo=UTC),
         state=ReviewState.CHANGES_REQUESTED,
         body="Changes requested",
     )
@@ -43,8 +43,8 @@ def test_review_leverage_metric():
     context = make_context(
         bundle,
         user_login="bob",
-        start_date=datetime(2024, 11, 1, tzinfo=timezone.utc),
-        end_date=datetime(2024, 12, 31, tzinfo=timezone.utc),
+        start_date=datetime(2024, 11, 1, tzinfo=UTC),
+        end_date=datetime(2024, 12, 31, tzinfo=UTC),
     )
 
     metric = ReviewLeverage()

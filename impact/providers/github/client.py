@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import time
-from typing import Any, Dict, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 DEFAULT_BASE_URL = "https://api.github.com"
 DEFAULT_ACCEPT = "application/vnd.github+json"
@@ -15,7 +15,7 @@ class GitHubRateLimitError(Exception):
     pass
 
 
-def _headers(token: str, accept: str = DEFAULT_ACCEPT, etag: Optional[str] = None) -> Dict[str, str]:
+def _headers(token: str, accept: str = DEFAULT_ACCEPT, etag: str | None = None) -> dict[str, str]:
     h = {
         "Authorization": f"Bearer {token}",
         "Accept": accept,
@@ -45,7 +45,9 @@ class GitHubClient:
         stop=stop_after_attempt(5),
         reraise=True,
     )
-    def get(self, path: str, params: Optional[Dict[str, Any]] = None, etag: Optional[str] = None) -> httpx.Response:
+    def get(
+        self, path: str, params: dict[str, Any] | None = None, etag: str | None = None
+    ) -> httpx.Response:
         url = f"{self.base_url}{path}"
         headers = _headers(self.token, etag=etag)
         resp = self.client.get(url, params=params, headers=headers)
@@ -62,7 +64,7 @@ class GitHubClient:
         resp.raise_for_status()
         return resp
 
-    def paginate(self, path: str, params: Optional[Dict[str, Any]] = None) -> Iterable[Dict[str, Any]]:
+    def paginate(self, path: str, params: dict[str, Any] | None = None) -> Iterable[dict[str, Any]]:
         """
         Follows GitHub Link headers. After the first request we stop sending the original params
         because the `next` URL already contains its own query string (including page).

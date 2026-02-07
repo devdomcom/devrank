@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 # Ensure repo root on sys.path
@@ -19,7 +19,11 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Fetch live GitHub data and emit canonical dump.")
     parser.add_argument("--token", required=False, help="GitHub token (or set GITHUB_TOKEN)")
     parser.add_argument("--user", required=True, help="Assessed user login")
-    parser.add_argument("--repos", required=True, help="Comma-separated list of repos (owner/repo). Use @all for all provided.")
+    parser.add_argument(
+        "--repos",
+        required=True,
+        help="Comma-separated list of repos (owner/repo). Use @all for all provided.",
+    )
     parser.add_argument("--from", dest="since", help="ISO start date (default: 365 days ago)")
     parser.add_argument("--to", dest="until", help="ISO end date (default: now)")
     parser.add_argument("--out", required=True, help="Output folder for dump")
@@ -38,7 +42,7 @@ def main():
     if not token:
         raise SystemExit("GitHub token required via --token or GITHUB_TOKEN")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start_default = now - timedelta(days=365)
     start = parse_date(args.since, start_default)
     end = parse_date(args.until, now)

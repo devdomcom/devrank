@@ -1,8 +1,6 @@
-from typing import Dict, List
-
+from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import calculate_merge_time_hours, collect_pr_interactions
-from impact.domain.models import MetricContext, MetricResult
 
 
 class PRMergeEffectiveness(Metric):
@@ -34,7 +32,9 @@ class PRMergeEffectiveness(Metric):
         return "Combines merge speed with review interaction count for merge smoothness."
 
     def run(self, context: MetricContext) -> MetricResult:
-        merged_prs = context.ledger.get_merged_prs_for_user(context.user_login, context.start_date, context.end_date)
+        merged_prs = context.ledger.get_merged_prs_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
 
         if not merged_prs:
             summary = "No PRs merged in the period."
@@ -50,7 +50,9 @@ class PRMergeEffectiveness(Metric):
                 if merge_time_hours is not None:
                     merge_times.append(merge_time_hours)
 
-                interactions = collect_pr_interactions(context, pr.number, pr.user.login, pr.merged_at)
+                interactions = collect_pr_interactions(
+                    context, pr.number, pr.user.login, pr.merged_at
+                )
                 back_forths.append(len(interactions))
 
                 # per-PR breakdown
@@ -78,8 +80,4 @@ class PRMergeEffectiveness(Metric):
                 "pr_details": pr_rows,
             }
 
-        return MetricResult(
-            metric_slug=self.slug,
-            summary=summary,
-            details=details
-        )
+        return MetricResult(metric_slug=self.slug, summary=summary, details=details)

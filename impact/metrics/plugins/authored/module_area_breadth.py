@@ -1,7 +1,5 @@
-from typing import Dict, List, Set
-
+from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.domain.models import MetricContext, MetricResult, PullRequest
 
 
 def normalize_path_to_area(filename: str, levels: int = 1) -> str:
@@ -17,14 +15,14 @@ def normalize_path_to_area(filename: str, levels: int = 1) -> str:
     """
     if not filename:
         return "unknown"
-    parts = filename.split('/')
+    parts = filename.split("/")
     # Filter out empty parts
     parts = [p for p in parts if p]
     if not parts:
         return "root"
     # Take up to levels parts
     area_parts = parts[:levels]
-    return '/'.join(area_parts)
+    return "/".join(area_parts)
 
 
 class ModuleAreaBreadth(Metric):
@@ -60,29 +58,31 @@ class ModuleAreaBreadth(Metric):
         return "Avg distinct codebase areas touched per PR (measures understanding breadth)."
 
     def run(self, context: MetricContext) -> MetricResult:
-        prs = context.ledger.get_prs_for_user(context.user_login, context.start_date, context.end_date)
-        # Ensure only PRs authored by the user
-        prs = [pr for pr in prs if pr.user.login == context.user_login]
+        prs = context.ledger.get_prs_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
 
         truncation_levels = 1  # Configurable, but hardcoded for now
-        all_areas: Set[str] = set()
+        all_areas: set[str] = set()
         total_files = 0
+        sum_pr_areas = 0
 
         for pr in prs:
-            pr_areas: Set[str] = set()
+            pr_areas: set[str] = set()
             files = context.ledger.get_files_for_pr(pr.number)
             for file in files:
                 area = normalize_path_to_area(file.filename, truncation_levels)
                 pr_areas.add(area)
             all_areas.update(pr_areas)
+            sum_pr_areas += len(pr_areas)
             total_files += len(files)
 
         distinct_areas_count = len(all_areas)
         total_pr_count = len(prs)
-        areas_per_pr = distinct_areas_count / total_pr_count if total_pr_count > 0 else 0.0
+        areas_per_pr = sum_pr_areas / total_pr_count if total_pr_count > 0 else 0.0
 
         summary = f"Touched {distinct_areas_count} distinct areas"
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "total_pr_count": total_pr_count,
             "total_files_touched": total_files,
             "distinct_areas_count": distinct_areas_count,

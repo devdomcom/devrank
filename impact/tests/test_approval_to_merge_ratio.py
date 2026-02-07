@@ -3,12 +3,12 @@ from datetime import timedelta
 from impact.metrics.plugins.influence.approval_to_merge_ratio import ApprovalToMergeRatio
 from impact.tests.conftest import (
     DEFAULT_START,
-    make_user,
-    make_repo,
-    make_pr,
-    make_review,
     make_bundle,
     make_context,
+    make_pr,
+    make_repo,
+    make_review,
+    make_user,
 )
 
 
@@ -22,12 +22,20 @@ def test_approval_to_merge_high():
     start = DEFAULT_START
     # Final approval
     pr1 = make_pr(1, author, repo, base_time=start, merged_delta_hours=10)
-    review1 = make_review(10, 1, user, start + timedelta(hours=2), state="approved")  # assume enum ok via make
+    review1 = make_review(
+        10, 1, user, start + timedelta(hours=2), state="approved"
+    )  # assume enum ok via make
 
     # Non-final: later CR
     pr2 = make_pr(2, author, repo, base_time=start, created_delta_hours=24, merged_delta_hours=50)
     review2 = make_review(20, 2, user, start + timedelta(hours=25), state="approved")
-    later_cr = make_review(21, 2, make_user(id=4, login="charlie"), start + timedelta(hours=30), state="changes_requested")
+    later_cr = make_review(
+        21,
+        2,
+        make_user(id=4, login="charlie"),
+        start + timedelta(hours=30),
+        state="changes_requested",
+    )
 
     bundle = make_bundle(
         users=[user, author, owner],

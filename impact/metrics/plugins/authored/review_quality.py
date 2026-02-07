@@ -1,8 +1,6 @@
-from typing import Dict, List
-
+from impact.domain.models import MetricContext, MetricResult, ReviewState
 from impact.metrics.base import Metric
 from impact.metrics.utils import is_change_request, percentile
-from impact.domain.models import MetricContext, MetricResult, ReviewState
 
 
 class ReviewIterations(Metric):
@@ -23,11 +21,13 @@ class ReviewIterations(Metric):
         return "Avg change-request cycles per merged PR (review churn/rounds)."
 
     def run(self, context: MetricContext) -> MetricResult:
-        prs = context.ledger.get_prs_for_user(context.user_login, context.start_date, context.end_date)
+        prs = context.ledger.get_prs_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
         merged = [pr for pr in prs if pr.merged]
 
         per_pr = []
-        counts: List[int] = []
+        counts: list[int] = []
         for pr in merged:
             reviews = context.ledger.get_reviews_for_pr(pr.number)
             changes_requested = [r for r in reviews if is_change_request(r, context.ledger)]
@@ -36,7 +36,7 @@ class ReviewIterations(Metric):
 
         avg = sum(counts) / len(counts) if counts else 0.0
         summary = f"{len(merged)} merged PRs; avg iterations: {avg:.2f}"
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "merged_prs": len(merged),
             "average_iterations": avg,
             "per_pr": per_pr,
@@ -62,12 +62,18 @@ class TimeToFirstReview(Metric):
         return "Median time from PR creation to initial reviewer feedback."
 
     def run(self, context: MetricContext) -> MetricResult:
-        prs = context.ledger.get_prs_for_user(context.user_login, context.start_date, context.end_date)
+        prs = context.ledger.get_prs_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
 
-        durations: List[float] = []
+        durations: list[float] = []
         per_pr = []
         for pr in prs:
-            reviews = [r for r in context.ledger.get_reviews_for_pr(pr.number) if r.user.login != pr.user.login]
+            reviews = [
+                r
+                for r in context.ledger.get_reviews_for_pr(pr.number)
+                if r.user.login != pr.user.login
+            ]
             if not reviews:
                 per_pr.append({"number": pr.number, "hours": None})
                 continue
@@ -80,7 +86,7 @@ class TimeToFirstReview(Metric):
         median = percentile(durations, 0.5) if durations else 0.0
         p75 = percentile(durations, 0.75) if durations else 0.0
         summary = f"{len([p for p in per_pr if p['hours'] is not None])} PRs reviewed; median: {median:.2f}h, p75: {p75:.2f}h"
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "reviewed_prs": len([p for p in per_pr if p["hours"] is not None]),
             "median_hours": median,
             "p75_hours": p75,
@@ -107,14 +113,20 @@ class SlowReviewResponse(Metric):
         return "Median author response time to changes-requested reviews."
 
     def run(self, context: MetricContext) -> MetricResult:
-        prs = context.ledger.get_prs_for_user(context.user_login, context.start_date, context.end_date)
+        prs = context.ledger.get_prs_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
         prs = [pr for pr in prs if pr.merged]  # only closed/merged PRs for responsiveness
 
-        response_times: List[float] = []
+        response_times: list[float] = []
         per_review = []
 
         for pr in prs:
-            commits = [c for c in context.ledger.get_commits_for_pr(pr.number) if c.author.login == pr.user.login]
+            commits = [
+                c
+                for c in context.ledger.get_commits_for_pr(pr.number)
+                if c.author.login == pr.user.login
+            ]
             commits.sort(key=lambda c: c.date)
             reviews = context.ledger.get_reviews_for_pr(pr.number)
             for review in reviews:
@@ -132,8 +144,10 @@ class SlowReviewResponse(Metric):
 
         median = percentile(response_times, 0.5) if response_times else 0.0
         p75 = percentile(response_times, 0.75) if response_times else 0.0
-        summary = f"{len(response_times)} responses measured; median: {median:.2f}h, p75: {p75:.2f}h"
-        details: Dict[str, object] = {
+        summary = (
+            f"{len(response_times)} responses measured; median: {median:.2f}h, p75: {p75:.2f}h"
+        )
+        details: dict[str, object] = {
             "samples": len(response_times),
             "median_hours": median,
             "p75_hours": p75,

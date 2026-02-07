@@ -1,8 +1,5 @@
-from typing import Dict
-from datetime import timedelta
-
-from impact.metrics.base import Metric
 from impact.domain.models import MetricContext, MetricResult
+from impact.metrics.base import Metric
 
 
 class ReviewsGiven(Metric):
@@ -37,7 +34,7 @@ class ReviewsGiven(Metric):
         reviews_per_week = reviews_per_day * 7
 
         summary = f"{review_count} reviews given ({reviews_per_week:.1f}/week)."
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "review_count": review_count,
             "period_days": round(period_days, 1),
             "reviews_per_day": round(reviews_per_day, 2),

@@ -1,8 +1,6 @@
-from typing import Dict, List
-
+from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import review_led_to_merge
-from impact.domain.models import MetricContext, MetricResult
 
 
 class PRMergeRate(Metric):
@@ -29,22 +27,24 @@ class PRMergeRate(Metric):
         )
 
         effective_count = 0
-        per_review: List[dict] = []
+        per_review: list[dict] = []
         for rev in reviews:
             led_to_merge = review_led_to_merge(context.ledger, rev)
             if led_to_merge:
                 effective_count += 1
-            per_review.append({
-                "review_id": rev.id,
-                "pr_number": rev.pull_request_number,
-                "led_to_merge": led_to_merge,
-            })
+            per_review.append(
+                {
+                    "review_id": rev.id,
+                    "pr_number": rev.pull_request_number,
+                    "led_to_merge": led_to_merge,
+                }
+            )
 
         total_reviews = len(reviews)
         merge_rate = effective_count / total_reviews if total_reviews else 0.0
 
         summary = f"{effective_count}/{total_reviews} reviews led to merge ({merge_rate:.2f} rate)."
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "total_reviews": total_reviews,
             "effective_merges": effective_count,
             "merge_rate": merge_rate,

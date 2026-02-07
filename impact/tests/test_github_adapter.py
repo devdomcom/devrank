@@ -1,10 +1,17 @@
-import pytest
-from impact.adapters.github import GitHubAdapter
-from impact.domain.models import PullRequestState, ReviewState, CommentType
+from datetime import UTC, datetime
 
-
-from impact.domain.models import CanonicalBundle, User, Repository, PullRequest, PullRequestState, ReviewRecord, ReviewState, Branch, CommentRecord, CommentType
-from datetime import datetime, timezone
+from impact.domain.models import (
+    Branch,
+    CanonicalBundle,
+    CommentRecord,
+    CommentType,
+    PullRequest,
+    PullRequestState,
+    Repository,
+    ReviewRecord,
+    ReviewState,
+    User,
+)
 
 
 def test_github_adapter_parse_dump():
@@ -13,22 +20,99 @@ def test_github_adapter_parse_dump():
     repositories = [Repository(id=1, name="widgets", full_name="org/widgets", owner=users[0])]
     base = Branch(label="base", ref="master", sha="sha1", user=users[0], repo=repositories[0])
     head = Branch(label="head", ref="feature", sha="sha2", user=users[0], repo=repositories[0])
-    pull_requests = [PullRequest(
-        id=42, number=42, title="Improve logging", state=PullRequestState.CLOSED, user=users[0],
-        created_at=datetime(2024, 12, 1, tzinfo=timezone.utc), updated_at=datetime(2024, 12, 2, tzinfo=timezone.utc),
-        closed_at=datetime(2024, 12, 2, tzinfo=timezone.utc), merged_at=datetime(2024, 12, 2, tzinfo=timezone.utc), merged=True,
-        merge_commit_sha=None, repository=repositories[0], base=base, head=head, commits=1, additions=1, deletions=0, changed_files=1,
-        merged_by=None, comments=0, review_comments=0
-    )] + [PullRequest(
-        id=i, number=i, title=f"PR {i}", state=PullRequestState.CLOSED, user=users[0],
-        created_at=datetime(2024, 12, 1, tzinfo=timezone.utc), updated_at=datetime(2024, 12, 2, tzinfo=timezone.utc),
-        closed_at=datetime(2024, 12, 2, tzinfo=timezone.utc), merged_at=datetime(2024, 12, 2, tzinfo=timezone.utc), merged=True,
-        merge_commit_sha=None, repository=repositories[0], base=base, head=head, commits=1, additions=1, deletions=0, changed_files=1,
-        merged_by=None, comments=0, review_comments=0
-    ) for i in range(1, 6)]
+    pull_requests = [
+        PullRequest(
+            id=42,
+            number=42,
+            title="Improve logging",
+            state=PullRequestState.CLOSED,
+            user=users[0],
+            created_at=datetime(2024, 12, 1, tzinfo=UTC),
+            updated_at=datetime(2024, 12, 2, tzinfo=UTC),
+            closed_at=datetime(2024, 12, 2, tzinfo=UTC),
+            merged_at=datetime(2024, 12, 2, tzinfo=UTC),
+            merged=True,
+            merge_commit_sha=None,
+            repository=repositories[0],
+            base=base,
+            head=head,
+            commits=1,
+            additions=1,
+            deletions=0,
+            changed_files=1,
+            merged_by=None,
+            comments=0,
+            review_comments=0,
+        )
+    ] + [
+        PullRequest(
+            id=i,
+            number=i,
+            title=f"PR {i}",
+            state=PullRequestState.CLOSED,
+            user=users[0],
+            created_at=datetime(2024, 12, 1, tzinfo=UTC),
+            updated_at=datetime(2024, 12, 2, tzinfo=UTC),
+            closed_at=datetime(2024, 12, 2, tzinfo=UTC),
+            merged_at=datetime(2024, 12, 2, tzinfo=UTC),
+            merged=True,
+            merge_commit_sha=None,
+            repository=repositories[0],
+            base=base,
+            head=head,
+            commits=1,
+            additions=1,
+            deletions=0,
+            changed_files=1,
+            merged_by=None,
+            comments=0,
+            review_comments=0,
+        )
+        for i in range(1, 6)
+    ]
     commits = []
-    reviews = [ReviewRecord(id=i, user=users[1], body="review", state=ReviewState.CHANGES_REQUESTED if i == 1 else ReviewState.APPROVED, submitted_at=datetime(2024, 12, 1, tzinfo=timezone.utc), pull_request_number=42 if i == 1 else i % 6 + 1) for i in range(1, 10)]
-    comments = [CommentRecord(id=i, user=users[1], body="comment", created_at=datetime(2024, 12, 1, tzinfo=timezone.utc), type=CommentType.ISSUE, pull_request_number=i % 6 + 1, review_id=None, url="", html_url="", issue_url="", pull_request_url="") for i in range(1, 17)] + [CommentRecord(id=17, user=users[1], body="review comment", created_at=datetime(2024, 12, 1, tzinfo=timezone.utc), type=CommentType.REVIEW, pull_request_number=42, review_id=1, path="src/logging.py", url="", html_url="", issue_url="", pull_request_url="")]
+    reviews = [
+        ReviewRecord(
+            id=i,
+            user=users[1],
+            body="review",
+            state=ReviewState.CHANGES_REQUESTED if i == 1 else ReviewState.APPROVED,
+            submitted_at=datetime(2024, 12, 1, tzinfo=UTC),
+            pull_request_number=42 if i == 1 else i % 6 + 1,
+        )
+        for i in range(1, 10)
+    ]
+    comments = [
+        CommentRecord(
+            id=i,
+            user=users[1],
+            body="comment",
+            created_at=datetime(2024, 12, 1, tzinfo=UTC),
+            type=CommentType.ISSUE,
+            pull_request_number=i % 6 + 1,
+            review_id=None,
+            url="",
+            html_url="",
+            issue_url="",
+            pull_request_url="",
+        )
+        for i in range(1, 17)
+    ] + [
+        CommentRecord(
+            id=17,
+            user=users[1],
+            body="review comment",
+            created_at=datetime(2024, 12, 1, tzinfo=UTC),
+            type=CommentType.REVIEW,
+            pull_request_number=42,
+            review_id=1,
+            path="src/logging.py",
+            url="",
+            html_url="",
+            issue_url="",
+            pull_request_url="",
+        )
+    ]
     files = []
     timeline = []
 
@@ -67,6 +151,8 @@ def test_github_adapter_parse_dump():
     assert review.pull_request_number == 42
 
     # Test comment parsing
-    comment = next(c for c in bundle.comments if c.type == CommentType.REVIEW and c.pull_request_number == 42)
+    comment = next(
+        c for c in bundle.comments if c.type == CommentType.REVIEW and c.pull_request_number == 42
+    )
     assert comment.path == "src/logging.py"
     assert comment.user.login == "bob"

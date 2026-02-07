@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, TypedDict
 from collections import Counter
+from datetime import datetime, timedelta
+from typing import Any, TypedDict
 
 from impact.domain.models import MetricContext
 from impact.ledger.ledger import Ledger
@@ -12,7 +12,7 @@ class Interaction(TypedDict):
     created_at: Any
 
 
-def percentile(values: List[float], pct: float) -> float:
+def percentile(values: list[float], pct: float) -> float:
     """
     Calculate the percentile of a list of values using linear interpolation.
 
@@ -34,7 +34,7 @@ def percentile(values: List[float], pct: float) -> float:
     return sorted_values[f] * (c - k) + sorted_values[c] * (k - f)
 
 
-def calculate_merge_time_hours(pr) -> Optional[float]:
+def calculate_merge_time_hours(pr) -> float | None:
     """Calculate merge time in hours for a PR, or None if not merged."""
     if pr.merged and pr.merged_at and pr.created_at:
         delta = pr.merged_at - pr.created_at
@@ -42,9 +42,11 @@ def calculate_merge_time_hours(pr) -> Optional[float]:
     return None
 
 
-def collect_pr_interactions(context: MetricContext, pr_number: int, author: str, cutoff_time: Optional[datetime] = None) -> List[Interaction]:
+def collect_pr_interactions(
+    context: MetricContext, pr_number: int, author: str, cutoff_time: datetime | None = None
+) -> list[Interaction]:
     """Collect interactions (reviews, comments, timeline events) for a PR up to cutoff_time, excluding bots."""
-    interactions: List[Interaction] = []
+    interactions: list[Interaction] = []
 
     # Reviews
     for rev in context.ledger.get_reviews_for_pr(pr_number):
@@ -52,7 +54,9 @@ def collect_pr_interactions(context: MetricContext, pr_number: int, author: str,
             continue
         if cutoff_time and rev.submitted_at >= cutoff_time:
             continue
-        interactions.append({"actor": rev.user.login, "kind": "review", "created_at": rev.submitted_at})
+        interactions.append(
+            {"actor": rev.user.login, "kind": "review", "created_at": rev.submitted_at}
+        )
 
     # Comments (issue + review)
     for c in context.ledger.get_comments_for_pr(pr_number):
@@ -74,7 +78,9 @@ def collect_pr_interactions(context: MetricContext, pr_number: int, author: str,
         if evt.event in ("reviewed", "commented"):
             key = ("timeline", evt.actor.login, evt.created_at)
             if key not in seen_ts_ids:
-                interactions.append({"actor": evt.actor.login, "kind": "timeline", "created_at": evt.created_at})
+                interactions.append(
+                    {"actor": evt.actor.login, "kind": "timeline", "created_at": evt.created_at}
+                )
                 seen_ts_ids.add(key)
 
     interactions.sort(key=lambda i: i["created_at"])
@@ -95,7 +101,9 @@ def is_pr_merged_after(ledger: Ledger, pr_number: int, after_time: datetime) -> 
     return False
 
 
-def has_pr_event_after(ledger: Ledger, pr_number: int, after_time: datetime, event_type: Optional[str] = None) -> bool:
+def has_pr_event_after(
+    ledger: Ledger, pr_number: int, after_time: datetime, event_type: str | None = None
+) -> bool:
     """Check if a PR has any timeline event (or specific type) after a given time."""
     for evt in ledger.get_timeline_for_pr(pr_number):
         if evt.created_at > after_time and (event_type is None or evt.event == event_type):
@@ -107,7 +115,8 @@ def is_change_request(review, ledger) -> bool:
     """Check if a review is a change request (formal or via inline comments)."""
     if review.state.value == "changes_requested":
         return True
-    # Check for inline comments
+    if review.state.value != "commented":
+        return False
     comments = ledger.get_review_comments_for_review(review.id)
     return any(comments)
 
@@ -123,19 +132,27 @@ def get_pr_size_category(changes: int) -> str:
         - large: >= 1000 changes
     """
     if changes < 10:
-        return 'trivial'
+        return "trivial"
     elif changes < 100:
-        return 'small'
+        return "small"
     elif changes < 1000:
-        return 'medium'
+        return "medium"
     else:
-        return 'large'
+        return "large"
 
 
-def get_week_activity_details(dates: List[datetime], start_date: Optional[datetime], end_date: Optional[datetime]) -> dict:
+def get_week_activity_details(
+    dates: list[datetime], start_date: datetime | None, end_date: datetime | None
+) -> dict:
     """Return granular week details: active/inactive weeks, gaps (disengagement)."""
     if not start_date or not end_date:
-        return {"active_weeks": [], "inactive_weeks": [], "active_count": 0, "total_weeks": 0, "max_gap_weeks": 0}
+        return {
+            "active_weeks": [],
+            "inactive_weeks": [],
+            "active_count": 0,
+            "total_weeks": 0,
+            "max_gap_weeks": 0,
+        }
 
     all_week_keys = set()
     current = start_date
@@ -153,9 +170,11 @@ def get_week_activity_details(dates: List[datetime], start_date: Optional[dateti
         max_gap = 1
         current_gap = 1
         for i in range(1, len(sorted_inactive)):
-            prev_y, prev_w = sorted_inactive[i-1]
+            prev_y, prev_w = sorted_inactive[i - 1]
             curr_y, curr_w = sorted_inactive[i]
-            if (curr_y == prev_y and curr_w == prev_w + 1) or (curr_y == prev_y + 1 and curr_w == 1 and prev_w >= 52):
+            if (curr_y == prev_y and curr_w == prev_w + 1) or (
+                curr_y == prev_y + 1 and curr_w == 1 and prev_w >= 52
+            ):
                 current_gap += 1
                 max_gap = max(max_gap, current_gap)
             else:
@@ -174,7 +193,8 @@ def get_week_activity_details(dates: List[datetime], start_date: Optional[dateti
         "active_ratio": len(active_week_keys) / len(all_week_keys) if all_week_keys else 0.0,
     }
 
-def get_weekly_activity_counts(dates: List[datetime]) -> dict:
+
+def get_weekly_activity_counts(dates: list[datetime]) -> dict:
     """Group dates by ISO week and count activities per week (DRY for burst metrics)."""
     if not dates:
         return {}
@@ -182,10 +202,13 @@ def get_weekly_activity_counts(dates: List[datetime]) -> dict:
     for dt in dates:
         wk = dt.isocalendar()[:2]
         week_counts[wk] += 1
+
     # Return as { "YYYY-WW": count, ... } sorted
     def fmt(wk):
         return f"{wk[0]}-W{wk[1]:02d}"
+
     return {fmt(wk): count for wk, count in sorted(week_counts.items())}
+
 
 def review_led_to_merge(ledger, review, max_hours=48) -> bool:
     """Check if user's review led to merge with close proximity (review -> commit -> merge, no intervening other reviews)."""
@@ -194,31 +217,55 @@ def review_led_to_merge(ledger, review, max_hours=48) -> bool:
     # Merged after?
     if not is_pr_merged_after(ledger, pr_num, rev_time):
         return False
+    pr = ledger.get_pr(pr_num)
     # Author commit after review within window?
-    commits = [c for c in ledger.get_commits_for_pr(pr_num) if c.date > rev_time and c.author.login != review.user.login]
+    commits = [
+        c
+        for c in ledger.get_commits_for_pr(pr_num)
+        if c.date > rev_time and c.author.login == pr.user.login
+    ]
     if not commits:
         return False
     first_commit = min(commits, key=lambda c: c.date)
     if (first_commit.date - rev_time).total_seconds() / 3600 > max_hours:
         return False
     # No other reviews between this review and first commit?
-    other_reviews = [r for r in ledger.get_reviews_for_pr(pr_num) if r.submitted_at > rev_time and r.submitted_at < first_commit.date and r.user.login != review.user.login]
+    other_reviews = [
+        r
+        for r in ledger.get_reviews_for_pr(pr_num)
+        if r.submitted_at > rev_time
+        and r.submitted_at < first_commit.date
+        and r.user.login != review.user.login
+    ]
     return not other_reviews
+
 
 def review_led_to_commit(ledger, review, max_hours=24) -> bool:
     """Check if review led to immediate author commit (clear correlation, no intervening reviews)."""
     pr_num = review.pull_request_number
     rev_time = review.submitted_at
+    pr = ledger.get_pr(pr_num)
     # Author commit after review within window?
-    commits = [c for c in ledger.get_commits_for_pr(pr_num) if c.date > rev_time and c.author.login != review.user.login]
+    commits = [
+        c
+        for c in ledger.get_commits_for_pr(pr_num)
+        if c.date > rev_time and c.author.login == pr.user.login
+    ]
     if not commits:
         return False
     first_commit = min(commits, key=lambda c: c.date)
     if (first_commit.date - rev_time).total_seconds() / 3600 > max_hours:
         return False
     # No other reviews between?
-    other_reviews = [r for r in ledger.get_reviews_for_pr(pr_num) if r.submitted_at > rev_time and r.submitted_at < first_commit.date and r.user.login != review.user.login]
+    other_reviews = [
+        r
+        for r in ledger.get_reviews_for_pr(pr_num)
+        if r.submitted_at > rev_time
+        and r.submitted_at < first_commit.date
+        and r.user.login != review.user.login
+    ]
     return not other_reviews
+
 
 def approval_was_final(ledger, review, max_hours_to_merge=48) -> bool:
     """Check if approval was last activity (no later commits/CRs, leads to merge)."""
@@ -228,8 +275,17 @@ def approval_was_final(ledger, review, max_hours_to_merge=48) -> bool:
     rev_time = review.submitted_at
     # No later commits or CRs?
     later_commits = [c for c in ledger.get_commits_for_pr(pr_num) if c.date > rev_time]
-    later_crs = [r for r in ledger.get_reviews_for_pr(pr_num) if r.submitted_at > rev_time and r.state.value == "changes_requested"]
+    later_crs = [
+        r
+        for r in ledger.get_reviews_for_pr(pr_num)
+        if r.submitted_at > rev_time and r.state.value == "changes_requested"
+    ]
     if later_commits or later_crs:
         return False
     # Merged after within window?
-    return is_pr_merged_after(ledger, pr_num, rev_time) and (ledger.get_pr(pr_num).merged_at - rev_time).total_seconds() / 3600 <= max_hours_to_merge
+    if not is_pr_merged_after(ledger, pr_num, rev_time):
+        return False
+    pr = ledger.get_pr(pr_num)
+    if not pr or not pr.merged_at:
+        return True
+    return (pr.merged_at - rev_time).total_seconds() / 3600 <= max_hours_to_merge

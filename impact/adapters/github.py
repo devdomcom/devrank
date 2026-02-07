@@ -2,13 +2,13 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Set
 
 from impact.adapters.base import ProviderAdapter
-from impact.exceptions import DataValidationError, ManifestError, ParseError
+from impact.exceptions import ManifestError
 
 log = logging.getLogger(__name__)
 from impact.domain.models import (
+    Branch,
     CanonicalBundle,
     CommentRecord,
     CommentType,
@@ -20,7 +20,6 @@ from impact.domain.models import (
     ReviewRecord,
     ReviewState,
     TimelineEvent,
-    Branch,
     User,
     UserType,
 )
@@ -43,7 +42,9 @@ class GitHubAdapter(ProviderAdapter):
         # Manifest drives user + date window
         manifest_path = path / "dump_manifest.json"
         if not manifest_path.exists():
-            raise ManifestError(f"Manifest file not found: {manifest_path}", path=str(manifest_path))
+            raise ManifestError(
+                f"Manifest file not found: {manifest_path}", path=str(manifest_path)
+            )
         try:
             manifest = json.loads(manifest_path.read_text())
         except json.JSONDecodeError as e:
@@ -52,16 +53,16 @@ class GitHubAdapter(ProviderAdapter):
         start_dt = datetime.fromisoformat(manifest["from"].replace("Z", "+00:00"))
         end_dt = datetime.fromisoformat(manifest["to"].replace("Z", "+00:00"))
 
-        users: Dict[int, User] = {}
-        repos: Dict[int, Repository] = {}
-        pr_raw: Dict[int, dict] = {}
+        users: dict[int, User] = {}
+        repos: dict[int, Repository] = {}
+        pr_raw: dict[int, dict] = {}
         commits: list[Commit] = []
         reviews: list[ReviewRecord] = []
         comments: list[CommentRecord] = []
         files: list[FileRecord] = []
         timeline_events: list[TimelineEvent] = []
 
-        acted_pr_numbers: Set[int] = set()  # PRs where vetted user acted
+        acted_pr_numbers: set[int] = set()  # PRs where vetted user acted
 
         def ensure_user(user_dict: dict) -> User:
             """
@@ -162,7 +163,11 @@ class GitHubAdapter(ProviderAdapter):
                         author = ensure_user(author_dict)
                         committer = ensure_user(committer_dict)
                     except (ValueError, KeyError, TypeError) as e:
-                        log.debug("Skipping commit %s: invalid user data - %s", commit_dict.get("sha", "unknown"), e)
+                        log.debug(
+                            "Skipping commit %s: invalid user data - %s",
+                            commit_dict.get("sha", "unknown"),
+                            e,
+                        )
                         continue
 
                     message = meta.get("message")
@@ -267,7 +272,11 @@ class GitHubAdapter(ProviderAdapter):
                     try:
                         pr_number = int(url.rstrip("/").split("/")[-2])
                     except (ValueError, IndexError) as e:
-                        log.debug("Skipping timeline event: cannot parse PR number from URL %r - %s", url, e)
+                        log.debug(
+                            "Skipping timeline event: cannot parse PR number from URL %r - %s",
+                            url,
+                            e,
+                        )
                         continue
                     if pr_number not in pr_raw:
                         continue
@@ -281,7 +290,11 @@ class GitHubAdapter(ProviderAdapter):
                     try:
                         actor = ensure_user(actor_dict)
                     except (ValueError, KeyError, TypeError) as e:
-                        log.debug("Skipping timeline event %s: invalid actor data - %s", tl_dict.get("id", "unknown"), e)
+                        log.debug(
+                            "Skipping timeline event %s: invalid actor data - %s",
+                            tl_dict.get("id", "unknown"),
+                            e,
+                        )
                         continue
 
                     timeline_events.append(
@@ -335,7 +348,12 @@ class GitHubAdapter(ProviderAdapter):
                 continue
 
             repo_dict = pr_dict["base"]["repo"]
-            owner = ensure_user({**repo_dict["owner"], "type": repo_dict["owner"].get("type") or UserType.ORGANIZATION.value})
+            owner = ensure_user(
+                {
+                    **repo_dict["owner"],
+                    "type": repo_dict["owner"].get("type") or UserType.ORGANIZATION.value,
+                }
+            )
             repo_id = repo_dict["id"]
             if repo_id not in repos:
                 repos[repo_id] = Repository(

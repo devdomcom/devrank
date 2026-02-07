@@ -1,9 +1,15 @@
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from datetime import UTC, datetime
 
-from impact.domain.models import CanonicalBundle, PullRequest, ReviewRecord, CommentRecord, Commit, User, TimelineEvent, FileRecord
+from impact.domain.models import (
+    CanonicalBundle,
+    CommentRecord,
+    Commit,
+    FileRecord,
+    PullRequest,
+    ReviewRecord,
+)
 
 log = logging.getLogger(__name__)
 
@@ -29,32 +35,34 @@ class Ledger:
         )
 
         # Indexes: user_login -> sorted list of PRs by created_at
-        self.user_prs: Dict[str, List[PullRequest]] = defaultdict(list)
+        self.user_prs: dict[str, list[PullRequest]] = defaultdict(list)
 
         # pr_number -> sorted list of reviews by submitted_at
-        self.pr_reviews: Dict[int, List[ReviewRecord]] = defaultdict(list)
+        self.pr_reviews: dict[int, list[ReviewRecord]] = defaultdict(list)
 
         # pr_number -> sorted list of comments by created_at
-        self.pr_comments: Dict[int, List[CommentRecord]] = defaultdict(list)
-        self.review_comments_by_review: Dict[int, List[CommentRecord]] = defaultdict(list)
+        self.pr_comments: dict[int, list[CommentRecord]] = defaultdict(list)
+        self.review_comments_by_review: dict[int, list[CommentRecord]] = defaultdict(list)
 
         # pr_number -> sorted list of commits by date
-        self.pr_commits: Dict[int, List[Commit]] = defaultdict(list)
+        self.pr_commits: dict[int, list[Commit]] = defaultdict(list)
         # pr_number -> files
-        self.pr_files: Dict[int, List[FileRecord]] = defaultdict(list)
+        self.pr_files: dict[int, list[FileRecord]] = defaultdict(list)
 
         # user_login -> sorted list of commits by date
-        self.user_commits: Dict[str, List[Commit]] = defaultdict(list)
+        self.user_commits: dict[str, list[Commit]] = defaultdict(list)
 
         # user_login -> sorted list of reviews by submitted_at
-        self.user_reviews: Dict[str, List[ReviewRecord]] = defaultdict(list)
+        self.user_reviews: dict[str, list[ReviewRecord]] = defaultdict(list)
 
         # Populate indexes
         self._build_indexes()
         # PR lookup
-        self.pr_by_number: Dict[int, PullRequest] = {pr.number: pr for pr in self.bundle.pull_requests}
+        self.pr_by_number: dict[int, PullRequest] = {
+            pr.number: pr for pr in self.bundle.pull_requests
+        }
         # Timeline indexes
-        self.pr_timeline: Dict[int, List] = defaultdict(list)
+        self.pr_timeline: dict[int, list] = defaultdict(list)
         self._build_timeline_indexes()
 
     def _build_indexes(self):
@@ -113,108 +121,88 @@ class Ledger:
         for events in self.pr_timeline.values():
             events.sort(key=lambda e: e.created_at)
 
-    def get_prs_for_user(self, user_login: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[PullRequest]:
-        """Get PRs for a user within an optional time period."""
-        prs = self.user_prs.get(user_login, [])
-        if start_date or end_date:
-            if prs:
-                tz = prs[0].created_at.tzinfo or timezone.utc
-            else:
-                tz = timezone.utc
-            if start_date and start_date.tzinfo is None:
-                start_date = start_date.replace(tzinfo=tz)
-            if end_date and end_date.tzinfo is None:
-                end_date = end_date.replace(tzinfo=tz)
-            filtered = []
-            for pr in prs:
-                if start_date and pr.created_at < start_date:
-                    continue
-                if end_date and pr.created_at > end_date:
-                    continue
-                filtered.append(pr)
-            return filtered
-        return prs
-
-    def get_reviews_for_pr(self, pr_number: int) -> List[ReviewRecord]:
-        """Get reviews for a PR, time-ordered."""
-        return self.pr_reviews.get(pr_number, [])
-
-    def get_comments_for_pr(self, pr_number: int) -> List[CommentRecord]:
-        """Get comments for a PR, time-ordered."""
-        return self.pr_comments.get(pr_number, [])
-
-    def get_commits_for_pr(self, pr_number: int) -> List[Commit]:
-        """Get commits for a PR, time-ordered."""
-        return self.pr_commits.get(pr_number, [])
-
-    def get_commits_for_user(self, user_login: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[Commit]:
-        """Get commits for a user within an optional time period."""
-        commits = self.user_commits.get(user_login, [])
-        if start_date or end_date:
-            tz = commits[0].date.tzinfo if commits else timezone.utc
-            if start_date and start_date.tzinfo is None:
-                start_date = start_date.replace(tzinfo=tz)
-            if end_date and end_date.tzinfo is None:
-                end_date = end_date.replace(tzinfo=tz)
-            filtered = []
-            for commit in commits:
-                if start_date and commit.date < start_date:
-                    continue
-                if end_date and commit.date > end_date:
-                    continue
-                filtered.append(commit)
-            return filtered
-        return commits
-
-    def get_reviews_for_user(self, user_login: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[ReviewRecord]:
-        """Get reviews for a user within an optional time period."""
-        reviews = self.user_reviews.get(user_login, [])
-        if start_date or end_date:
-            tz = reviews[0].submitted_at.tzinfo if reviews else timezone.utc
-            if start_date and start_date.tzinfo is None:
-                start_date = start_date.replace(tzinfo=tz)
-            if end_date and end_date.tzinfo is None:
-                end_date = end_date.replace(tzinfo=tz)
-            filtered = []
-            for review in reviews:
-                if start_date and review.submitted_at < start_date:
-                    continue
-                if end_date and review.submitted_at > end_date:
-                    continue
-                filtered.append(review)
-            return filtered
-        return reviews
-
-    def get_timeline_for_pr(self, pr_number: int) -> List:
-        """Get timeline events for a PR, time-ordered."""
-        return self.pr_timeline.get(pr_number, [])
-
-    def get_pr(self, pr_number: int) -> Optional[PullRequest]:
-        return self.pr_by_number.get(pr_number)
-
-    def get_files_for_pr(self, pr_number: int) -> List[FileRecord]:
-        return self.pr_files.get(pr_number, [])
-
-    def get_review_comments_for_review(self, review_id: int) -> List[CommentRecord]:
-        return self.review_comments_by_review.get(review_id, [])
-
-    def get_merged_prs_for_user(self, user_login: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[PullRequest]:
-        """Get merged PRs for a user within an optional time period (filtered by merged_at)."""
-        prs = self.user_prs.get(user_login, [])
-        if not prs:
+    def _filter_by_date(
+        self,
+        records: list,
+        start_date: datetime | None,
+        end_date: datetime | None,
+        date_attr: str,
+    ) -> list:
+        """DRY helper for date-range filtering on records (by attr like 'created_at')."""
+        if not (start_date or end_date):
+            return records
+        if not records:
             return []
-        tz = prs[0].created_at.tzinfo or timezone.utc
+        # TZ normalization (first record's tz)
+        sample = records[0]
+        tz = getattr(sample, date_attr).tzinfo or UTC
         if start_date and start_date.tzinfo is None:
             start_date = start_date.replace(tzinfo=tz)
         if end_date and end_date.tzinfo is None:
             end_date = end_date.replace(tzinfo=tz)
         filtered = []
-        for pr in prs:
-            if not pr.merged or not pr.merged_at:
+        for rec in records:
+            rec_date = getattr(rec, date_attr)
+            if start_date and rec_date < start_date:
                 continue
-            if start_date and pr.merged_at < start_date:
+            if end_date and rec_date > end_date:
                 continue
-            if end_date and pr.merged_at > end_date:
-                continue
-            filtered.append(pr)
+            filtered.append(rec)
         return filtered
+
+    def get_prs_for_user(
+        self, user_login: str, start_date: datetime | None = None, end_date: datetime | None = None
+    ) -> list[PullRequest]:
+        """Get PRs for a user within an optional time period."""
+        prs = self.user_prs.get(user_login, [])
+        return self._filter_by_date(prs, start_date, end_date, "created_at")
+
+    def get_reviews_for_pr(self, pr_number: int) -> list[ReviewRecord]:
+        """Get reviews for a PR, time-ordered."""
+        return self.pr_reviews.get(pr_number, [])
+
+    def get_comments_for_pr(self, pr_number: int) -> list[CommentRecord]:
+        """Get comments for a PR, time-ordered."""
+        return self.pr_comments.get(pr_number, [])
+
+    def get_commits_for_pr(self, pr_number: int) -> list[Commit]:
+        """Get commits for a PR, time-ordered."""
+        return self.pr_commits.get(pr_number, [])
+
+    def get_commits_for_user(
+        self, user_login: str, start_date: datetime | None = None, end_date: datetime | None = None
+    ) -> list[Commit]:
+        """Get commits for a user within an optional time period."""
+        commits = self.user_commits.get(user_login, [])
+        return self._filter_by_date(commits, start_date, end_date, "date")
+
+    def get_reviews_for_user(
+        self, user_login: str, start_date: datetime | None = None, end_date: datetime | None = None
+    ) -> list[ReviewRecord]:
+        """Get reviews for a user within an optional time period."""
+        reviews = self.user_reviews.get(user_login, [])
+        return self._filter_by_date(reviews, start_date, end_date, "submitted_at")
+
+    def get_timeline_for_pr(self, pr_number: int) -> list:
+        """Get timeline events for a PR, time-ordered."""
+        return self.pr_timeline.get(pr_number, [])
+
+    def get_pr(self, pr_number: int) -> PullRequest | None:
+        return self.pr_by_number.get(pr_number)
+
+    def get_files_for_pr(self, pr_number: int) -> list[FileRecord]:
+        return self.pr_files.get(pr_number, [])
+
+    def get_review_comments_for_review(self, review_id: int) -> list[CommentRecord]:
+        return self.review_comments_by_review.get(review_id, [])
+
+    def get_merged_prs_for_user(
+        self, user_login: str, start_date: datetime | None = None, end_date: datetime | None = None
+    ) -> list[PullRequest]:
+        """Get merged PRs for a user within an optional time period (filtered by merged_at)."""
+        prs = self.user_prs.get(user_login, [])
+        if not prs:
+            return []
+        # Filter merged first, then apply date range (reuses helper)
+        merged_prs = [pr for pr in prs if pr.merged and pr.merged_at]
+        return self._filter_by_date(merged_prs, start_date, end_date, "merged_at")

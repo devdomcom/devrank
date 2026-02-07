@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional, Set
+from datetime import UTC, datetime
+from typing import Any
 
 from impact.providers.github.client import GitHubClient
 
@@ -15,14 +15,16 @@ class GitHubFetcher:
     def __init__(self, client: GitHubClient):
         self.client = client
 
-    def _since_param(self, since: Optional[datetime]) -> Optional[str]:
+    def _since_param(self, since: datetime | None) -> str | None:
         if not since:
             return None
         if since.tzinfo is None:
-            since = since.replace(tzinfo=timezone.utc)
+            since = since.replace(tzinfo=UTC)
         return since.isoformat().replace("+00:00", "Z")
 
-    def list_prs(self, repo: str, since: Optional[datetime], until: Optional[datetime]) -> List[Dict[str, Any]]:
+    def list_prs(
+        self, repo: str, since: datetime | None, until: datetime | None
+    ) -> list[dict[str, Any]]:
         params = {
             "state": "all",
             "per_page": 100,
@@ -40,13 +42,17 @@ class GitHubFetcher:
             results.append(pr)
         return results
 
-    def fetch_pr_bundle(self, repo: str, number: int) -> Dict[str, Any]:
-        bundle: Dict[str, Any] = {}
+    def fetch_pr_bundle(self, repo: str, number: int) -> dict[str, Any]:
+        bundle: dict[str, Any] = {}
         bundle["pull_request"] = self.client.get(f"/repos/{repo}/pulls/{number}").json()
         bundle["timeline"] = list(self.client.paginate(f"/repos/{repo}/issues/{number}/timeline"))
         bundle["reviews"] = list(self.client.paginate(f"/repos/{repo}/pulls/{number}/reviews"))
-        bundle["review_comments"] = list(self.client.paginate(f"/repos/{repo}/pulls/{number}/comments"))
-        bundle["issue_comments"] = list(self.client.paginate(f"/repos/{repo}/issues/{number}/comments"))
+        bundle["review_comments"] = list(
+            self.client.paginate(f"/repos/{repo}/pulls/{number}/comments")
+        )
+        bundle["issue_comments"] = list(
+            self.client.paginate(f"/repos/{repo}/issues/{number}/comments")
+        )
         bundle["commits"] = list(self.client.paginate(f"/repos/{repo}/pulls/{number}/commits"))
         bundle["files"] = list(self.client.paginate(f"/repos/{repo}/pulls/{number}/files"))
         return bundle

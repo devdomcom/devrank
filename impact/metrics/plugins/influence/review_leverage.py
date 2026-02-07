@@ -1,9 +1,8 @@
 from datetime import timedelta
-from typing import Dict
 
-from impact.metrics.base import Metric
-from impact.metrics.utils import has_pr_event_after, is_pr_merged_after, is_change_request
 from impact.domain.models import MetricContext, MetricResult
+from impact.metrics.base import Metric
+from impact.metrics.utils import has_pr_event_after, is_change_request, is_pr_merged_after
 
 
 class ReviewLeverage(Metric):
@@ -42,8 +41,6 @@ class ReviewLeverage(Metric):
     def description(self) -> str:
         return "Effectiveness of change requests in driving author updates (review impact)."
 
-
-
     def _is_effective_change_request(self, review, context):
         pr = context.ledger.get_pr(review.pull_request_number)
         if not pr or not pr.merged:
@@ -64,8 +61,9 @@ class ReviewLeverage(Metric):
         commits = context.ledger.get_commits_for_pr(review.pull_request_number)
         pr_author = pr.user.login
         other_reviews = [
-            r for r in context.ledger.get_reviews_for_pr(review.pull_request_number)
-            if r.submitted_at > review.submitted_at
+            r
+            for r in context.ledger.get_reviews_for_pr(review.pull_request_number)
+            if r.submitted_at > review.submitted_at and r.user.login != review.user.login
         ]
         effective = False
         for c in commits:
@@ -73,7 +71,6 @@ class ReviewLeverage(Metric):
                 continue
             if c.author.login != pr_author:
                 continue
-            # If another review happened before this commit, don't attribute to this review
             if any(r.submitted_at <= c.date for r in other_reviews):
                 continue
             if review_comment_paths:
@@ -85,7 +82,9 @@ class ReviewLeverage(Metric):
         return effective
 
     def run(self, context: MetricContext) -> MetricResult:
-        reviews = context.ledger.get_reviews_for_user(context.user_login, context.start_date, context.end_date)
+        reviews = context.ledger.get_reviews_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
         # Treat formal change requests OR inline-comment reviews as “change requests” for leverage.
         change_requests = [r for r in reviews if is_change_request(r, context.ledger)]
 
@@ -93,13 +92,27 @@ class ReviewLeverage(Metric):
             summary = "No change requests made."
             details = {}
         else:
-            effective_changes = sum(1 for r in change_requests if self._is_effective_change_request(r, context))
+            effective_changes = sum(
+                1 for r in change_requests if self._is_effective_change_request(r, context)
+            )
             total_change_requests = len(change_requests)
-            percentage = (effective_changes / total_change_requests) * 100 if total_change_requests > 0 else 0
+            percentage = (
+                (effective_changes / total_change_requests) * 100
+                if total_change_requests > 0
+                else 0
+            )
 
             # Track whether reviewed PRs were updated or merged after the review
-            updated_after_review = sum(1 for r in reviews if has_pr_event_after(context.ledger, r.pull_request_number, r.submitted_at))
-            merged_after_review = sum(1 for r in reviews if is_pr_merged_after(context.ledger, r.pull_request_number, r.submitted_at))
+            updated_after_review = sum(
+                1
+                for r in reviews
+                if has_pr_event_after(context.ledger, r.pull_request_number, r.submitted_at)
+            )
+            merged_after_review = sum(
+                1
+                for r in reviews
+                if is_pr_merged_after(context.ledger, r.pull_request_number, r.submitted_at)
+            )
 
             summary = (
                 f"{len(reviews)} PRs reviewed, {effective_changes} effective change requests "
@@ -117,13 +130,10 @@ class ReviewLeverage(Metric):
                 "change_request_details": [
                     {
                         "pr_number": r.pull_request_number,
-                        "effective": self._is_effective_change_request(r, context)
-                    } for r in change_requests
-                ]
+                        "effective": self._is_effective_change_request(r, context),
+                    }
+                    for r in change_requests
+                ],
             }
 
-        return MetricResult(
-            metric_slug=self.slug,
-            summary=summary,
-            details=details
-        )
+        return MetricResult(metric_slug=self.slug, summary=summary, details=details)

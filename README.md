@@ -84,13 +84,15 @@ The script will:
 
 ### Available Metrics
 
-- `pr_throughput`: Measures PR volume and merge ratio.
+Metrics are organized in `impact/metrics/plugins/` (`authored/` for own work, `influence/` for team impact; duplicates cleaned).
+
+- `pr_throughput`: Measures PR volume and merge ratio (backlog merges allowed, ratio can >1.0).
 - `cycle_time`: Time from PR creation to merge.
 - `pr_merge_effectiveness`: Effectiveness based on back-and-forth reviews.
 - `pr_size_distribution`: Distribution of additions, deletions, and changes across PRs.
 - `trivial_contribution_rate`: Daily rate of trivial PRs (< 10 lines changed) for anti-gaming.
-- `module_area_breadth`: Number of distinct codebase areas touched for breadth of understanding.
-- `review_leverage`: Impact of reviews on team productivity.
+- `module_area_breadth`: Avg distinct areas touched per PR (true per-PR average).
+- `review_leverage`: Impact of reviews on team productivity (improved attribution).
 - `review_iterations`: Average review iterations per PR.
 - `time_to_first_review`: Median time to first review.
 - `slow_review_response`: Median response time to review comments.
@@ -102,7 +104,7 @@ The script will:
 - `approval_to_merge_ratio`: % approvals that were final (no reworks, direct merge).
 - `review_turnaround_time`: Median time to act on opened PRs (fast response; period-balanced).
 - `blocking_comment_rate`: % blocking CRs (ownership vs cosmetic feedback).
-- `unblock_time`: Median time to re-review after blocking CR (unblock speed).
+- `unblock_time`: Median time to re-review after blocking CR (excludes author lag).
 
 ## Data Format
 

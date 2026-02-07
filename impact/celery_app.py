@@ -1,4 +1,5 @@
 import os
+
 from celery import Celery
 
 # Default host-facing broker ports avoid clashing with any local Redis on 6379.

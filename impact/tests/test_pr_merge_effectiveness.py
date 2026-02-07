@@ -1,16 +1,16 @@
 from datetime import timedelta
 
+from impact.domain.models import CommentType, ReviewState
 from impact.metrics.plugins.authored.pr_merge_effectiveness import PRMergeEffectiveness
-from impact.domain.models import ReviewState, CommentType
 from impact.tests.conftest import (
     DEFAULT_START,
-    make_user,
-    make_repo,
-    make_pr,
-    make_review,
-    make_comment,
     make_bundle,
+    make_comment,
     make_context,
+    make_pr,
+    make_repo,
+    make_review,
+    make_user,
 )
 
 
@@ -22,14 +22,20 @@ def test_pr_merge_effectiveness():
 
     start = DEFAULT_START
     pr1 = make_pr(1, user, repo, created_at=start, merged_at=start + timedelta(hours=10))
-    pr2 = make_pr(2, user, repo, created_at=start + timedelta(hours=1), merged_at=start + timedelta(hours=20))
-    pr3 = make_pr(3, user, repo, created_at=start + timedelta(hours=2), merged_at=None)  # open, ignored
+    pr2 = make_pr(
+        2, user, repo, created_at=start + timedelta(hours=1), merged_at=start + timedelta(hours=20)
+    )
+    pr3 = make_pr(
+        3, user, repo, created_at=start + timedelta(hours=2), merged_at=None
+    )  # open, ignored
 
     review1 = make_review(101, 1, reviewer, start + timedelta(hours=2), ReviewState.APPROVED)
     review2 = make_review(102, 1, reviewer, start + timedelta(hours=5), ReviewState.COMMENTED)
 
     comment1 = make_comment(201, 1, reviewer, start + timedelta(hours=3), CommentType.ISSUE)
-    comment2 = make_comment(202, 1, reviewer, start + timedelta(hours=4), CommentType.REVIEW, review_id=102)
+    comment2 = make_comment(
+        202, 1, reviewer, start + timedelta(hours=4), CommentType.REVIEW, review_id=102
+    )
 
     bundle = make_bundle(
         users=[user, reviewer, owner],
@@ -38,7 +44,9 @@ def test_pr_merge_effectiveness():
         reviews=[review1, review2],
         comments=[comment1, comment2],
     )
-    context = make_context(bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=10))
+    context = make_context(
+        bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=10)
+    )
 
     metric = PRMergeEffectiveness()
     res = metric.run(context)

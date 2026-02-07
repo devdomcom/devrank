@@ -44,7 +44,7 @@ DevRank is built as a modular Python application that fetches, processes, and an
 ### Extensibility
 
 - New providers: Add adapters in `impact/adapters/`.
-- New metrics: Implement Metric subclasses in `impact/metrics/plugins/`.
+- New metrics: Implement Metric subclasses in `impact/metrics/plugins/` (use `authored/` or `influence/` subdirs).
 - Custom ingestion: Extend `Ingestion` base class.
 
 ### Best Practices

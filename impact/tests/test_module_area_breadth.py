@@ -1,14 +1,17 @@
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 
-from impact.metrics.plugins.authored.module_area_breadth import ModuleAreaBreadth, normalize_path_to_area
+from impact.metrics.plugins.authored.module_area_breadth import (
+    ModuleAreaBreadth,
+    normalize_path_to_area,
+)
 from impact.tests.conftest import (
     DEFAULT_START,
-    make_user,
-    make_repo,
-    make_pr,
-    make_file,
     make_bundle,
     make_context,
+    make_file,
+    make_pr,
+    make_repo,
+    make_user,
 )
 
 
@@ -135,4 +138,4 @@ def test_module_area_breadth_overlapping_areas():
     res = metric.run(context)
 
     assert res.details["distinct_areas_count"] == 3  # frontend, backend, docs
-    assert res.details["areas_per_pr"] == 1.5  # 3 areas over 2 PRs
+    assert res.details["areas_per_pr"] == 2.0  # avg per-PR uniques: (2 + 2) / 2

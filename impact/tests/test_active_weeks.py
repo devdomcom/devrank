@@ -1,15 +1,15 @@
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 
 from impact.metrics.plugins.authored.active_weeks import ActiveWeeks
 from impact.tests.conftest import (
     DEFAULT_START,
-    make_user,
-    make_repo,
-    make_pr,
-    make_commit,
-    make_review,
     make_bundle,
+    make_commit,
     make_context,
+    make_pr,
+    make_repo,
+    make_review,
+    make_user,
 )
 
 
@@ -26,7 +26,9 @@ def test_active_weeks_steady_contributions():
     commit1 = make_commit("sha1", user, start + timedelta(days=7), 1)
     review1 = make_review(1, 1, user, start + timedelta(days=14))
     # merged later
-    pr2 = make_pr(2, user, repo, base_time=start, created_delta_hours=24 * 21, merged_delta_hours=24 * 22)  # ~3 weeks later
+    pr2 = make_pr(
+        2, user, repo, base_time=start, created_delta_hours=24 * 21, merged_delta_hours=24 * 22
+    )  # ~3 weeks later
 
     bundle = make_bundle(
         users=[user, owner],

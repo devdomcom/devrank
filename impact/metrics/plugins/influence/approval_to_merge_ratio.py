@@ -1,8 +1,6 @@
-from typing import Dict, List
-
+from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import approval_was_final
-from impact.domain.models import MetricContext, MetricResult
 
 
 class ApprovalToMergeRatio(Metric):
@@ -28,22 +26,24 @@ class ApprovalToMergeRatio(Metric):
         )
 
         final_approvals = 0
-        per_review: List[dict] = []
+        per_review: list[dict] = []
         for rev in reviews:
             was_final = approval_was_final(context.ledger, rev)
             if was_final:
                 final_approvals += 1
-            per_review.append({
-                "review_id": rev.id,
-                "pr_number": rev.pull_request_number,
-                "was_final": was_final,
-            })
+            per_review.append(
+                {
+                    "review_id": rev.id,
+                    "pr_number": rev.pull_request_number,
+                    "was_final": was_final,
+                }
+            )
 
         total_approvals = len([r for r in reviews if r.state.value == "approved"])
         ratio = final_approvals / total_approvals if total_approvals else 0.0
 
         summary = f"{final_approvals}/{total_approvals} approvals were final ({ratio:.2f} ratio)."
-        details: Dict[str, object] = {
+        details: dict[str, object] = {
             "total_approvals": total_approvals,
             "final_approvals": final_approvals,
             "ratio": ratio,

@@ -1,13 +1,13 @@
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 
 from impact.metrics.plugins.authored.trivial_contribution_rate import TrivialContributionRate
 from impact.tests.conftest import (
     DEFAULT_START,
-    make_user,
-    make_repo,
-    make_pr,
     make_bundle,
     make_context,
+    make_pr,
+    make_repo,
+    make_user,
 )
 
 
