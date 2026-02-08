@@ -289,3 +289,56 @@ def approval_was_final(ledger, review, max_hours_to_merge=48) -> bool:
     if not pr or not pr.merged_at:
         return True
     return (pr.merged_at - rev_time).total_seconds() / 3600 <= max_hours_to_merge
+
+
+def is_bug_fix_indicator(text: str) -> bool:
+    """DRY helper to detect bug-fix focus in titles/bodies/messages."""
+    if not text:
+        return False
+    text_lower = text.lower()
+    bug_patterns = [
+        "fix:", "bugfix:", "bug fix", "fixes #", "closes #", "resolves #",
+        "bug:", "hotfix", "issue #", "error", "crash", "regression",
+    ]
+    return any(p in text_lower for p in bug_patterns)
+
+
+def is_revert_indicator(text: str) -> bool:
+    """DRY helper to detect reverts (per proposal; assumes Git revert msg/SHA)."""
+    if not text:
+        return False
+    text_lower = text.lower()
+    # Common GitHub revert patterns (from sample data)
+    return text_lower.startswith("revert") or "reverts commit" in text_lower or "revert " in text_lower
+
+
+def is_test_file(filename: str) -> bool:
+    """DRY helper to classify test files (heuristics; distinct from area breadth)."""
+    if not filename:
+        return False
+    f_lower = filename.lower()
+    test_patterns = [
+        "/test/", "/tests/", "__tests__/", ".test.", ".spec.", "test_", "spec_",
+        "/testing/", "pytest", "jest", "mocha",  # common test dirs/tools
+    ]
+    return any(p in f_lower for p in test_patterns)
+
+
+def filter_prs_for_contribution(
+    prs: list, exclude_drafts: bool = True, only_merged: bool = False
+) -> list:
+    """DRY filter for meaningful PR contributions (reviewed all metrics).
+
+    - exclude_drafts: True for quality metrics (drafts incomplete/risky).
+    - only_merged: True for cycle/merge stats (delivery focus).
+    - Closed non-merged included if not only_merged (attempted contributions).
+    - Assumes PR has .draft bool and .merged bool.
+    """
+    filtered = []
+    for pr in prs:
+        if exclude_drafts and getattr(pr, "draft", False):
+            continue
+        if only_merged and not getattr(pr, "merged", False):
+            continue
+        filtered.append(pr)
+    return filtered

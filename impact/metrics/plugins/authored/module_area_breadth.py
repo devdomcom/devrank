@@ -1,5 +1,6 @@
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
+from impact.metrics.utils import filter_prs_for_contribution
 
 
 def normalize_path_to_area(filename: str, levels: int = 1) -> str:
@@ -58,9 +59,11 @@ class ModuleAreaBreadth(Metric):
         return "Avg distinct codebase areas touched per PR (measures understanding breadth)."
 
     def run(self, context: MetricContext) -> MetricResult:
-        prs = context.ledger.get_prs_for_user(
+        # Filter: exclude drafts for breadth/quality (incomplete contributions).
+        all_prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
         )
+        prs = filter_prs_for_contribution(all_prs, exclude_drafts=True, only_merged=False)
 
         truncation_levels = 1  # Configurable, but hardcoded for now
         all_areas: set[str] = set()

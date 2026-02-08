@@ -1,16 +1,19 @@
 # Authored work metrics (engineer-owned PRs/activity)
 from impact.metrics.plugins.authored.active_weeks import ActiveWeeks
+from impact.metrics.plugins.authored.bug_fix_focus_rate import BugFixFocusRate
 from impact.metrics.plugins.authored.burstiness import Burstiness
 from impact.metrics.plugins.authored.cycle_time import CycleTime
 from impact.metrics.plugins.authored.module_area_breadth import ModuleAreaBreadth
 from impact.metrics.plugins.authored.pr_merge_effectiveness import PRMergeEffectiveness
 from impact.metrics.plugins.authored.pr_size_distribution import PRSizeDistribution
 from impact.metrics.plugins.authored.pr_throughput import PRThroughput
+from impact.metrics.plugins.authored.revert_introduction_rate import RevertIntroductionRate
 from impact.metrics.plugins.authored.review_quality import (
     ReviewIterations,
     SlowReviewResponse,
     TimeToFirstReview,
 )
+from impact.metrics.plugins.authored.test_file_ratio import TestFileRatio
 from impact.metrics.plugins.authored.trivial_contribution_rate import TrivialContributionRate
 from impact.metrics.plugins.influence.approval_to_merge_ratio import ApprovalToMergeRatio
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
@@ -40,6 +43,9 @@ def get_metrics():
         "slow_review_response": SlowReviewResponse,
         "active_weeks": ActiveWeeks,
         "burstiness": Burstiness,
+        "bug_fix_focus_rate": BugFixFocusRate,
+        "revert_introduction_rate": RevertIntroductionRate,
+        "test_file_ratio": TestFileRatio,
         "reviews_given": ReviewsGiven,
         "pr_merge_rate": PRMergeRate,
         "change_inducing_review_rate": ChangeInducingReviewRate,

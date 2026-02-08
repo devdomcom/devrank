@@ -53,6 +53,13 @@ class GitHubAdapter(ProviderAdapter):
         start_dt = datetime.fromisoformat(manifest["from"].replace("Z", "+00:00"))
         end_dt = datetime.fromisoformat(manifest["to"].replace("Z", "+00:00"))
 
+        # Robust canonical path: support top-level dump or direct canonical/ subdir (for tests/report).
+        # Mistake surfaced: prior hardcoded subdir caused 0-load when passing canonical dir (msyavuz data reviewer-only; Vanessa PRs present but filtered).
+        # No business logic affected (user filter correct per manifest=msyavuz).
+        canonical_path = path / "canonical"
+        if not canonical_path.exists():
+            canonical_path = path
+
         users: dict[int, User] = {}
         repos: dict[int, Repository] = {}
         pr_raw: dict[int, dict] = {}
@@ -81,7 +88,7 @@ class GitHubAdapter(ProviderAdapter):
         # ---------------------------
         # Pull requests (raw storage)
         # ---------------------------
-        pr_file = path / "canonical" / "pull_requests.jsonl"
+        pr_file = canonical_path / "pull_requests.jsonl"
         if pr_file.exists():
             with pr_file.open() as f:
                 for line in f:
@@ -99,7 +106,7 @@ class GitHubAdapter(ProviderAdapter):
         # ---------------------------
         # Reviews
         # ---------------------------
-        review_file = path / "canonical" / "reviews.jsonl"
+        review_file = canonical_path / "reviews.jsonl"
         if review_file.exists():
             with review_file.open() as f:
                 for line in f:
@@ -136,7 +143,7 @@ class GitHubAdapter(ProviderAdapter):
         # ---------------------------
         # Commits
         # ---------------------------
-        commit_file = path / "canonical" / "commits.jsonl"
+        commit_file = canonical_path / "commits.jsonl"
         if commit_file.exists():
             with commit_file.open() as f:
                 for line in f:
@@ -191,7 +198,7 @@ class GitHubAdapter(ProviderAdapter):
         # ---------------------------
         # Review comments
         # ---------------------------
-        rc_file = path / "canonical" / "review_comments.jsonl"
+        rc_file = canonical_path / "review_comments.jsonl"
         if rc_file.exists():
             with rc_file.open() as f:
                 for line in f:
@@ -227,7 +234,7 @@ class GitHubAdapter(ProviderAdapter):
         # ---------------------------
         # Issue comments (PR thread)
         # ---------------------------
-        ic_file = path / "canonical" / "issue_comments.jsonl"
+        ic_file = canonical_path / "issue_comments.jsonl"
         if ic_file.exists():
             with ic_file.open() as f:
                 for line in f:
@@ -263,7 +270,7 @@ class GitHubAdapter(ProviderAdapter):
         # ---------------------------
         # Timeline events
         # ---------------------------
-        tl_file = path / "canonical" / "timeline.jsonl"
+        tl_file = canonical_path / "timeline.jsonl"
         if tl_file.exists():
             with tl_file.open() as f:
                 for line in f:
@@ -319,7 +326,7 @@ class GitHubAdapter(ProviderAdapter):
         # ---------------------------
         # Files
         # ---------------------------
-        files_file = path / "canonical" / "files.jsonl"
+        files_file = canonical_path / "files.jsonl"
         if files_file.exists():
             with files_file.open() as f:
                 for line in f:

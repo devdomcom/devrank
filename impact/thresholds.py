@@ -145,4 +145,28 @@ METRIC_THRESHOLDS = {
         "neutral": lambda x: 24 < x <= 48,
         "bad": lambda x: x > 48,
     },
+    # Bug Fix Focus Rate: moderate % best (industry ~20-40% balanced; high may indicate debt/firefighting, low=feature-heavy)
+    "bug_fix_focus_rate": {
+        "key": "overall_rate",
+        "excellent": lambda x: 20 <= x <= 40,
+        "good": lambda x: 10 <= x < 20 or 40 < x <= 60,
+        "neutral": lambda x: 5 <= x < 10 or 60 < x <= 75,
+        "bad": lambda x: x < 5 or x > 75,
+    },
+    # Revert Introduction Rate: low % = stability (per proposal; <5% best practice)
+    "revert_introduction_rate": {
+        "key": "rate",
+        "excellent": lambda x: x <= 5,
+        "good": lambda x: 5 < x <= 15,
+        "neutral": lambda x: 15 < x <= 30,
+        "bad": lambda x: x > 30,
+    },
+    # Test File Ratio: >=25% test changes = good discipline (industry benchmark; 0% flags weak testing)
+    "test_file_ratio": {
+        "key": "ratio",
+        "excellent": lambda x: x >= 25,
+        "good": lambda x: 15 <= x < 25,
+        "neutral": lambda x: 5 <= x < 15,
+        "bad": lambda x: x < 5,
+    },
 }

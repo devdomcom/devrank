@@ -1,6 +1,6 @@
 from impact.domain.models import MetricContext, MetricResult, PullRequest
 from impact.metrics.base import Metric
-from impact.metrics.utils import get_pr_size_category, percentile
+from impact.metrics.utils import filter_prs_for_contribution, get_pr_size_category, percentile
 
 
 class PRSizeDistribution(Metric):
@@ -50,9 +50,12 @@ class PRSizeDistribution(Metric):
         return "Analyzes PR size distribution and % large changes (flags risk/monoliths)."
 
     def run(self, context: MetricContext) -> MetricResult:
-        prs = context.ledger.get_prs_for_user(
+        # Filter: exclude drafts for quality/size (incomplete); include closed (attempted).
+        # Reviewed all: only quality metrics filter; throughput/activity include drafts.
+        all_prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
         )
+        prs = filter_prs_for_contribution(all_prs, exclude_drafts=True, only_merged=False)
 
         additions: list[float] = []
         deletions: list[float] = []

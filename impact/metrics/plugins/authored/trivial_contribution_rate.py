@@ -1,6 +1,6 @@
 from impact.domain.models import MetricContext, MetricResult, PullRequest
 from impact.metrics.base import Metric
-from impact.metrics.utils import get_pr_size_category
+from impact.metrics.utils import filter_prs_for_contribution, get_pr_size_category
 
 
 class TrivialContributionRate(Metric):
@@ -33,9 +33,11 @@ class TrivialContributionRate(Metric):
         return "Daily rate of tiny PRs (<10 lines) to detect low-impact/gaming behavior."
 
     def run(self, context: MetricContext) -> MetricResult:
-        prs = context.ledger.get_prs_for_user(
+        # Filter: exclude drafts for quality/trivial rate (incomplete); include closed.
+        all_prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
         )
+        prs = filter_prs_for_contribution(all_prs, exclude_drafts=True, only_merged=False)
 
         trivial_prs: list[PullRequest] = []
         for pr in prs:
