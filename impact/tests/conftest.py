@@ -52,6 +52,7 @@ def make_pr(
     created_delta_hours: float | None = None,
     merged_delta_hours: float | None = None,
     base_time: datetime | None = None,
+    body: str | None = None,
 ) -> PullRequest:
     """
     Create a PullRequest for testing.
@@ -69,6 +70,7 @@ def make_pr(
         created_delta_hours: Hours offset from base_time for created_at.
         merged_delta_hours: Hours offset from base_time for merged_at.
         base_time: Base datetime for delta calculations (defaults to DEFAULT_START).
+        body: PR body text (for quality metrics).
     """
     base_time = base_time or DEFAULT_START
 
@@ -91,6 +93,7 @@ def make_pr(
         id=number,
         number=number,
         title=f"PR {number}",
+        body=body,
         state=PullRequestState.CLOSED if merged_flag else PullRequestState.OPEN,
         user=user,
         created_at=created_at,
@@ -139,6 +142,8 @@ def make_comment(
     type: CommentType = CommentType.ISSUE,
     review_id: int | None = None,
     body: str = "Comment",
+    position: int | None = None,
+    path: str | None = None,
 ) -> CommentRecord:
     """Create a CommentRecord for testing."""
     return CommentRecord(
@@ -149,6 +154,8 @@ def make_comment(
         type=type,
         pull_request_number=pr_number,
         review_id=review_id,
+        position=position,
+        path=path,
         url="",
         html_url="",
         issue_url="",

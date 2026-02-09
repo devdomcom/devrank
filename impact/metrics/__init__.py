@@ -15,6 +15,11 @@ from impact.metrics.plugins.authored.review_quality import (
 )
 from impact.metrics.plugins.authored.test_file_ratio import TestFileRatio
 from impact.metrics.plugins.authored.trivial_contribution_rate import TrivialContributionRate
+from impact.metrics.plugins.authored.pr_body_quality import PRBodyQualityScore
+from impact.metrics.plugins.authored.co_author_contribution_rate import CoAuthorContributionRate
+from impact.metrics.plugins.authored.dependency_change_rate import DependencyChangeRate
+from impact.metrics.plugins.authored.inline_comment_density import InlineCommentDensity
+from impact.metrics.plugins.authored.commit_message_clarity import CommitMessageClarity
 from impact.metrics.plugins.influence.approval_to_merge_ratio import ApprovalToMergeRatio
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
@@ -46,6 +51,11 @@ def get_metrics():
         "bug_fix_focus_rate": BugFixFocusRate,
         "revert_introduction_rate": RevertIntroductionRate,
         "test_file_ratio": TestFileRatio,
+        "pr_body_quality_score": PRBodyQualityScore,
+        "co_author_contribution_rate": CoAuthorContributionRate,
+        "dependency_change_rate": DependencyChangeRate,
+        "inline_comment_density": InlineCommentDensity,
+        "commit_message_clarity": CommitMessageClarity,
         "reviews_given": ReviewsGiven,
         "pr_merge_rate": PRMergeRate,
         "change_inducing_review_rate": ChangeInducingReviewRate,

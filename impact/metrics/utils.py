@@ -1,6 +1,7 @@
 from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any, TypedDict
+import re
 
 from impact.domain.models import MetricContext
 from impact.ledger.ledger import Ledger
@@ -342,3 +343,59 @@ def filter_prs_for_contribution(
             continue
         filtered.append(pr)
     return filtered
+
+
+def compute_pr_body_quality(body: str | None) -> int:
+    """Score PR body 0-100: length, markdown sections (>=1), issue/PR refs bonus."""
+    if not body or not body.strip():
+        return 0
+    body = body.strip()
+    score = 0
+    length = len(body)
+    if length >= 500:
+        score += 40
+    elif length >= 100:
+        score += 25
+    elif length >= 50:
+        score += 10
+    sections = len(re.findall(r"^#{1,4}\s+.+$", body, re.MULTILINE))
+    if sections >= 2:
+        score += 30
+    elif sections >= 1:
+        score += 20
+    if re.search(r"(?i)(?:fixes|closes|resolves|refs?)\s*#?\d+", body) or re.search(r"(?<!\w)#\d{3,}", body):
+        score += 15
+    if re.search(r"(?i)pr\s*#?\d+", body) or "pull request" in body.lower():
+        score += 15
+    elif re.search(r"#\d+", body):
+        score += 10
+    return min(score, 100)
+
+
+# DRY dep file detector (for dep change rate; common across langs)
+def is_dependency_file(filename: str) -> bool:
+    if not filename:
+        return False
+    f_lower = filename.lower()
+    dep_patterns = [
+        "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+        "requirements.txt", "requirements-dev.txt", "requirements-test.txt", "pipfile", "pipfile.lock",
+        "poetry.lock", "pyproject.toml",
+        "gemfile", "gemfile.lock",
+        "cargo.toml", "cargo.lock",
+        "pom.xml", "build.gradle", "build.gradle.kts",
+        "go.mod", "go.sum",
+        "composer.json", "composer.lock",
+        "pubspec.yaml", "pubspec.lock",
+    ]
+    return any(p in f_lower for p in dep_patterns)
+
+
+# DRY conventional commit checker (industry best practices: type(scope)!: desc; types from conventionalcommits.org)
+def is_conventional_commit(message: str) -> bool:
+    if not message:
+        return False
+    msg = message.strip().lower()
+    types = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"]
+    # Match type!(scope): or type: 
+    return any(msg.startswith(t + ":") or msg.startswith(t + "!:") or msg.startswith(t + "(") for t in types)

@@ -13,14 +13,16 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from celery.exceptions import TimeoutError as CeleryTimeout
 
 from impact.celery_app import app as celery_app
+from impact.config.role_metrics import get_role_config
 from impact.domain.models import MetricContext
 from impact.ingestion.dump import DumpIngestion
 from impact.ledger.ledger import Ledger
 from impact.metrics import get_metrics
+from impact.templates.pdf_report import generate_candidate_pdf
 from impact.thresholds import METRIC_THRESHOLDS
 
 
-def get_metric_rating(metric_slug, details):
+def get_metric_rating(metric_slug, details, role_config=None):
     # Special case: no activity (e.g. unblock_time with 0 CRs) rates neutral (not excellent)
     if details.get("no_cr_activity"):
         return "neutral"
@@ -32,8 +34,14 @@ def get_metric_rating(metric_slug, details):
         return "unknown"
     val = details[key]
     for level in ["excellent", "good", "neutral", "bad"]:
-        if thresh[level](val):
-            return level
+        if level in thresh and thresh[level](val):
+            rating = level
+            # Role config: per-metric atomic restrict (e.g. dep rate never BAD; configurable)
+            if role_config and "metrics" in role_config and metric_slug in role_config["metrics"]:
+                allowed = role_config["metrics"][metric_slug].get("allowed_ratings", ["neutral", "good"])
+                if rating not in allowed:
+                    rating = "neutral"  # force for restricted (e.g. no BAD)
+            return rating
     return "unknown"
 
 
@@ -72,6 +80,19 @@ def main():
         type=int,
         default=900,
         help="Timeout in seconds to wait for fetch task (default 900s)",
+    )
+    parser.add_argument(
+        "--role",
+        default="default",
+        help="Role name for YAML config (e.g. default/senior_dev from roles/; copy/edit YAMLs).",
+    )
+    parser.add_argument(
+        "--role-config",
+        help="On-fly custom role YAML path (overrides --role; copy/paste/edit from roles/ dir for seamless use).",
+    )
+    parser.add_argument(
+        "--export",
+        help="Export mode (e.g. candidate.pdf to generate PDF report; format determines template).",
     )
 
     args = parser.parse_args()
@@ -138,6 +159,7 @@ def main():
     user_login = None
     start_date = None
     end_date = None
+    manifest_role = None
     if args.metrics:
         manifest_path = os.path.join(dump_dir, "dump_manifest.json")
         with open(manifest_path) as f:
@@ -153,6 +175,8 @@ def main():
             if "to" in manifest
             else None
         )
+        # Persist role from manifest if present (for on-fly/config)
+        manifest_role = manifest.get("role")
 
     # Header
     print("🚀 DevRank Impact Report")
@@ -171,6 +195,12 @@ def main():
     print(f"  💬 Comments: {len(bundle.comments)}")
     print()
 
+    # Role config for ratings (YAML from roles/ dir; on-fly via --role-config or --role;
+    # copy/paste/edit YAMLs; seamless with report/thresholds)
+    role = args.role or manifest_role or "default"
+    role_config = get_role_config(role, getattr(args, "role_config", None))
+
+    metrics_results = []  # Collect for export (always init)
     if args.metrics:
         # Create ledger
         ledger = Ledger(bundle)
@@ -193,8 +223,8 @@ def main():
             metric = metric_class()
             result = metric.run(context)
 
-            # Compute rating
-            rating = get_metric_rating(metric.slug, result.details)
+            # Compute rating (respects role config map for allowed types e.g. no BAD for dep rate)
+            rating = get_metric_rating(metric.slug, result.details, role_config)
 
             # Print result with modern formatting
             print("=" * 80)
@@ -213,6 +243,21 @@ def main():
                 else:
                     print(f"  • {key}: {value}")
             print()
+
+            # Collect for export
+            metrics_results.append({
+                "name": metric.name,
+                "slug": metric.slug,
+                "description": metric.description,
+                "rating": rating,
+                "summary": result.summary,
+                "details": result.details,
+            })
+
+    # Export mode (e.g. --export candidate.pdf for PDF template; modern sections/rating)
+    if args.export and args.export.endswith(".pdf") and "metrics_results" in locals():
+        period_str = f"{start_date.date()} to {end_date.date()}" if start_date and end_date else "N/A"
+        generate_candidate_pdf(metrics_results, user_login or "Candidate", period_str, args.export)
 
     if args.out:
         print(f"Output to {args.out} is not implemented yet.")

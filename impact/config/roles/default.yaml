@@ -1,0 +1,164 @@
+# Standard default role config (copy/paste/edit for custom; per-metric atomic allowed_ratings)
+# Pass on-fly via --role-config path/to/custom.yaml in generate_report.py
+metrics:
+  dependency_change_rate:
+    allowed_ratings:
+      - neutral
+      - good
+  co_author_contribution_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  bug_fix_focus_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # All other metrics (full allowed; dep/co restricted per spec; copy/edit as needed)
+  pr_merge_effectiveness:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  review_leverage:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  pr_throughput:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  cycle_time:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  pr_size_distribution:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  trivial_contribution_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  module_area_breadth:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  review_iterations:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  time_to_first_review:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  slow_review_response:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  active_weeks:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  burstiness:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  revert_introduction_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  test_file_ratio:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  pr_body_quality_score:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  reviews_given:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  pr_merge_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  change_inducing_review_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  approval_to_merge_ratio:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  review_turnaround_time:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  blocking_comment_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  unblock_time:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  inline_comment_density:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  commit_message_clarity:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad

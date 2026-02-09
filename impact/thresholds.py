@@ -169,4 +169,41 @@ METRIC_THRESHOLDS = {
         "neutral": lambda x: 5 <= x < 15,
         "bad": lambda x: x < 5,
     },
+    # PR Body Quality: higher score better (structure/length/refs)
+    "pr_body_quality_score": {
+        "key": "average_score",
+        "excellent": lambda x: x >= 80,
+        "good": lambda x: 60 <= x < 80,
+        "neutral": lambda x: 40 <= x < 60,
+        "bad": lambda x: x < 40,
+    },
+    # Co-Author Rate: normalized events/week (period-balanced; short periods lenient, long expect density)
+    "co_author_contribution_rate": {
+        "key": "collab_per_week",
+        "excellent": lambda x: x >= 2.0,
+        "good": lambda x: 1.0 <= x < 2.0,
+        "neutral": lambda x: 0.5 <= x < 1.0,
+        "bad": lambda x: x < 0.5,
+    },
+    # Dep Change Rate: updates/month (neutral if low/0; never BAD by default per role config)
+    "dependency_change_rate": {
+        "key": "dep_per_month",
+        "good": lambda x: x >= 0.5,
+        "neutral": lambda x: x < 0.5,
+    },
+    # Inline Comment Density: avg per PR (higher=depth; neutral low, no dup iterations)
+    "inline_comment_density": {
+        "key": "avg_inline_per_pr",
+        "excellent": lambda x: x >= 5,
+        "good": lambda x: 2 <= x < 5,
+        "neutral": lambda x: x < 2,
+    },
+    # Commit Message Clarity: % conventional (industry best practices; higher better)
+    "commit_message_clarity": {
+        "key": "clarity_rate",
+        "excellent": lambda x: x >= 80,
+        "good": lambda x: 60 <= x < 80,
+        "neutral": lambda x: 40 <= x < 60,
+        "bad": lambda x: x < 40,
+    },
 }
