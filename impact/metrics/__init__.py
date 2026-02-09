@@ -20,6 +20,12 @@ from impact.metrics.plugins.authored.co_author_contribution_rate import CoAuthor
 from impact.metrics.plugins.authored.dependency_change_rate import DependencyChangeRate
 from impact.metrics.plugins.authored.inline_comment_density import InlineCommentDensity
 from impact.metrics.plugins.authored.commit_message_clarity import CommitMessageClarity
+from impact.metrics.plugins.authored.code_churn_rate import CodeChurnRate
+from impact.metrics.plugins.authored.self_merge_rate import SelfMergeRate
+from impact.metrics.plugins.authored.abandoned_pr_rate import AbandonedPRRate
+from impact.metrics.plugins.authored.documentation_touch_rate import DocumentationTouchRate
+from impact.metrics.plugins.authored.net_code_contribution import NetCodeContribution
+from impact.metrics.plugins.authored.off_hours_activity_rate import OffHoursActivityRate
 from impact.metrics.plugins.influence.approval_to_merge_ratio import ApprovalToMergeRatio
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
@@ -56,6 +62,12 @@ def get_metrics():
         "dependency_change_rate": DependencyChangeRate,
         "inline_comment_density": InlineCommentDensity,
         "commit_message_clarity": CommitMessageClarity,
+        "code_churn_rate": CodeChurnRate,
+        "self_merge_rate": SelfMergeRate,
+        "abandoned_pr_rate": AbandonedPRRate,
+        "documentation_touch_rate": DocumentationTouchRate,
+        "net_code_contribution": NetCodeContribution,
+        "off_hours_activity_rate": OffHoursActivityRate,
         "reviews_given": ReviewsGiven,
         "pr_merge_rate": PRMergeRate,
         "change_inducing_review_rate": ChangeInducingReviewRate,

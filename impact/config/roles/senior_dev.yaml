@@ -156,3 +156,34 @@ metrics:
       - good
       - neutral
       - bad
+  # code_churn_rate: full (senior may tolerate higher churn)
+  code_churn_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # self_merge_rate: full (senior may self-merge more)
+  self_merge_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # abandoned_pr_rate: full (senior may have longer cycles)
+  abandoned_pr_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # documentation_touch_rate: neutral/good/bad (senior may allow low doc)
+  documentation_touch_rate:
+    allowed_ratings:
+      - neutral
+      - good
+      - bad
+  # net_code_contribution: descriptive only (no_rating pattern; no thresholds/knobs)
+  net_code_contribution:
+    allowed_ratings:
+      - descriptive  # no quality rating

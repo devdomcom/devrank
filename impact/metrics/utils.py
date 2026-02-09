@@ -1,9 +1,9 @@
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from typing import Any, TypedDict
 import re
 
-from impact.domain.models import MetricContext
+from impact.domain.models import MetricContext, ReviewState
 from impact.ledger.ledger import Ledger
 
 
@@ -391,6 +391,23 @@ def is_dependency_file(filename: str) -> bool:
     return any(p in f_lower for p in dep_patterns)
 
 
+# DRY doc file detector (broad patterns for .md/.rst/docs/README etc across languages/repos)
+def is_documentation_file(filename: str) -> bool:
+    if not filename:
+        return False
+    f_lower = filename.lower()
+    doc_patterns = [
+        # Common doc files
+        ".md", ".rst", ".adoc", ".txt", "readme", "changelog", "contributing",
+        "docs/", "doc/", "documentation/", "wiki/", "guides/", "manual/",
+        # Project-specific
+        "license", "notice", "authors", "faq", "glossary",
+        # Web/docsite
+        "index.html", "mkdocs.yml", "sphinx", "docusaurus",
+    ]
+    return any(p in f_lower for p in doc_patterns)
+
+
 # DRY conventional commit checker (industry best practices: type(scope)!: desc; types from conventionalcommits.org)
 def is_conventional_commit(message: str) -> bool:
     if not message:
@@ -399,3 +416,109 @@ def is_conventional_commit(message: str) -> bool:
     types = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"]
     # Match type!(scope): or type: 
     return any(msg.startswith(t + ":") or msg.startswith(t + "!:") or msg.startswith(t + "(") for t in types)
+
+
+def compute_code_churn(
+    ledger, user_login: str, prs: list, window_days: int = 30
+) -> dict:
+    """Code churn %: lines modifying own prior code (<=30d; file-level; weekly for spikes/period)."""
+    file_history = defaultdict(list)
+    for upr in ledger.get_prs_for_user(user_login):
+        for f in ledger.get_files_for_pr(upr.number):
+            file_history[f.filename].append(upr.created_at)
+    churned_lines = 0
+    total_lines = 0
+    per_pr = []
+    # Weekly bins for period-aware spikes/freq (short: spike bad; long: steady high bad)
+    weekly_churn = defaultdict(lambda: {"churn_lines": 0, "total_lines": 0})
+    for pr in prs:
+        pr_date = pr.created_at
+        pr_churn = 0
+        pr_total = 0
+        for f in ledger.get_files_for_pr(pr.number):
+            lines = f.changes
+            pr_total += lines
+            prev = [
+                t for t in file_history.get(f.filename, [])
+                if t < pr_date and (pr_date - t).days <= window_days
+            ]
+            if prev:
+                pr_churn += lines
+        total_lines += pr_total
+        churned_lines += pr_churn
+        rate = (pr_churn / pr_total * 100) if pr_total else 0.0
+        per_pr.append(
+            {"number": pr.number, "churn_lines": pr_churn, "total_lines": pr_total, "churn_rate": rate}
+        )
+        # Bin to week
+        if pr_date:
+            wk = pr_date.isocalendar()[:2]
+            weekly_churn[wk]["churn_lines"] += pr_churn
+            weekly_churn[wk]["total_lines"] += pr_total
+    rate = (churned_lines / total_lines * 100) if total_lines else 0.0
+    # Weekly rates + stats (max=spike detect; use get_weekly... style)
+    weekly_rates = []
+    for wk, data in sorted(weekly_churn.items()):
+        w_rate = (data["churn_lines"] / data["total_lines"] * 100) if data["total_lines"] else 0.0
+        weekly_rates.append(w_rate)
+    max_weekly = max(weekly_rates) if weekly_rates else 0.0
+    # Normalize churn/week (period length aware)
+    period_days = 30  # fallback
+    if prs:
+        dates = [p.created_at for p in prs if p.created_at]
+        if dates:
+            period_days = (max(dates) - min(dates)).days or 1
+    churn_per_week = (churned_lines / max(1, period_days / 7.0))
+    return {
+        "churn_rate": rate,
+        "churned_lines": churned_lines,
+        "total_lines": total_lines,
+        "per_pr": per_pr,
+        "window_days": window_days,
+        "pr_count": len(prs),
+        "max_weekly_churn": max_weekly,
+        "weekly_rates": weekly_rates,
+        "churn_per_week": churn_per_week,
+        "period_days": period_days,
+    }
+
+
+def compute_self_merge_rate(ledger, user_login: str) -> dict:
+    """% PRs (own+others) merged by author w/o approval; repo rate for culture check."""
+    all_prs = ledger.bundle.pull_requests
+    # Engineer merges (by user, any PR)
+    eng_merged = [
+        pr for pr in all_prs
+        if pr.merged and pr.merged_by and pr.merged_by.login == user_login
+    ]
+    no_approval_count = 0
+    per_pr = []
+    for pr in eng_merged:
+        # Approval = any APPROVED review before/ at merge
+        reviews = ledger.get_reviews_for_pr(pr.number)
+        has_approval = any(
+            r.state == ReviewState.APPROVED
+            for r in reviews
+            if not pr.merged_at or r.submitted_at <= pr.merged_at
+        )
+        if not has_approval:
+            no_approval_count += 1
+        per_pr.append({
+            "number": pr.number,
+            "merged_by_author": True,
+            "has_approval": has_approval,
+            "is_own_pr": pr.user.login == user_login,
+        })
+    eng_rate = (no_approval_count / len(eng_merged) * 100) if eng_merged else 0.0
+    # Repo culture: self-merge % across all merged PRs (low=review norm)
+    all_merged = [pr for pr in all_prs if pr.merged and pr.merged_by]
+    repo_self = sum(1 for pr in all_merged if pr.merged_by.login == pr.user.login)
+    repo_rate = (repo_self / len(all_merged) * 100) if all_merged else 0.0
+    return {
+        "self_merge_rate": eng_rate,
+        "no_approval_count": no_approval_count,
+        "engineer_merged_count": len(eng_merged),
+        "repo_self_merge_rate": repo_rate,
+        "repo_merged_count": len(all_merged),
+        "per_pr": per_pr,
+    }

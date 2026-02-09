@@ -33,6 +33,34 @@ def get_metric_rating(metric_slug, details, role_config=None):
     if key not in details:
         return "unknown"
     val = details[key]
+    # New pattern first: no_rating metrics (descriptive only; e.g. net code ratio; overrides role knobs)
+    if thresh.get("no_rating") or (
+        role_config
+        and "metrics" in role_config
+        and metric_slug in role_config["metrics"]
+        and role_config["metrics"][metric_slug].get("no_rating")
+    ):
+        return "descriptive"  # no quality signal; surfaces info only
+    # First pattern: role YAML knobs override thresholds (bounds; extensible to all metrics)
+    if (
+        role_config
+        and "metrics" in role_config
+        and metric_slug in role_config["metrics"]
+        and "thresholds" in role_config["metrics"][metric_slug]
+    ):
+        custom = role_config["metrics"][metric_slug]["thresholds"].get(key, {})
+        for level in ["excellent", "good", "neutral", "bad"]:
+            if level in custom:
+                bound = custom[level]
+                # Assume min bound for > ; extendable
+                if val >= bound:
+                    rating = level
+                    # Still respect allowed_ratings
+                    allowed = role_config["metrics"][metric_slug].get("allowed_ratings", ["neutral", "good"])
+                    if rating not in allowed:
+                        rating = "neutral"
+                    return rating
+    # Default code thresholds
     for level in ["excellent", "good", "neutral", "bad"]:
         if level in thresh and thresh[level](val):
             rating = level

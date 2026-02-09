@@ -1,0 +1,88 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from impact.domain.models import MetricContext, MetricResult
+from impact.metrics.base import Metric
+
+
+class OffHoursActivityRate(Metric):
+    @property
+    def slug(self) -> str:
+        return "off_hours_activity_rate"
+
+    @property
+    def name(self) -> str:
+        return "Off-Hours Activity Rate"
+
+    @property
+    def description(self) -> str:
+        return "% activity (commits/PRs) in weekends/late nights (sustainability/burnout signal; user TZ aware)."
+
+    def run(self, context: MetricContext) -> MetricResult:
+        user = context.user_login
+        # User TZ from bundle (manifest); data UTC
+        tz_str = getattr(context.ledger.bundle, "user_timezone", "UTC")
+        user_tz = ZoneInfo(tz_str)
+        # Off-hours def (local): weekend or 22:00-06:00
+        off_count = 0
+        total = 0
+        off_activities = []
+        weekend_count = 0
+        night_count = 0
+        # Commits (primary activity)
+        commits = context.ledger.get_commits_for_user(user, context.start_date, context.end_date)
+        for c in commits:
+            total += 1
+            local = c.date.astimezone(user_tz)
+            is_weekend = local.weekday() >= 5
+            is_night = local.hour >= 22 or local.hour < 6
+            if is_weekend or is_night:
+                off_count += 1
+                if is_weekend:
+                    weekend_count += 1
+                if is_night:
+                    night_count += 1
+                off_activities.append({
+                    "type": "commit",
+                    "sha": c.sha,
+                    "local_time": local.isoformat(),
+                    "weekend": is_weekend,
+                    "night": is_night,
+                })
+        # PRs created (add if no commits)
+        prs = context.ledger.get_prs_for_user(user, context.start_date, context.end_date)
+        for pr in prs:
+            if pr.number not in {c.pull_request_number for c in commits if c.pull_request_number}:  # avoid dup
+                total += 1
+                local = pr.created_at.astimezone(user_tz)
+                is_weekend = local.weekday() >= 5
+                is_night = local.hour >= 22 or local.hour < 6
+                if is_weekend or is_night:
+                    off_count += 1
+                    if is_weekend:
+                        weekend_count += 1
+                    if is_night:
+                        night_count += 1
+                    off_activities.append({
+                        "type": "pr_create",
+                        "number": pr.number,
+                        "local_time": local.isoformat(),
+                        "weekend": is_weekend,
+                        "night": is_night,
+                    })
+        rate = (off_count / total * 100) if total else 0.0
+        summary = f"Off-hours rate: {rate:.1f}% ({off_count}/{total} activities; {weekend_count} weekend, {night_count} night; TZ: {tz_str})."
+        details = {
+            "off_hours_rate": rate,
+            "off_count": off_count,
+            "total_activities": total,
+            "weekend_count": weekend_count,
+            "night_count": night_count,
+            "user_timezone": tz_str,
+            "off_activities": off_activities[:10],  # cap for report
+        }
+        return MetricResult(
+            metric_slug=self.slug,
+            summary=summary,
+            details=details,
+        )

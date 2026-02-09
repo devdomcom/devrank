@@ -162,3 +162,33 @@ metrics:
       - good
       - neutral
       - bad
+  # code_churn_rate: full ratings (high=bad per thresholds)
+  code_churn_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # self_merge_rate: full (culture adherence)
+  self_merge_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # abandoned_pr_rate: full (stale open PRs)
+  abandoned_pr_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # documentation_touch_rate: neutral/good (like dep; role can override)
+  documentation_touch_rate:
+    allowed_ratings:
+      - neutral
+      - good
+  # net_code_contribution: descriptive only (no_rating pattern; no thresholds/knobs)
+  net_code_contribution:
+    allowed_ratings:
+      - descriptive  # no quality rating

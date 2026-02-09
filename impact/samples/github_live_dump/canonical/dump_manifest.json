@@ -14,5 +14,6 @@
   "comments": "issue_comments.jsonl",
   "commits": "commits.jsonl",
   "timeline": "timeline.jsonl",
-  "files": "files.jsonl"
+  "files": "files.jsonl",
+  "user_timezone": "Europe/Istanbul"
 }

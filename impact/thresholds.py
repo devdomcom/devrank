@@ -206,4 +206,47 @@ METRIC_THRESHOLDS = {
         "neutral": lambda x: 40 <= x < 60,
         "bad": lambda x: x < 40,
     },
+    # Code Churn Rate: low max-weekly % = stable (spikes/instability bad; period-len aware)
+    "code_churn_rate": {
+        "key": "max_weekly_churn",
+        "excellent": lambda x: x <= 10,
+        "good": lambda x: 10 < x <= 25,
+        "neutral": lambda x: 25 < x <= 40,
+        "bad": lambda x: x > 40,
+    },
+    # Self-Merge Rate: low % = good (no approval skips); worst if repo low but engineer high
+    "self_merge_rate": {
+        "key": "self_merge_rate",
+        "excellent": lambda x: x <= 5,
+        "good": lambda x: 5 < x <= 20,
+        "neutral": lambda x: 20 < x <= 40,
+        "bad": lambda x: x > 40,
+    },
+    # Abandoned PR Rate: low % = good; worsens w/ longer window (weighted)
+    "abandoned_pr_rate": {
+        "key": "weighted_score",
+        "excellent": lambda x: x <= 10,
+        "good": lambda x: 10 < x <= 30,
+        "neutral": lambda x: 30 < x <= 60,
+        "bad": lambda x: x > 60,
+    },
+    # Doc Touch Rate: touches/month (neutral/low ok; no BAD default per role config)
+    "documentation_touch_rate": {
+        "key": "doc_per_month",
+        "good": lambda x: x >= 0.5,
+        "neutral": lambda x: x < 0.5,
+    },
+    # Net Code Contribution: descriptive only (no rating; ratio for assessment; role knobs ignored)
+    "net_code_contribution": {
+        "key": "add_to_del_ratio",
+        "no_rating": True,  # new pattern: disable rating
+    },
+    # Off-Hours Activity Rate: low % = good sustainability (high burnout risk)
+    "off_hours_activity_rate": {
+        "key": "off_hours_rate",
+        "excellent": lambda x: x <= 5,
+        "good": lambda x: 5 < x <= 15,
+        "neutral": lambda x: 15 < x <= 30,
+        "bad": lambda x: x > 30,
+    },
 }

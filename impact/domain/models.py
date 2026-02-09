@@ -141,6 +141,8 @@ class CanonicalBundle(BaseModel):
     comments: list[CommentRecord]
     files: list[FileRecord]
     timeline: list[TimelineEvent]
+    # User TZ for off-hours (e.g. Europe/Istanbul for Turkey; data TZ from manifest/Z=UTC)
+    user_timezone: str | None = None
 
 
 class MetricContext(BaseModel):

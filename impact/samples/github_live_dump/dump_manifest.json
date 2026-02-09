@@ -8,5 +8,6 @@
     "apache/superset"
   ],
   "generated_at": "2026-01-29T18:07:01.905872Z",
-  "notes": "Live fetch dump"
+  "notes": "Live fetch dump",
+  "user_timezone": "Europe/Istanbul"
 }

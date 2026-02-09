@@ -52,6 +52,8 @@ class GitHubAdapter(ProviderAdapter):
         user_login: str = manifest["user"]
         start_dt = datetime.fromisoformat(manifest["from"].replace("Z", "+00:00"))
         end_dt = datetime.fromisoformat(manifest["to"].replace("Z", "+00:00"))
+        # User TZ from manifest (e.g. Europe/Istanbul for Turkey; data is UTC/Z)
+        user_tz = manifest.get("user_timezone")
 
         # Robust canonical path: support top-level dump or direct canonical/ subdir (for tests/report).
         # Mistake surfaced: prior hardcoded subdir caused 0-load when passing canonical dir (msyavuz data reviewer-only; Vanessa PRs present but filtered).
@@ -447,4 +449,5 @@ class GitHubAdapter(ProviderAdapter):
             comments=comments,
             files=files,
             timeline=timeline_events,
+            user_timezone=user_tz,
         )
