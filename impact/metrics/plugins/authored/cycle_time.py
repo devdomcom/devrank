@@ -53,6 +53,10 @@ class CycleTime(Metric):
             "p75_hours": p75,
             "per_pr_hours": per_pr,
         }
+        # Mark as no_data when there are no durations to evaluate,
+        # so the threshold system does not reward 0.0 as "excellent".
+        if not durations_hours:
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

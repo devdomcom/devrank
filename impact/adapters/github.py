@@ -418,6 +418,7 @@ class GitHubAdapter(ProviderAdapter):
                         if pr_dict.get("merged_at")
                         else None
                     ),
+                    draft=pr_dict.get("draft", False),
                     merged=pr_dict.get("merged", False),
                     merge_commit_sha=pr_dict.get("merge_commit_sha"),
                     repository=repo,

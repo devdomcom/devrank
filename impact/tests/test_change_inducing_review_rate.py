@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from impact.domain.models import ReviewState
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
 from impact.tests.conftest import (
     DEFAULT_START,
@@ -21,14 +22,14 @@ def test_change_inducing_high():
     repo = make_repo(id=1, name="repo", owner=owner)
 
     start = DEFAULT_START
-    # Inducing: review -> quick commit
+    # Inducing: review -> quick commit (use COMMENTED state so it is actionable)
     pr1 = make_pr(1, author, repo, base_time=start)
-    review1 = make_review(10, 1, user, start + timedelta(hours=1))
+    review1 = make_review(10, 1, user, start + timedelta(hours=1), state=ReviewState.COMMENTED)
     commit1 = make_commit("sha1", author, start + timedelta(hours=3), 1)
 
-    # Non-inducing: intervening other review
+    # Non-inducing: intervening other review (use COMMENTED state so it is actionable)
     pr2 = make_pr(2, author, repo, base_time=start, created_delta_hours=24)
-    review2 = make_review(20, 2, user, start + timedelta(hours=25))
+    review2 = make_review(20, 2, user, start + timedelta(hours=25), state=ReviewState.COMMENTED)
     other_review = make_review(21, 2, make_user(id=4, login="charlie"), start + timedelta(hours=26))
     # commit after other
 

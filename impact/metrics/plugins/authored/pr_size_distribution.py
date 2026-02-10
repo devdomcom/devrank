@@ -76,7 +76,7 @@ class PRSizeDistribution(Metric):
             category = get_pr_size_category(ch)
             if category == "trivial":
                 trivial_prs.append(pr)
-            if category in ("trivial", "small"):
+            elif category == "small":
                 small_prs.append(pr)
             elif category == "medium":
                 medium_prs.append(pr)

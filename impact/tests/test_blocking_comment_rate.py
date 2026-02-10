@@ -19,8 +19,9 @@ def test_blocking_rate_ownership():
     owner = make_user(id=2, login="org")
     repo = make_repo(id=1, name="repo", owner=owner)
 
-    # Mix: 1 blocking CR, 1 approval
-    pr1 = make_pr(1, make_user(id=3), repo)
+    # Mix: 1 blocking CR, 1 approval on another user's PR
+    pr_author = make_user(id=3, login="bob")
+    pr1 = make_pr(1, pr_author, repo)
     review1 = make_review(10, 1, user, DEFAULT_START, state=ReviewState.CHANGES_REQUESTED)
     review2 = make_review(
         11, 1, user, DEFAULT_START + timedelta(hours=1), state=ReviewState.APPROVED

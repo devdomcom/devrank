@@ -24,7 +24,7 @@ class ReviewLeverage(Metric):
         - total_reviews: Total reviews by the user
         - change_requests: Number of change-request reviews
         - effective_changes: Change requests that led to follow-up commits
-        - effectiveness_percentage: Percentage of effective change requests
+        - effectiveness_rate: Ratio of effective change requests (0.0-1.0)
         - updated_after_review: PRs with activity after review
         - merged_after_review: PRs merged after review
     """
@@ -85,7 +85,16 @@ class ReviewLeverage(Metric):
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date
         )
-        # Treat formal change requests OR inline-comment reviews as “change requests” for leverage.
+
+        # Filter out self-reviews (reviews on user's own PRs)
+        filtered_reviews = []
+        for rev in reviews:
+            pr = context.ledger.get_pr(rev.pull_request_number)
+            if pr and pr.user.login != context.user_login:
+                filtered_reviews.append(rev)
+        reviews = filtered_reviews
+
+        # Treat formal change requests OR inline-comment reviews as "change requests" for leverage.
         change_requests = [r for r in reviews if is_change_request(r, context.ledger)]
 
         if not change_requests:
@@ -96,10 +105,10 @@ class ReviewLeverage(Metric):
                 1 for r in change_requests if self._is_effective_change_request(r, context)
             )
             total_change_requests = len(change_requests)
-            percentage = (
-                (effective_changes / total_change_requests) * 100
+            effectiveness_rate = (
+                effective_changes / total_change_requests
                 if total_change_requests > 0
-                else 0
+                else 0.0
             )
 
             # Track whether reviewed PRs were updated or merged after the review
@@ -116,7 +125,7 @@ class ReviewLeverage(Metric):
 
             summary = (
                 f"{len(reviews)} PRs reviewed, {effective_changes} effective change requests "
-                f"out of {total_change_requests} ({percentage:.1f}%). "
+                f"out of {total_change_requests} ({effectiveness_rate:.2f} rate). "
                 f"Updated after review: {updated_after_review}, merged after review: {merged_after_review}"
             )
 
@@ -124,7 +133,7 @@ class ReviewLeverage(Metric):
                 "total_reviews": len(reviews),
                 "change_requests": total_change_requests,
                 "effective_changes": effective_changes,
-                "effectiveness_percentage": percentage,
+                "effectiveness_rate": effectiveness_rate,
                 "updated_after_review": updated_after_review,
                 "merged_after_review": merged_after_review,
                 "change_request_details": [

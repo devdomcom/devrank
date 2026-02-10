@@ -70,14 +70,14 @@ def collect_pr_interactions(
         interactions.append({"actor": c.user.login, "kind": kind, "created_at": ts})
 
     # Timeline fallbacks (covers events not already represented)
-    seen_ts_ids = {(i["kind"], i["actor"], i["created_at"]) for i in interactions}
+    seen_ts_ids = {(i["actor"], i["created_at"]) for i in interactions}
     for evt in context.ledger.get_timeline_for_pr(pr_number):
         if evt.actor.login == author or evt.actor.type == "Bot":
             continue
         if cutoff_time and evt.created_at >= cutoff_time:
             continue
         if evt.event in ("reviewed", "commented"):
-            key = ("timeline", evt.actor.login, evt.created_at)
+            key = (evt.actor.login, evt.created_at)
             if key not in seen_ts_ids:
                 interactions.append(
                     {"actor": evt.actor.login, "kind": "timeline", "created_at": evt.created_at}
@@ -219,6 +219,8 @@ def review_led_to_merge(ledger, review, max_hours=48) -> bool:
     if not is_pr_merged_after(ledger, pr_num, rev_time):
         return False
     pr = ledger.get_pr(pr_num)
+    if not pr:
+        return False
     # Author commit after review within window?
     commits = [
         c
@@ -246,6 +248,8 @@ def review_led_to_commit(ledger, review, max_hours=24) -> bool:
     pr_num = review.pull_request_number
     rev_time = review.submitted_at
     pr = ledger.get_pr(pr_num)
+    if not pr:
+        return False
     # Author commit after review within window?
     commits = [
         c
@@ -274,8 +278,14 @@ def approval_was_final(ledger, review, max_hours_to_merge=48) -> bool:
         return False
     pr_num = review.pull_request_number
     rev_time = review.submitted_at
-    # No later commits or CRs?
-    later_commits = [c for c in ledger.get_commits_for_pr(pr_num) if c.date > rev_time]
+    # No later commits or CRs? (exclude merge commits)
+    pr = ledger.get_pr(pr_num)
+    later_commits = [
+        c for c in ledger.get_commits_for_pr(pr_num)
+        if c.date > rev_time
+        and c.sha != getattr(pr, 'merge_commit_sha', None)
+        and not c.message.lower().startswith("merge ")
+    ]
     later_crs = [
         r
         for r in ledger.get_reviews_for_pr(pr_num)
@@ -297,11 +307,13 @@ def is_bug_fix_indicator(text: str) -> bool:
     if not text:
         return False
     text_lower = text.lower()
-    bug_patterns = [
-        "fix:", "bugfix:", "bug fix", "fixes #", "closes #", "resolves #",
-        "bug:", "hotfix", "issue #", "error", "crash", "regression",
-    ]
-    return any(p in text_lower for p in bug_patterns)
+    # Specific prefix patterns (no false positives)
+    prefix_patterns = ["fix:", "bugfix:", "bug fix", "fixes #", "closes #", "resolves #", "bug:", "hotfix", "issue #"]
+    if any(p in text_lower for p in prefix_patterns):
+        return True
+    # Ambiguous terms need word boundaries
+    word_boundary_patterns = [r'\berror\b', r'\bcrash\b', r'\bregression\b']
+    return any(re.search(p, text_lower) for p in word_boundary_patterns)
 
 
 def is_revert_indicator(text: str) -> bool:
@@ -310,7 +322,7 @@ def is_revert_indicator(text: str) -> bool:
         return False
     text_lower = text.lower()
     # Common GitHub revert patterns (from sample data)
-    return text_lower.startswith("revert") or "reverts commit" in text_lower or "revert " in text_lower
+    return text_lower.startswith("revert") or "reverts commit" in text_lower
 
 
 def is_test_file(filename: str) -> bool:
@@ -318,11 +330,20 @@ def is_test_file(filename: str) -> bool:
     if not filename:
         return False
     f_lower = filename.lower()
-    test_patterns = [
-        "/test/", "/tests/", "__tests__/", ".test.", ".spec.", "test_", "spec_",
-        "/testing/", "pytest", "jest", "mocha",  # common test dirs/tools
+    # Patterns with delimiters are safe for substring matching
+    substring_patterns = [
+        "/test/", "/tests/", "__tests__/", ".test.", ".spec.", "spec_",
+        "/testing/",
     ]
-    return any(p in f_lower for p in test_patterns)
+    if any(p in f_lower for p in substring_patterns):
+        return True
+    # test_ should only match at start of filename or after /
+    if re.search(r'(^|/)test_', f_lower):
+        return True
+    # Tool/framework names should match as path segments
+    if re.search(r'(^|/)(jest|mocha|pytest)(/|\.|\b)', f_lower):
+        return True
+    return False
 
 
 def filter_prs_for_contribution(
@@ -365,7 +386,7 @@ def compute_pr_body_quality(body: str | None) -> int:
         score += 20
     if re.search(r"(?i)(?:fixes|closes|resolves|refs?)\s*#?\d+", body) or re.search(r"(?<!\w)#\d{3,}", body):
         score += 15
-    if re.search(r"(?i)pr\s*#?\d+", body) or "pull request" in body.lower():
+    elif re.search(r"(?i)pr\s*#?\d+", body) or "pull request" in body.lower():
         score += 15
     elif re.search(r"#\d+", body):
         score += 10

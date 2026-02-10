@@ -56,6 +56,8 @@ class AbandonedPRRate(Metric):
             "weighted_score": weighted,
             "per_pr": [{"number": pr.number, "age_days": (end_date - pr.created_at).days if end_date else 0} for pr in open_prs],
         }
+        if not open_prs:
+            details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,
             summary=summary,

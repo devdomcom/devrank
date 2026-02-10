@@ -63,13 +63,13 @@ def test_pr_size_distribution_with_various_sizes():
     assert res.details["deletions_p75"] == 100.0
     # Changes p75: 0,15,70,300,1100 -> 300
     assert res.details["changes_p75"] == 300.0
-    assert res.details["small_pr_count"] == 3  # pr1(15), pr2(70), pr5(0) <100
+    assert res.details["small_pr_count"] == 2  # pr1(15), pr2(70) — trivial pr5 no longer double-counted
     assert res.details["medium_pr_count"] == 1  # pr3(300)
     assert res.details["large_pr_count"] == 1  # pr4(1100)
-    assert res.details["small_pr_percent"] == 60.0
+    assert res.details["small_pr_percent"] == 40.0
     assert res.details["medium_pr_percent"] == 20.0
     assert res.details["large_pr_percent"] == 20.0
-    assert res.details["small_pr_numbers"] == [1, 2, 5]
+    assert res.details["small_pr_numbers"] == [1, 2]
     assert res.details["medium_pr_numbers"] == [3]
     assert res.details["large_pr_numbers"] == [4]
     assert res.details["trivial_pr_numbers"] == [5]  # <10 changes

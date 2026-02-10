@@ -35,6 +35,8 @@ class PRBodyQualityScore(Metric):
             "per_pr": per_pr,
             "analyzed_pr_numbers": [pr.number for pr in all_prs],
         }
+        if not prs:
+            details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,
             summary=summary,

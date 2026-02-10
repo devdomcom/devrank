@@ -26,6 +26,14 @@ class PRMergeRate(Metric):
             context.user_login, context.start_date, context.end_date
         )
 
+        # Filter out self-reviews (reviews on user's own PRs)
+        filtered_reviews = []
+        for rev in reviews:
+            pr = context.ledger.get_pr(rev.pull_request_number)
+            if pr and pr.user.login != context.user_login:
+                filtered_reviews.append(rev)
+        reviews = filtered_reviews
+
         effective_count = 0
         per_review: list[dict] = []
         for rev in reviews:

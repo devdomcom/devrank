@@ -46,7 +46,15 @@ class Burstiness(Metric):
         counts = list(weekly_counts.values())
         active_weeks = len(counts)
         total_activities = sum(counts)
-        avg_weekly = total_activities / active_weeks if active_weeks else 0.0
+
+        # Calculate total weeks in analysis period
+        if context.start_date and context.end_date:
+            total_period_days = (context.end_date - context.start_date).total_seconds() / 86400
+            total_weeks = max(1, int(total_period_days / 7))
+        else:
+            total_weeks = active_weeks  # fallback
+
+        avg_weekly = total_activities / total_weeks if total_weeks > 0 else 0.0
         max_weekly = max(counts) if counts else 0
         burst_ratio = max_weekly / avg_weekly if avg_weekly > 0 else 0.0
 
@@ -54,11 +62,14 @@ class Burstiness(Metric):
         details: dict[str, object] = {
             "burst_ratio": burst_ratio,
             "active_weeks": active_weeks,
+            "total_weeks": total_weeks,
             "total_activities": total_activities,
             "max_weekly": max_weekly,
             "avg_weekly": avg_weekly,
             "per_week": weekly_counts,
         }
+        if total_activities == 0:
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

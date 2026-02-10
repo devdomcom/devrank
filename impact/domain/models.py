@@ -60,6 +60,7 @@ class PullRequest(BaseModel):
     updated_at: datetime | None = None
     closed_at: datetime | None = None
     merged_at: datetime | None = None
+    draft: bool = False
     merged: bool = False
     merge_commit_sha: str | None = None
     repository: Repository

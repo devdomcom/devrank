@@ -25,6 +25,15 @@ class ReviewTurnaroundTime(Metric):
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date
         )
+
+        # Filter out self-reviews (reviews on user's own PRs)
+        filtered_reviews = []
+        for rev in reviews:
+            pr = context.ledger.get_pr(rev.pull_request_number)
+            if pr and pr.user.login != context.user_login:
+                filtered_reviews.append(rev)
+        reviews = filtered_reviews
+
         # Unique PRs
         reviewed_prs = {}
         for r in reviews:
@@ -45,20 +54,40 @@ class ReviewTurnaroundTime(Metric):
             if not user_reviews:
                 continue
             first_user_review = min(user_reviews, key=lambda r: r.submitted_at)
-            delta = first_user_review.submitted_at - pr.created_at
+
+            # Try to use review_requested timeline event if available
+            # to measure from when the reviewer was actually assigned
+            reference_time = pr.created_at
+            timeline_events = context.ledger.get_timeline_for_pr(pr_num)
+            review_requested_events = [
+                evt for evt in timeline_events
+                if evt.event == "review_requested"
+                and evt.created_at <= first_user_review.submitted_at
+            ]
+            if review_requested_events:
+                # Use the latest review_requested event before the first review
+                latest_request = max(review_requested_events, key=lambda e: e.created_at)
+                reference_time = latest_request.created_at
+
+            delta = first_user_review.submitted_at - reference_time
             hours = delta.total_seconds() / 3600
+            note = None
+            if not review_requested_events:
+                note = "Measured from PR creation; may overcount if reviewer was assigned late"
+            entry: dict = {"pr_number": pr_num, "hours": hours}
+            if note:
+                entry["note"] = note
             durations.append(hours)
-            per_pr.append({"pr_number": pr_num, "hours": hours})
+            per_pr.append(entry)
 
         median = percentile(durations, 0.5) if durations else 0.0
         p75 = percentile(durations, 0.75) if durations else 0.0
 
-        # Balance by period length (industry avg assumption: adjust threshold implicitly via rate)
+        # Balance by period length
         if context.start_date and context.end_date:
             period_days = (context.end_date - context.start_date).total_seconds() / 86400
         else:
-            period_days = 10.0
-        # e.g., response rate per day, but keep median time primary
+            period_days = 30.0
 
         summary = f"{len(per_pr)} PRs reviewed; median: {median:.1f}h (period {period_days:.0f}d)."
         details: dict[str, object] = {
@@ -68,6 +97,11 @@ class ReviewTurnaroundTime(Metric):
             "period_days": round(period_days, 1),
             "per_pr": per_pr,
         }
+
+        if not durations:
+            details["no_data"] = True
+            # Also add note when no timeline data was available for any PR
+            details["note"] = "Measured from PR creation; may overcount if reviewer was assigned late"
 
         return MetricResult(
             metric_slug=self.slug,

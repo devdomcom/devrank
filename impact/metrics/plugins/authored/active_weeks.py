@@ -33,13 +33,29 @@ class ActiveWeeks(Metric):
 
         activity_dates = []
         for pr in prs:
-            activity_dates.append(pr.created_at)
+            if context.start_date and context.end_date:
+                if context.start_date <= pr.created_at <= context.end_date:
+                    activity_dates.append(pr.created_at)
+            else:
+                activity_dates.append(pr.created_at)
             if pr.merged_at:
-                activity_dates.append(pr.merged_at)
+                if context.start_date and context.end_date:
+                    if context.start_date <= pr.merged_at <= context.end_date:
+                        activity_dates.append(pr.merged_at)
+                else:
+                    activity_dates.append(pr.merged_at)
         for c in commits:
-            activity_dates.append(c.date)
+            if context.start_date and context.end_date:
+                if context.start_date <= c.date <= context.end_date:
+                    activity_dates.append(c.date)
+            else:
+                activity_dates.append(c.date)
         for r in reviews:
-            activity_dates.append(r.submitted_at)
+            if context.start_date and context.end_date:
+                if context.start_date <= r.submitted_at <= context.end_date:
+                    activity_dates.append(r.submitted_at)
+            else:
+                activity_dates.append(r.submitted_at)
 
         # Granular details (repurposed for gaps/absences)
         week_details = get_week_activity_details(

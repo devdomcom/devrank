@@ -25,17 +25,30 @@ class UnblockTime(Metric):
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date
         )
+
+        # Filter out self-reviews (reviews on user's own PRs)
+        filtered_reviews = []
+        for rev in reviews:
+            pr = context.ledger.get_pr(rev.pull_request_number)
+            if pr and pr.user.login != context.user_login:
+                filtered_reviews.append(rev)
+        reviews = filtered_reviews
+
         cr_reviews = [r for r in reviews if r.state == ReviewState.CHANGES_REQUESTED]
 
         response_times: list[float] = []
         per_cr = []
         for cr in cr_reviews:
             pr_num = cr.pull_request_number
-            # Commits after CR by author
+            pr = context.ledger.get_pr(pr_num)
+            if not pr:
+                per_cr.append({"cr_id": cr.id, "pr_number": pr_num, "hours": None})
+                continue
+            # Commits after CR by the PR author (not "not the reviewer")
             commits = [
                 c
                 for c in context.ledger.get_commits_for_pr(pr_num)
-                if c.date > cr.submitted_at and c.author.login != context.user_login
+                if c.date > cr.submitted_at and c.author.login == pr.user.login
             ]
             if not commits:
                 per_cr.append({"cr_id": cr.id, "pr_number": pr_num, "hours": None})

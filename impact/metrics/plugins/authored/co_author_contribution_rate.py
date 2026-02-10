@@ -1,6 +1,10 @@
+import re
+
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import filter_prs_for_contribution
+
+CO_AUTHOR_PATTERN = re.compile(r'Co-authored-by:\s*(.+)', re.IGNORECASE)
 
 
 class CoAuthorContributionRate(Metric):
@@ -27,24 +31,35 @@ class CoAuthorContributionRate(Metric):
         for pr in prs:
             pr_commits = context.ledger.get_commits_for_pr(pr.number)
             total = len(pr_commits)
-            co = sum(1 for c in pr_commits if c.author.login != pr.user.login)
+            # Count commits that have Co-authored-by trailers mentioning someone other than the PR author
+            co = 0
+            for c in pr_commits:
+                co_authors = CO_AUTHOR_PATTERN.findall(c.message)
+                if co_authors:
+                    co += 1
             inbound_co += co
             inbound_total += total
             per_pr_co.append({"number": pr.number, "co_authors": co, "total_commits": total})
         inbound_rate = (inbound_co / inbound_total * 100) if inbound_total else 0.0
-        outbound = sum(1 for c in commits if c.pull_request_number and (pr := context.ledger.get_pr(c.pull_request_number)) and pr.user.login != user)
+        # Outbound: user appears as a co-author on commits in other people's PRs
+        outbound = 0
+        for c in commits:
+            if c.pull_request_number:
+                pr = context.ledger.get_pr(c.pull_request_number)
+                if pr and pr.user.login != user:
+                    # User authored commit on someone else's PR - check if there are co-author trailers
+                    co_authors = CO_AUTHOR_PATTERN.findall(c.message)
+                    if co_authors:
+                        outbound += 1
         outbound_rate = (outbound / len(commits) * 100) if commits else 0.0
-        # Period-balanced: collab events/week (short period tolerates low raw rates; long expects more)
+        # Period-balanced: collab events/week
         start = context.start_date or context.end_date or None
         end = context.end_date
         period_days = (end - start).days if start and end else 30
         weeks = max(1, period_days / 7.0)
         total_co_events = inbound_co + outbound
         collab_per_week = total_co_events / weeks
-        # Balance: 0 events in <=30d not BAD (neutral floor); long periods penalize isolation
-        if total_co_events == 0 and period_days <= 30:
-            collab_per_week = 0.5
-        summary = f"Combined collab rate: {inbound_rate:.1f}% in/{outbound_rate:.1f}% out; {collab_per_week:.1f} events/week (period: {period_days}d)."
+        # When there are zero events, report 0.0 (no artificial floor)
         details: dict[str, object] = {
             "collab_per_week": collab_per_week,
             "inbound_rate": inbound_rate,
@@ -56,6 +71,9 @@ class CoAuthorContributionRate(Metric):
             "per_pr_co": per_pr_co,
             "analyzed_pr_numbers": [p.number for p in all_prs],
         }
+        if total_co_events == 0:
+            details["no_data"] = True
+        summary = f"Combined collab rate: {inbound_rate:.1f}% in/{outbound_rate:.1f}% out; {collab_per_week:.1f} events/week (period: {period_days}d)."
         return MetricResult(
             metric_slug=self.slug,
             summary=summary,

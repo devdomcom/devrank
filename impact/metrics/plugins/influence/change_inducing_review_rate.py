@@ -1,4 +1,4 @@
-from impact.domain.models import MetricContext, MetricResult
+from impact.domain.models import MetricContext, MetricResult, ReviewState
 from impact.metrics.base import Metric
 from impact.metrics.utils import review_led_to_commit
 
@@ -25,9 +25,20 @@ class ChangeInducingReviewRate(Metric):
             context.user_login, context.start_date, context.end_date
         )
 
+        # Filter out self-reviews (reviews on user's own PRs)
+        filtered_reviews = []
+        for rev in reviews:
+            pr = context.ledger.get_pr(rev.pull_request_number)
+            if pr and pr.user.login != context.user_login:
+                filtered_reviews.append(rev)
+        reviews = filtered_reviews
+
+        # Exclude approvals from the denominator — approvals cannot induce changes
+        actionable_reviews = [r for r in reviews if r.state.value != "approved"]
+
         inducing_count = 0
         per_review: list[dict] = []
-        for rev in reviews:
+        for rev in actionable_reviews:
             induced_change = review_led_to_commit(context.ledger, rev)
             if induced_change:
                 inducing_count += 1
@@ -39,7 +50,7 @@ class ChangeInducingReviewRate(Metric):
                 }
             )
 
-        total_reviews = len(reviews)
+        total_reviews = len(actionable_reviews)
         inducing_rate = inducing_count / total_reviews if total_reviews else 0.0
 
         summary = (

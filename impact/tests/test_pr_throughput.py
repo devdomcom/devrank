@@ -17,18 +17,20 @@ def test_pr_throughput_counts_opened_and_merged():
     repo = make_repo(id=1, name="repo", owner=owner)
 
     start = DEFAULT_START
-    # Using delta-based creation for cleaner test code
+    # PR1: created in window, merged in window
     pr1 = make_pr(
         1, user, repo, base_time=start, created_delta_hours=0, merged_delta_hours=48
-    )  # merged inside window
+    )
+    # PR2: created in window, not merged
     pr2 = make_pr(
         2, user, repo, base_time=start, created_delta_hours=120, merged_delta_hours=None
-    )  # open only (5 days in)
+    )
+    # PR3: created before window — excluded from both counts
     pr3 = make_pr(
         3, user, repo, base_time=start, created_delta_hours=-120, merged_delta_hours=None
-    )  # before window, not merged
-    # pr4+pr5 demonstrate >1.0 ratio (backlog merges): distinguishes high throughput
-    # (opened 2, merged 3) vs. (opened 2, merged 2)
+    )
+    # PR4/PR5: created before window — excluded (Issue 8 fix: both counts
+    # use same PR list filtered by created_at to avoid disjoint populations)
     pr4 = make_pr(4, user, repo, base_time=start, created_delta_hours=-240, merged_delta_hours=24)
     pr5 = make_pr(5, user, repo, base_time=start, created_delta_hours=-360, merged_delta_hours=72)
 
@@ -44,8 +46,7 @@ def test_pr_throughput_counts_opened_and_merged():
     res = metric.run(context)
 
     assert res.metric_slug == "pr_throughput"
-    assert res.details["opened_count"] == 2  # pr1 and pr2 (pre-window excluded)
-    assert res.details["merged_count"] == 3  # pr1 + pr4 + pr5 (backlog)
-    assert res.details["merge_ratio"] == 1.5  # >1.0 possible/meaningful
-    # merged_pr_numbers order depends on ledger; check contents
-    assert sorted(res.details["merged_pr_numbers"]) == [1, 4, 5]
+    assert res.details["opened_count"] == 2  # pr1 and pr2 (in-window only)
+    assert res.details["merged_count"] == 1  # only pr1 (created in window and merged)
+    assert res.details["merge_ratio"] == 0.5  # 1/2, always <= 1.0
+    assert res.details["merged_pr_numbers"] == [1]

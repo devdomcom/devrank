@@ -1,7 +1,7 @@
 import pytest
 from datetime import timedelta
 
-from impact.metrics.plugins.authored.commit_message_clarity import CommitMessageClarity
+from impact.metrics.plugins.authored.commit_message_clarity import ConventionalCommitRate
 from impact.tests.conftest import (
     DEFAULT_START,
     make_bundle,
@@ -35,10 +35,10 @@ def test_commit_message_clarity():
     end = start + timedelta(days=10)
     context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
 
-    metric = CommitMessageClarity()
+    metric = ConventionalCommitRate()
     res = metric.run(context)
 
-    assert res.metric_slug == "commit_message_clarity"
-    assert res.details["clarity_rate"] == pytest.approx(66.7, abs=0.1)  # 2/3
+    assert res.metric_slug == "conventional_commit_rate"
+    assert res.details["conventional_commit_rate"] == pytest.approx(66.7, abs=0.1)  # 2/3
     assert res.details["conventional_count"] == 2
-    assert "Commit clarity" in res.summary
+    assert "Conventional commit rate" in res.summary

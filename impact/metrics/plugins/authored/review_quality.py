@@ -41,6 +41,8 @@ class ReviewIterations(Metric):
             "average_iterations": avg,
             "per_pr": per_pr,
         }
+        if not counts:
+            details["no_data"] = True
         return MetricResult(metric_slug=self.slug, summary=summary, details=details)
 
 
@@ -92,6 +94,8 @@ class TimeToFirstReview(Metric):
             "p75_hours": p75,
             "per_pr": per_pr,
         }
+        if not durations:
+            details["no_data"] = True
         return MetricResult(metric_slug=self.slug, summary=summary, details=details)
 
 
@@ -130,7 +134,7 @@ class SlowReviewResponse(Metric):
             commits.sort(key=lambda c: c.date)
             reviews = context.ledger.get_reviews_for_pr(pr.number)
             for review in reviews:
-                if review.state != ReviewState.CHANGES_REQUESTED:
+                if not is_change_request(review, context.ledger):
                     continue
                 # find first author commit after review
                 next_commit = next((c for c in commits if c.date > review.submitted_at), None)
@@ -153,4 +157,6 @@ class SlowReviewResponse(Metric):
             "p75_hours": p75,
             "per_review": per_review,
         }
+        if not response_times:
+            details["no_data"] = True
         return MetricResult(metric_slug=self.slug, summary=summary, details=details)

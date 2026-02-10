@@ -21,6 +21,7 @@ def test_reviews_given_collaborative_volume():
     start = DEFAULT_START
     # 5 reviews over ~10 days (~3.5/week)
     pr1 = make_pr(1, owner, repo)  # other PR
+    pr2 = make_pr(2, owner, repo, base_time=start, created_delta_hours=48)  # another PR by owner
     review1 = make_review(10, 1, user, start + timedelta(hours=2))
     review2 = make_review(11, 1, user, start + timedelta(hours=4))
     review3 = make_review(12, 1, user, start + timedelta(days=3))
@@ -30,7 +31,7 @@ def test_reviews_given_collaborative_volume():
     bundle = make_bundle(
         users=[user, owner],
         repositories=[repo],
-        pull_requests=[pr1],
+        pull_requests=[pr1, pr2],
         reviews=[review1, review2, review3, review4, review5],
     )
     end = start + timedelta(days=10)

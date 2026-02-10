@@ -25,6 +25,14 @@ class BlockingCommentRate(Metric):
             context.user_login, context.start_date, context.end_date
         )
 
+        # Filter out self-reviews (reviews on user's own PRs)
+        filtered_reviews = []
+        for rev in reviews:
+            pr = context.ledger.get_pr(rev.pull_request_number)
+            if pr and pr.user.login != context.user_login:
+                filtered_reviews.append(rev)
+        reviews = filtered_reviews
+
         blocking_count = 0
         per_review: list[dict] = []
         for rev in reviews:
@@ -46,7 +54,7 @@ class BlockingCommentRate(Metric):
         if context.start_date and context.end_date:
             period_days = (context.end_date - context.start_date).total_seconds() / 86400
         else:
-            period_days = 10.0
+            period_days = 30.0
         blocking_per_day = blocking_count / period_days if period_days > 0 else 0.0
 
         summary = f"{blocking_count}/{total_reviews} blocking ({blocking_rate:.2f} rate, {blocking_per_day:.2f}/day)."

@@ -19,7 +19,7 @@ from impact.metrics.plugins.authored.pr_body_quality import PRBodyQualityScore
 from impact.metrics.plugins.authored.co_author_contribution_rate import CoAuthorContributionRate
 from impact.metrics.plugins.authored.dependency_change_rate import DependencyChangeRate
 from impact.metrics.plugins.authored.inline_comment_density import InlineCommentDensity
-from impact.metrics.plugins.authored.commit_message_clarity import CommitMessageClarity
+from impact.metrics.plugins.authored.commit_message_clarity import ConventionalCommitRate
 from impact.metrics.plugins.authored.code_churn_rate import CodeChurnRate
 from impact.metrics.plugins.authored.self_merge_rate import SelfMergeRate
 from impact.metrics.plugins.authored.abandoned_pr_rate import AbandonedPRRate
@@ -61,7 +61,7 @@ def get_metrics():
         "co_author_contribution_rate": CoAuthorContributionRate,
         "dependency_change_rate": DependencyChangeRate,
         "inline_comment_density": InlineCommentDensity,
-        "commit_message_clarity": CommitMessageClarity,
+        "conventional_commit_rate": ConventionalCommitRate,
         "code_churn_rate": CodeChurnRate,
         "self_merge_rate": SelfMergeRate,
         "abandoned_pr_rate": AbandonedPRRate,

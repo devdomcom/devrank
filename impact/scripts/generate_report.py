@@ -19,13 +19,16 @@ from impact.ingestion.dump import DumpIngestion
 from impact.ledger.ledger import Ledger
 from impact.metrics import get_metrics
 from impact.templates.pdf_report import generate_candidate_pdf
-from impact.thresholds import METRIC_THRESHOLDS
+from impact.thresholds import METRIC_THRESHOLDS, score_metric
 
 
 def get_metric_rating(metric_slug, details, role_config=None):
     # Special case: no activity (e.g. unblock_time with 0 CRs) rates neutral (not excellent)
     if details.get("no_cr_activity"):
         return "neutral"
+    # Guard: metrics with no_data flag should not be rated (avoids rewarding 0.0 as "excellent")
+    if details.get("no_data"):
+        return "INSUFFICIENT_DATA"
     if metric_slug not in METRIC_THRESHOLDS:
         return "unknown"
     thresh = METRIC_THRESHOLDS[metric_slug]
@@ -253,13 +256,17 @@ def main():
 
             # Compute rating (respects role config map for allowed types e.g. no BAD for dep rate)
             rating = get_metric_rating(metric.slug, result.details, role_config)
+            # Continuous score (0-100) with interpolation for finer granularity
+            key = METRIC_THRESHOLDS.get(metric.slug, {}).get("key")
+            continuous_score = score_metric(metric.slug, result.details[key]) if key and key in result.details else None
 
             # Print result with modern formatting
             print("=" * 80)
             # Short desc after name for clarity (unique purpose per metric analysis)
             print(f"📊 {metric.name} ({metric.slug}): {metric.description}")
             print("=" * 80)
-            print(f"🏆 Rating: {rating.upper()}")
+            score_str = f" (score: {continuous_score:.1f}/100)" if continuous_score is not None else ""
+            print(f"🏆 Rating: {rating.upper()}{score_str}")
             print(f"💡 Summary: {result.summary}")
             print()
             print("📈 Details:")
@@ -278,6 +285,7 @@ def main():
                 "slug": metric.slug,
                 "description": metric.description,
                 "rating": rating,
+                "score": continuous_score,
                 "summary": result.summary,
                 "details": result.details,
             })
