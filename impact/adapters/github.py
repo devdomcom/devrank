@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from impact.adapters.base import ProviderAdapter
-from impact.exceptions import ManifestError
+from impact.exceptions import ManifestInvalidError, ManifestNotFoundError
 
 log = logging.getLogger(__name__)
 from impact.domain.models import (
@@ -42,13 +42,13 @@ class GitHubAdapter(ProviderAdapter):
         # Manifest drives user + date window
         manifest_path = path / "dump_manifest.json"
         if not manifest_path.exists():
-            raise ManifestError(
+            raise ManifestNotFoundError(
                 f"Manifest file not found: {manifest_path}", path=str(manifest_path)
             )
         try:
             manifest = json.loads(manifest_path.read_text())
         except json.JSONDecodeError as e:
-            raise ManifestError(f"Invalid JSON in manifest: {e}", path=str(manifest_path)) from e
+            raise ManifestInvalidError(f"Invalid JSON in manifest: {e}", path=str(manifest_path)) from e
         user_login: str = manifest["user"]
         start_dt = datetime.fromisoformat(manifest["from"].replace("Z", "+00:00"))
         end_dt = datetime.fromisoformat(manifest["to"].replace("Z", "+00:00"))

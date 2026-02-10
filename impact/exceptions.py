@@ -32,11 +32,25 @@ class ParseError(ImpactError):
 
 
 class ManifestError(ImpactError):
-    """Raised when manifest file is missing or invalid."""
+    """Base for manifest errors (hierarchy)."""
 
     def __init__(self, message: str, path: str = None):
         self.path = path
         super().__init__(message)
+
+
+class ManifestNotFoundError(ManifestError):
+    """Raised specifically when manifest file is missing (404)."""
+
+    def __init__(self, message: str, path: str = None):
+        super().__init__(message, path)
+
+
+class ManifestInvalidError(ManifestError):
+    """Raised when manifest is invalid (JSON/fields; 422)."""
+
+    def __init__(self, message: str, path: str = None):
+        super().__init__(message, path)
 
 
 class ProviderError(ImpactError):
@@ -53,4 +67,13 @@ class AdapterError(ImpactError):
 
     def __init__(self, message: str, adapter: str = None):
         self.adapter = adapter
+        super().__init__(message)
+
+
+class ResponseError(ImpactError):
+    """Raised for response formatting, parsing, or API output errors."""
+
+    def __init__(self, message: str, status_code: int = 500, details: dict | None = None):
+        self.status_code = status_code
+        self.details = details or {}
         super().__init__(message)

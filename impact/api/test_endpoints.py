@@ -19,7 +19,7 @@ import httpx
 def _in_process_client() -> httpx.Client:
     from starlette.testclient import TestClient
 
-    from impact.api.app import app
+    from api.app import app
 
     return TestClient(app)  # type: ignore[return-value]
 
@@ -55,6 +55,18 @@ def run_tests(client: httpx.Client) -> bool:
         "/api/v1/health",
         200,
         {"status": "healthy", "service": "devrank-impact"},
+    )
+
+    _check("GET", "/api/v1/metrics", 200)
+
+    # Test compute endpoint + deps chain (triggers validation/error handler)
+    _check("POST", "/api/v1/metrics/compute", 422)  # missing body -> error
+
+    # Test dynamic single metric + dep injection (chain + report params; error on bad dump)
+    _check(
+        "GET",
+        "/api/v1/metrics/active_weeks?dump_path=/tmp&user_login=test",
+        400,  # dep/bundle error
     )
 
     print(f"\nResults: {passed} passed, {failed} failed")

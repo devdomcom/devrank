@@ -20,6 +20,7 @@ dev-dependencies = [
     "pre-commit>=4.1.0",
     "ruff>=0.11.4",
     "mypy>=1.15.0",
+    "pytest-cov>=7.0.0",
 ]
 
 # Ruff: fast Python linter/formatter (replaces flake8/isort/black)
