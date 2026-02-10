@@ -111,3 +111,40 @@ Unit tests for each agent, ensuring correctness of ingestion, indexing, and metr
 - **Efficiency**: In-memory processing; avoid redundant computations.
 - **Extensibility**: New metrics via plugin pattern; new providers via adapter pattern.
 - **Reliability**: Comprehensive error handling and logging.
+
+## API Layer Best Practices
+
+### FastAPI Endpoints
+
+- **Use sync `def` for blocking work**: Endpoints that perform disk I/O, CPU-bound computation, or call synchronous libraries must use plain `def`, not `async def`. FastAPI runs sync endpoints in a thread pool automatically; `async def` with blocking code freezes the event loop.
+- **Real dependency injection**: Wire dependencies through `Depends()` for request-scoped caching and testability via `dependency_overrides`. Calling dependency functions directly as plain functions defeats the purpose.
+- **Single body consumer per endpoint**: Do not declare both a `Depends()` that consumes the body and a separate `Body()` parameter. The body gets parsed twice, causing errors or unexpected nesting.
+- **Typed response models everywhere**: Use Pydantic `response_model=` on every endpoint. Raw dicts lose OpenAPI docs and output validation.
+- **Cache static registries**: Metric metadata (slugs, names, descriptions) is static — compute once and cache rather than instantiating on every request.
+
+### Security
+
+- **Validate file paths from user input**: Any parameter that resolves to a filesystem path must be checked against an allowlist of base directories. Accepting arbitrary paths enables traversal attacks. Use env vars to configure allowed bases per environment.
+- **Gate debug endpoints behind env flags**: Test or error-triggering endpoints must never be accessible in production. Use environment variables to control registration at module load time.
+- **Friendly error messages**: Parse user-supplied values (dates, paths) with try/except and return clear, actionable error messages instead of raw Python exceptions.
+
+### Exception Handling
+
+- **Register specific handlers before base handlers**: With exception hierarchies, register subclass handlers first. Starlette matches by exact type; if the base handler is registered first, subclass exceptions may fall through.
+- **Document handler ordering**: Add comments to registration code explaining the required order.
+
+### Testing
+
+- **Create standalone test apps for handler testing**: Don't rely on the production app for testing error handlers. Create minimal FastAPI apps in test fixtures with routes registered directly — this avoids module-caching issues with conditional route registration.
+- **Update tests when behavior changes**: When metrics or endpoints change semantics, update corresponding tests immediately.
+
+### Package Organization
+
+- **Single package for all API code**: Keep app factory, routes, dependencies, schemas, and handlers in one package. Use thin re-export shims for backwards-compatible import paths if needed.
+- **Separate utilities from dependencies**: Dependency functions should only extract data from the request. Shared business logic belongs in plain utility functions that dependencies call.
+
+### Metrics
+
+- **Guard zero-activity cases**: Every metric must handle empty input and set `no_data = True` to prevent rating zero activity as "excellent."
+- **Wire real ratings end-to-end**: Never leave placeholder ratings in API responses. If the rating system exists, use it everywhere.
+- **Keep threshold keys in sync**: When renaming metrics or output keys, update threshold configuration to match. Mismatches silently produce "unknown" ratings.

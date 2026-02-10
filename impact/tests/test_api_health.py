@@ -1,6 +1,6 @@
 from starlette.testclient import TestClient
 
-from api.app import app
+from impact.api.app import app
 
 
 def test_health_returns_200() -> None:

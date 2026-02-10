@@ -19,7 +19,7 @@ import httpx
 def _in_process_client() -> httpx.Client:
     from starlette.testclient import TestClient
 
-    from api.app import app
+    from impact.api.app import app
 
     return TestClient(app)  # type: ignore[return-value]
 

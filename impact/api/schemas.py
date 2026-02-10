@@ -17,10 +17,18 @@ class Rating(str, Enum):
     BAD = "bad"
     DESCRIPTIVE = "descriptive"
     UNKNOWN = "unknown"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+
+
+class MetricListItem(BaseModel):
+    """Summary info for a single metric (used by GET /metrics/)."""
+    slug: str
+    name: str
+    description: str
 
 
 class MetricResponse(BaseModel):
-    """Reusable response model for metric results (enables API + report DRY)."""
+    """Full metric result with rating (used by compute and single-metric endpoints)."""
     slug: str
     name: str
     description: str
@@ -56,6 +64,7 @@ class HealthResponse(BaseModel):
 # Pipeline objects already Pydantic in domain; re-export for API atomicity
 __all__ = [
     "Rating",
+    "MetricListItem",
     "MetricResponse",
     "MetricsReport",
     "ComputeMetricsRequest",
