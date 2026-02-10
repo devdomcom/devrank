@@ -26,6 +26,8 @@ from impact.metrics.plugins.authored.abandoned_pr_rate import AbandonedPRRate
 from impact.metrics.plugins.authored.documentation_touch_rate import DocumentationTouchRate
 from impact.metrics.plugins.authored.net_code_contribution import NetCodeContribution
 from impact.metrics.plugins.authored.off_hours_activity_rate import OffHoursActivityRate
+from impact.metrics.plugins.authored.follow_up_commit_rate import FollowUpCommitRate
+from impact.metrics.plugins.authored.pr_category_diversity import PRCategoryDiversity
 from impact.metrics.plugins.influence.approval_to_merge_ratio import ApprovalToMergeRatio
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
@@ -38,6 +40,10 @@ from impact.metrics.plugins.influence.review_turnaround_time import ReviewTurnar
 # Reviews Given for collaboration (DRY count pattern)
 from impact.metrics.plugins.influence.reviews_given import ReviewsGiven
 from impact.metrics.plugins.influence.unblock_time import UnblockTime
+from impact.metrics.plugins.influence.review_breadth import ReviewBreadth
+from impact.metrics.plugins.influence.review_comment_substance import ReviewCommentSubstance
+from impact.metrics.plugins.influence.mentorship_signal import MentorshipSignal
+from impact.metrics.plugins.influence.contested_review_rate import ContestedReviewRate
 
 
 def get_metrics():
@@ -75,4 +81,10 @@ def get_metrics():
         "review_turnaround_time": ReviewTurnaroundTime,
         "blocking_comment_rate": BlockingCommentRate,
         "unblock_time": UnblockTime,
+        "follow_up_commit_rate": FollowUpCommitRate,
+        "pr_category_diversity": PRCategoryDiversity,
+        "review_breadth": ReviewBreadth,
+        "review_comment_substance": ReviewCommentSubstance,
+        "mentorship_signal": MentorshipSignal,
+        "contested_review_rate": ContestedReviewRate,
     }

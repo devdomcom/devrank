@@ -283,6 +283,60 @@ METRIC_THRESHOLDS = {
         "key": "add_to_del_ratio",
         "no_rating": True,  # new pattern: disable rating
     },
+    # Follow-Up Commit Rate: moderate = healthy iteration (band metric; very high = poor initial quality)
+    "follow_up_commit_rate": {
+        "key": "follow_up_rate",
+        "excellent": lambda x: 30 <= x <= 60,
+        "good": lambda x: 15 <= x < 30 or 60 < x <= 75,
+        "neutral": lambda x: 5 <= x < 15 or 75 < x <= 85,
+        "bad": lambda x: x < 5 or x > 85,
+        "scores": [(0, 25), (15, 50), (30, 75), (45, 100), (60, 75), (75, 50), (85, 25), (100, 0)],
+    },
+    # PR Category Diversity: more distinct types = well-rounded engineer
+    "pr_category_diversity": {
+        "key": "distinct_categories",
+        "excellent": lambda x: x >= 5,
+        "good": lambda x: 3 <= x < 5,
+        "neutral": lambda x: 2 <= x < 3,
+        "bad": lambda x: x < 2,
+        "scores": [(1, 20), (2, 40), (3, 60), (4, 80), (5, 100)],
+    },
+    # Review Breadth: more unique authors = broader influence
+    "review_breadth": {
+        "key": "unique_authors",
+        "excellent": lambda x: x >= 8,
+        "good": lambda x: 5 <= x < 8,
+        "neutral": lambda x: 2 <= x < 5,
+        "bad": lambda x: x < 2,
+        "scores": [(0, 0), (2, 25), (5, 50), (8, 75), (12, 100)],
+    },
+    # Review Comment Substance: higher score = more actionable/detailed feedback
+    "review_comment_substance": {
+        "key": "avg_substance_score",
+        "excellent": lambda x: x >= 60,
+        "good": lambda x: 40 <= x < 60,
+        "neutral": lambda x: 20 <= x < 40,
+        "bad": lambda x: x < 20,
+        "scores": [(0, 0), (20, 25), (40, 50), (60, 75), (80, 100)],
+    },
+    # Mentorship Signal: higher % reviewing junior authors = more investment in team growth
+    "mentorship_signal": {
+        "key": "mentorship_rate",
+        "excellent": lambda x: x >= 40,
+        "good": lambda x: 20 <= x < 40,
+        "neutral": lambda x: 10 <= x < 20,
+        "bad": lambda x: x < 10,
+        "scores": [(0, 0), (10, 25), (20, 50), (40, 75), (60, 100)],
+    },
+    # Contested Review Rate: low = feedback is respected (lower is better)
+    "contested_review_rate": {
+        "key": "contested_rate",
+        "excellent": lambda x: x <= 10,
+        "good": lambda x: 10 < x <= 25,
+        "neutral": lambda x: 25 < x <= 50,
+        "bad": lambda x: x > 50,
+        "scores": [(0, 100), (10, 75), (25, 50), (50, 25), (75, 0)],
+    },
     # Off-Hours Activity Rate: low % = good sustainability (high burnout risk)
     "off_hours_activity_rate": {
         "key": "off_hours_rate",

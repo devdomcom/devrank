@@ -187,3 +187,39 @@ metrics:
   net_code_contribution:
     allowed_ratings:
       - descriptive  # no quality rating
+  follow_up_commit_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  pr_category_diversity:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  review_breadth:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  review_comment_substance:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  mentorship_signal:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  contested_review_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
