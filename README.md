@@ -44,7 +44,7 @@ The impact assessment tool analyzes GitHub activity to compute metrics that quan
 If you already have a data dump (e.g., from a previous fetch), you can generate a report directly:
 
 ```bash
-python impact/scripts/generate_report.py \
+uv run python impact/scripts/generate_report.py \
   --existing-dump /path/to/dump/directory \
   --metrics pr_throughput cycle_time review_leverage
 ```
@@ -62,7 +62,7 @@ To fetch new data from GitHub and generate a report:
 
 2. Run the report generation script with fetch parameters:
    ```bash
-   python impact/scripts/generate_report.py \
+   uv run python impact/scripts/generate_report.py \
      --dump-path /path/to/new/dump \
      --fetch-user <github-username> \
      --fetch-repos <owner/repo1>,<owner/repo2> \
@@ -120,7 +120,7 @@ Metric rating thresholds can be customized in `impact/thresholds.py`. Each metri
 
 Run tests:
 ```bash
-pytest
+uv run pytest
 ```
 
 ## License
