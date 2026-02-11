@@ -20,7 +20,7 @@ ALLOWED_DUMP_BASES: list[Path] = (
 )
 
 
-def _validate_dump_path(dump_path: str) -> Path:
+def validate_dump_path(dump_path: str) -> Path:
     """Resolve and verify dump_path is within an allowed directory."""
     resolved = Path(dump_path).resolve()
     for base in ALLOWED_DUMP_BASES:
@@ -54,7 +54,7 @@ def load_manifest(dump_path: str) -> dict:
     """Read and return the dump_manifest.json from a validated dump directory."""
     import json
 
-    validated = _validate_dump_path(dump_path)
+    validated = validate_dump_path(dump_path)
     manifest_path = validated / "dump_manifest.json"
     if not manifest_path.exists():
         raise HTTPException(
@@ -74,7 +74,7 @@ def load_bundle(dump_path: str) -> CanonicalBundle:
     """Load a CanonicalBundle from a validated dump directory."""
     from impact.ingestion.dump import DumpIngestion
 
-    validated = _validate_dump_path(dump_path)
+    validated = validate_dump_path(dump_path)
     try:
         return DumpIngestion(str(validated)).ingest()
     except Exception as e:

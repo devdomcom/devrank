@@ -543,3 +543,8 @@ def compute_self_merge_rate(ledger, user_login: str) -> dict:
         "repo_merged_count": len(all_merged),
         "per_pr": per_pr,
     }
+
+
+def is_no_data(details: dict[str, Any]) -> bool:
+    """Central no-data artifact (guards zero-activity; covers no_data/no_cr_activity)."""
+    return bool(details.get("no_data") or details.get("no_cr_activity"))

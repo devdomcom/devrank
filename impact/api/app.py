@@ -6,7 +6,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from impact.api.handlers import register_exception_handlers
-from impact.api.routes import health_router, metrics_router
+from impact.api.routes import dumps_router, health_router, metrics_router, roles_router
 
 API_V1_PREFIX = "/api/v1"
 
@@ -34,6 +34,8 @@ def create_app() -> FastAPI:
     v1 = APIRouter(prefix=API_V1_PREFIX)
     v1.include_router(health_router)
     v1.include_router(metrics_router)
+    v1.include_router(roles_router)
+    v1.include_router(dumps_router)
     application.include_router(v1)
 
     register_exception_handlers(application)

@@ -59,6 +59,17 @@ def run_tests(client: httpx.Client) -> bool:
 
     _check("GET", "/api/v1/metrics", 200)
 
+    # Test new roles endpoints (list + detail; follows metrics pattern)
+    _check("GET", "/api/v1/roles", 200)
+    _check("GET", "/api/v1/roles/default", 200)
+    _check("GET", "/api/v1/roles/nonexistent", 404)  # proper error
+
+    # Test compare endpoint (new; triggers validation on missing body/windows)
+    _check("POST", "/api/v1/metrics/compare", 422)  # missing body -> error
+
+    # Test dump upload (new; triggers on no file)
+    _check("POST", "/api/v1/dumps/upload", 422)  # no file -> error
+
     # Test compute endpoint + deps chain (triggers validation/error handler)
     _check("POST", "/api/v1/metrics/compute", 422)  # missing body -> error
 

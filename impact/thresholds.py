@@ -12,6 +12,11 @@
 # - _is_effective_change_request: 72h (allows for complex changes)
 # - approval_was_final: 48h (same as merge window)
 
+from typing import Any
+
+# Central no-data util (DRY for guards across rating/score/metrics)
+from impact.metrics.utils import is_no_data
+
 METRIC_THRESHOLDS = {
     "pr_throughput": {
         "key": "merge_ratio",
@@ -368,3 +373,16 @@ def score_metric(slug: str, value: float) -> float | None:
             return y0 + t * (y1 - y0)
 
     return float(breakpoints[-1][1])
+
+
+def get_continuous_score(metric_slug: str, details: dict[str, Any]) -> float | None:
+    """Compute continuous 0-100 score (DRY helper)."""
+    if is_no_data(details):
+        return None
+    key = METRIC_THRESHOLDS.get(metric_slug, {}).get("key")
+    if key and key in details:
+        try:
+            return score_metric(metric_slug, float(details[key]))
+        except (TypeError, ValueError):
+            return None
+    return None

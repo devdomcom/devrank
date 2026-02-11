@@ -1,22 +1,27 @@
 from __future__ import annotations
 
 import os
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from impact.api.dependencies import build_context, get_metric_context_query
 from impact.api.schemas import (
+    CompareMetricsRequest,
     ComputeMetricsRequest,
+    MetricComparison,
     MetricListItem,
     MetricResponse,
+    MetricsComparisonReport,
     MetricsReport,
     Rating,
+    TimeWindow,
 )
 from impact.config.role_metrics import get_role_config
 from impact.domain.models import MetricContext
 from impact.metrics import get_metrics
 from impact.scripts.generate_report import get_metric_rating
+from impact.thresholds import get_continuous_score
 
 router = APIRouter(tags=["metrics"], prefix="/metrics")
 
@@ -34,14 +39,18 @@ def _get_metric_list() -> list[MetricListItem]:
     return _METRIC_LIST_CACHE
 
 
-def _resolve_rating(metric_slug: str, details: dict, role: str = "default") -> Rating:
-    """Compute the real rating for a metric result using thresholds + role config."""
+def _resolve_rating_and_score(
+    metric_slug: str, details: dict, role: str = "default"
+) -> tuple[Rating, float | None]:
+    """Compute rating + continuous_score (DRY extension of existing pattern)."""
     role_config = get_role_config(role)
     rating_str = get_metric_rating(metric_slug, details, role_config)
     try:
-        return Rating(rating_str)
+        rating = Rating(rating_str)
     except ValueError:
-        return Rating.UNKNOWN
+        rating = Rating.UNKNOWN
+    score = get_continuous_score(metric_slug, details)
+    return rating, score
 
 
 # All endpoints use plain `def` (not async) because the underlying work
@@ -67,7 +76,7 @@ def compute_metrics(req: ComputeMetricsRequest) -> MetricsReport:
             continue
         metric = available[slug]()
         result = metric.run(context)
-        rating = _resolve_rating(slug, result.details)
+        rating, score = _resolve_rating_and_score(slug, result.details)
         metrics_results.append(
             MetricResponse(
                 slug=slug,
@@ -76,6 +85,7 @@ def compute_metrics(req: ComputeMetricsRequest) -> MetricsReport:
                 rating=rating,
                 summary=result.summary,
                 details=result.details,
+                continuous_score=score,
             )
         )
     return MetricsReport(
@@ -98,7 +108,7 @@ def resolve_single_metric(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Metric not found")
     metric = available[metric_slug]()
     result = metric.run(context)
-    rating = _resolve_rating(metric_slug, result.details, role)
+    rating, score = _resolve_rating_and_score(metric_slug, result.details, role)
     return MetricResponse(
         slug=metric_slug,
         name=metric.name,
@@ -106,6 +116,58 @@ def resolve_single_metric(
         rating=rating,
         summary=result.summary,
         details=result.details,
+        continuous_score=score,
+    )
+
+
+@router.post("/compare", response_model=MetricsComparisonReport, summary="Compare metrics across two time windows")
+def compare_metrics(req: CompareMetricsRequest) -> MetricsComparisonReport:
+    """Compare metrics in two windows (reuses build/resolve; score_delta always higher=better)."""
+    # Build separate contexts for each window (shared dump/user; dates from req)
+    context1 = build_context(
+        req.dump_path, req.user_login, req.window1.start_date, req.window1.end_date
+    )
+    context2 = build_context(
+        req.dump_path, req.user_login, req.window2.start_date, req.window2.end_date
+    )
+
+    available = get_metrics()
+    slugs = req.metrics or list(available.keys())
+    comparisons = []
+    for slug in slugs:
+        if slug not in available:
+            continue
+        metric = available[slug]()
+        # Run independently for each window
+        res1 = metric.run(context1)
+        res2 = metric.run(context2)
+        # Resolve ratings + scores (role shared; score_delta always higher=better per breakpoints)
+        rating1, score1 = _resolve_rating_and_score(slug, res1.details, req.role)
+        rating2, score2 = _resolve_rating_and_score(slug, res2.details, req.role)
+        score_delta = (score2 - score1) if score1 is not None and score2 is not None else None
+        comparisons.append(
+            MetricComparison(
+                slug=slug,
+                name=metric.name,
+                description=metric.description,
+                rating1=rating1,
+                rating2=rating2,
+                summary1=res1.summary,
+                summary2=res2.summary,
+                details1=res1.details,
+                details2=res2.details,
+                continuous_score1=score1,
+                continuous_score2=score2,
+                score_delta=score_delta,
+            )
+        )
+    return MetricsComparisonReport(
+        user_login=context1.user_login,
+        window1=req.window1,
+        window2=req.window2,
+        comparisons=comparisons,
+        role=req.role,
+        data_summary={"metrics_compared": len(comparisons)},
     )
 
 

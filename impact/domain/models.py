@@ -157,3 +157,8 @@ class MetricResult(BaseModel):
     metric_slug: str
     summary: str
     details: dict[str, Any]
+
+    def has_no_data(self) -> bool:
+        """Delegate to central no-data check."""
+        from impact.metrics.utils import is_no_data
+        return is_no_data(self.details or {})

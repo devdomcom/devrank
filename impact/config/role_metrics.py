@@ -15,3 +15,9 @@ def get_role_config(role: str = "default", custom_path: str | None = None) -> di
         config_path = Path(__file__).parent / "roles" / "default.yaml"
     with open(config_path) as f:
         return yaml.safe_load(f) or {}
+
+
+def get_available_roles() -> list[str]:
+    """List available role names from YAML files (DRY for API endpoints)."""
+    roles_dir = Path(__file__).parent / "roles"
+    return sorted(p.stem for p in roles_dir.glob("*.yaml") if p.is_file())
