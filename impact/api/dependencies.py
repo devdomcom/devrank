@@ -50,6 +50,26 @@ def _parse_iso_date(value: str | None, field_name: str) -> datetime | None:
         ) from e
 
 
+def load_manifest(dump_path: str) -> dict:
+    """Read and return the dump_manifest.json from a validated dump directory."""
+    import json
+
+    validated = _validate_dump_path(dump_path)
+    manifest_path = validated / "dump_manifest.json"
+    if not manifest_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Manifest not found at {manifest_path}",
+        )
+    try:
+        return json.loads(manifest_path.read_text())
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid manifest JSON: {e}",
+        ) from e
+
+
 def load_bundle(dump_path: str) -> CanonicalBundle:
     """Load a CanonicalBundle from a validated dump directory."""
     from impact.ingestion.dump import DumpIngestion
@@ -66,11 +86,30 @@ def load_bundle(dump_path: str) -> CanonicalBundle:
 
 def build_context(
     dump_path: str,
-    user_login: str,
-    start_date: datetime | None,
-    end_date: datetime | None,
+    user_login: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
 ) -> MetricContext:
-    """Full pipeline: validate path -> load bundle -> build ledger -> create context."""
+    """Full pipeline: validate path -> load manifest -> load bundle -> create context.
+
+    ``user_login``, ``start_date``, and ``end_date`` are inferred from the
+    dump manifest when not provided.
+    """
+    manifest = load_manifest(dump_path)
+
+    if not user_login:
+        user_login = manifest.get("user")
+    if not user_login:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="user_login is required (not found in request or manifest).",
+        )
+
+    if start_date is None and manifest.get("from"):
+        start_date = _parse_iso_date(manifest["from"], "manifest.from")
+    if end_date is None and manifest.get("to"):
+        end_date = _parse_iso_date(manifest["to"], "manifest.to")
+
     bundle = load_bundle(dump_path)
     ledger = Ledger(bundle)
     return MetricContext(
@@ -84,9 +123,9 @@ def build_context(
 # FastAPI dependency for GET endpoints (query-param based)
 def get_metric_context_query(
     dump_path: str = Query(..., description="Path to dump directory"),
-    user_login: str = Query(..., description="GitHub login to compute metrics for"),
-    start_date: str | None = Query(None, description="ISO 8601 start date"),
-    end_date: str | None = Query(None, description="ISO 8601 end date"),
+    user_login: str | None = Query(None, description="GitHub login (inferred from manifest if omitted)"),
+    start_date: str | None = Query(None, description="ISO 8601 start date (inferred from manifest if omitted)"),
+    end_date: str | None = Query(None, description="ISO 8601 end date (inferred from manifest if omitted)"),
 ) -> MetricContext:
     """Build MetricContext from query params (used by GET /metrics/{slug})."""
     return build_context(

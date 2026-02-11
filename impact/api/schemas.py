@@ -47,9 +47,13 @@ class MetricsReport(BaseModel):
 
 
 class ComputeMetricsRequest(BaseModel):
-    """Request for metrics computation (triggers Depends chain)."""
-    user_login: str
+    """Request for metrics computation.
+
+    Only ``dump_path`` is required.  ``user_login``, ``start_date``, and
+    ``end_date`` are inferred from the dump manifest when omitted.
+    """
     dump_path: str
+    user_login: str | None = None
     start_date: datetime | None = None
     end_date: datetime | None = None
     metric_slugs: list[str] | None = None  # optional filter

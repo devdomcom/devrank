@@ -1,68 +1,129 @@
-Here's my analysis based on the full exploration of your 27 existing metrics (19 authored, 8 influence). There are definitely 10+ additional metrics with clear separation. Here's what I'd propose:
+# Proposed Metrics — Unimplemented
 
-Proposed New Metrics
-Authored
-1. Code Churn Rate — % of lines in an engineer's PRs that modify code they themselves wrote within the last 30 days. Measures self-rework and instability of one's own output.
+Status: 38 metrics currently implemented (26 authored, 12 influence).
+All 12 metrics from the previous proposal round have been implemented or intentionally dropped.
 
-Separation: revert_introduction_rate only tracks explicit reverts; pr_size_distribution categorizes size. Neither measures rework of recently written code.
-Data: Git blame + PR diffs to identify self-authored line overwrites.
-2. Self-Merge Rate — % of PRs merged by the author without any approval. Measures process discipline and review-culture adherence.
+The gaps below were identified by cross-referencing our metric set against
+DORA (2025), LinearB benchmarks (8.1M PRs), SPACE, Pluralsight Flow, GitClear,
+Swarmia, and Graphite. Only metrics derivable purely from GitHub PR/commit/review
+data are listed.
 
-Separation: No existing metric tracks whether PRs bypass review entirely. pr_merge_effectiveness measures merge smoothness with reviews, not absence of reviews.
-Data: PR reviews array — check for merged PRs with zero APPROVED reviews.
-3. Stale PR Rate — % of opened PRs still open beyond a threshold (e.g., 14 days). Measures abandoned or blocked work.
+---
 
-Separation: cycle_time only measures merged PRs. This captures the unmerged/abandoned tail.
-Data: PR created_at vs current time for state=open PRs.
-4. Documentation Touch Rate — % of PRs that include changes to documentation files (.md, docs/, README, wiki pages, etc.).
+## Authored
 
-Separation: commit_message_clarity measures commit message format; pr_body_quality_score measures PR description quality. Neither tracks actual documentation in the codebase.
-Data: PR file lists filtered by doc-file patterns.
-5. Net Code Contribution — Net lines added minus deleted over the period, plus ratio of additions to deletions. Reveals whether an engineer is a net creator, maintainer, or simplifier/refactorer.
+### 1. First-Time Approval Rate
 
-Separation: pr_size_distribution categorizes individual PR sizes. pr_throughput counts PR volume. Neither captures the directional nature of code contribution.
-Data: PR additions and deletions fields, aggregated.
-6. Follow-Up Commit Rate — % of PRs where the author pushes additional commits after the initial push (self-initiated updates before or after review).
+% of an engineer's PRs that receive approval on the first review round
+(zero CHANGES_REQUESTED reviews before the first APPROVED review).
 
-Separation: review_iterations counts change-request-driven cycles. This captures all follow-up pushes, including self-initiated refinements before any review, indicating iteration habits.
-Data: PR commit timestamps — count PRs with commits pushed after initial creation.
-7. Off-Hours Activity Rate — % of commits/PR events occurring outside standard working hours (weekends, late night). A sustainability and burnout-risk signal.
+- **Frameworks:** LinearB (top-5 KPI), Swarmia, Graphite
+- **Distinct from:** `review_iterations` (average rounds — a continuous number, not
+  a pass/fail ratio), `pr_merge_effectiveness` (average back-and-forth count).
+  Neither gives the direct "% first-pass" number that managers universally ask for.
+- **Data:** For each merged PR, check if any CHANGES_REQUESTED review exists
+  before the first APPROVED review. Binary per-PR → aggregate ratio.
+- **Feasibility:** YES — `ReviewRecord.state` (APPROVED, CHANGES_REQUESTED) and
+  `ReviewRecord.submitted_at` are both present in our data model and sample dumps.
+- **Why it matters:** The single most requested code-quality-at-submission metric.
+  LinearB benchmark: elite teams achieve >80%.
 
-Separation: burstiness measures weekly volume variance; active_weeks measures engagement. Neither considers when during the day/week work happens.
-Data: Commit/PR timestamps with hour-of-day and day-of-week analysis.
-8. PR Category Diversity — Distribution across PR types (feature, fix, refactor, docs, chore, test, etc.) based on conventional commit prefixes or labels.
+### 2. Coding Time
 
-Separation: bug_fix_focus_rate only tracks the bug-fix slice. This captures the full distribution, showing whether an engineer's work is well-rounded or narrowly focused.
-Data: PR titles/commit messages parsed for conventional prefixes, or GitHub labels.
-Influence
-9. Review Breadth (Unique Authors) — Number of distinct PR authors whose PRs this engineer reviews. Measures cross-team reach and mentorship surface area.
+Median time from an engineer's first commit on a branch to PR creation.
 
-Separation: reviews_given counts total review volume; review_turnaround_time measures speed. Neither captures how widely an engineer distributes review attention across the team.
-Data: Deduplicate PR authors from reviewed PRs.
-10. Review Comment Substance Score — Average length and structural quality of review comments (code suggestions, questions, links, etc. vs. single-word approvals).
+- **Frameworks:** LinearB (one of their 4 cycle-time sub-phases), GitClear
+- **Distinct from:** `cycle_time` (PR open → merge, which is the post-PR portion).
+  Coding Time measures the pre-PR development window — how long code is worked
+  on before it's opened for review.
+- **Data:** For each PR, find the earliest commit timestamp in that PR's commit
+  list, then compute `pr.created_at - earliest_commit.date`.
+- **Feasibility:** YES — `Commit.date`, `Commit.pull_request_number`, `Commit.idx`
+  (ordering), and `PullRequest.created_at` are all present.
+- **Why it matters:** Long coding times reveal excessive batching or blocked
+  engineers. LinearB benchmark: elite <1h, strong <8h.
 
-Separation: inline_comment_density counts positioned comments on own PRs; blocking_comment_rate measures blocking CRs (binary). Neither assesses the substance/depth of the feedback text itself.
-Data: Review comment bodies — length, presence of code blocks, questions, and references.
-11. Mentorship Signal — Rate of reviewing PRs from low-activity or newer contributors (those with fewer than N PRs in the period). Measures investment in growing the team.
+### 3. Coding Days
 
-Separation: review_breadth measures diversity of reviewees but doesn't weight by experience level. This specifically targets mentorship behavior.
-Data: Cross-reference PR author activity counts with review targets.
-12. Contested Review Rate — % of an engineer's reviews where their feedback is not followed (no subsequent commit, or another reviewer overrides). Measures alignment with team norms.
+Number of distinct calendar days with at least one commit, expressed as a ratio
+of working days in the period.
 
-Separation: change_inducing_review_rate measures reviews that are followed. approval_to_merge_ratio measures approvals leading to merge. This captures the inverse — ignored or overridden feedback.
-Data: Reviews not followed by author commits within a window, or merged despite changes-requested without re-review.
-Summary
-#	Metric	Category	Distinct From
-1	Code Churn Rate	Authored	revert_introduction_rate, pr_size_distribution
-2	Self-Merge Rate	Authored	pr_merge_effectiveness
-3	Stale PR Rate	Authored	cycle_time
-4	Documentation Touch Rate	Authored	commit_message_clarity, pr_body_quality
-5	Net Code Contribution	Authored	pr_size_distribution, pr_throughput
-6	Follow-Up Commit Rate	Authored	review_iterations
-7	Off-Hours Activity Rate	Authored	burstiness, active_weeks
-8	PR Category Diversity	Authored	bug_fix_focus_rate
-9	Review Breadth	Influence	reviews_given
-10	Review Comment Substance	Influence	inline_comment_density, blocking_comment_rate
-11	Mentorship Signal	Influence	review_breadth, reviews_given
-12	Contested Review Rate	Influence	change_inducing_review_rate, approval_to_merge_ratio
-All 12 are feasible with the GitHub data your fetcher already pulls (PRs, commits, reviews, review comments, timelines). Each measures a clearly distinct dimension that no current metric covers. The strongest candidates for immediate impact would be Self-Merge Rate (process risk), Stale PR Rate (hidden WIP), Review Breadth (team health), and Code Churn Rate (code quality signal).
+- **Frameworks:** Pluralsight Flow (core metric), GitClear (core metric)
+- **Distinct from:** `active_weeks` (weekly granularity, measures max gap).
+  Coding Days is daily-granularity engagement, much more informative than
+  weekly gaps for spotting inconsistency.
+- **Data:** Deduplicate commit dates per engineer → count unique days.
+- **Feasibility:** YES — `Commit.date` and `Commit.author.login` are present.
+  Timezone-aware day bucketing possible via `CanonicalBundle.user_timezone`.
+- **Why it matters:** Industry-standard engagement metric.
+  GitClear benchmark: median developer averages 156 active days/year (~60%).
+
+### 4. Rework Rate
+
+% of code changes in an engineer's PRs that modify lines the same author wrote
+within the previous 21 days (self-rework on recently written code).
+
+- **Frameworks:** DORA (5th official metric as of 2025), LinearB, GitClear,
+  Pluralsight Flow ("Efficiency" = inverse of rework)
+- **Distinct from:** `code_churn_rate` (max weekly churn — an aggregate volatility
+  signal, not self-rework), `revert_introduction_rate` (only explicit reverts).
+  Neither captures the "wasted effort" dimension of rewriting your own recent code.
+- **Data:** For each changed file in a PR, compare modified line ranges against
+  the same author's changes in PRs merged within the prior 21 days. Requires
+  file-level diff analysis across PRs.
+- **Feasibility:** NOT YET — requires plumbing change. Raw `files.jsonl` contains
+  `patch` fields with unified diffs and hunk headers (`@@ -33,6 +33,12 @@`), but
+  the adapter does not load them — `FileRecord` has no `patch` field. To enable:
+  (a) add `patch: str | None` to `FileRecord` model, (b) update `github.py`
+  adapter to load `file_dict.get("patch")`, (c) parse hunk headers for line-range
+  overlap detection across PRs.
+- **Why it matters:** THE breakout metric of 2025. Being DORA's 5th metric gives
+  it institutional weight. DORA benchmark: elite teams <2%, median 8-16%.
+  Directly measures wasted engineering effort.
+
+### 5. Merge Delay
+
+Median time from last approval to actual merge (approval → merge gap).
+
+- **Frameworks:** Graphite (core metric), LinearB (deploy-phase proxy)
+- **Distinct from:** `cycle_time` (PR open → merge, the full window). Merge Delay
+  isolates the post-approval bottleneck — CI queues, merge-train waits,
+  manual deployment gates, or simple inattention.
+- **Data:** For each merged PR, find the latest APPROVED review timestamp,
+  then compute `pr.merged_at - latest_approval.submitted_at`.
+- **Feasibility:** YES — `ReviewRecord.state` (APPROVED), `ReviewRecord.submitted_at`,
+  and `PullRequest.merged_at` are all present.
+- **Why it matters:** A PR approved but not merged is dead inventory. This
+  metric surfaces process friction that cycle_time obscures by averaging
+  with development time.
+
+---
+
+## Summary
+
+| # | Metric               | Category | Feasible? | Distinct From                      | Key Frameworks          |
+|---|----------------------|----------|-----------|------------------------------------|-------------------------|
+| 1 | First-Time Approval  | Authored | YES       | review_iterations, pr_merge_eff.   | LinearB, Swarmia        |
+| 2 | Coding Time          | Authored | YES       | cycle_time                         | LinearB, GitClear       |
+| 3 | Coding Days          | Authored | YES       | active_weeks                       | Pluralsight, GitClear   |
+| 4 | Rework Rate          | Authored | NOT YET   | code_churn_rate, revert_intro_rate | DORA, LinearB, GitClear |
+| 5 | Merge Delay          | Authored | YES       | cycle_time                         | Graphite, LinearB       |
+
+4 of 5 are immediately implementable with our current data model.
+Rework Rate (#4) requires adding `patch` field to `FileRecord` and updating the
+adapter — the raw data exists in `files.jsonl` but is not loaded. It is also the
+most complex (file-level cross-PR diff analysis) but the highest-value addition
+as the official 5th DORA metric.
+
+### Not proposed (require external data)
+
+These industry-standard metrics were evaluated but excluded because they need
+data sources beyond GitHub:
+
+- **Deployment Frequency** — DORA #1; requires CI/CD pipeline data
+- **Lead Time for Changes** (full) — DORA #2; requires deployment timestamps
+- **Change Failure Rate** — DORA #3 / DX Core 4; requires incident tracking
+- **Failed Deployment Recovery Time** — DORA #4; requires incident management
+- **Developer Satisfaction (DXI)** — SPACE / DX Core 4; requires surveys
+- **Investment Balance** — Jellyfish, Swarmia; requires issue tracker categorization
+- **Flow Efficiency** — Swarmia; requires issue tracker status transitions

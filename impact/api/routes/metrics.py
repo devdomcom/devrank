@@ -79,9 +79,9 @@ def compute_metrics(req: ComputeMetricsRequest) -> MetricsReport:
             )
         )
     return MetricsReport(
-        user_login=req.user_login,
-        start_date=req.start_date,
-        end_date=req.end_date,
+        user_login=context.user_login,
+        start_date=context.start_date,
+        end_date=context.end_date,
         metrics=metrics_results,
         data_summary={"metrics_run": len(metrics_results)},
     )
