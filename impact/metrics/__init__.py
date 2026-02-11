@@ -43,7 +43,6 @@ from impact.metrics.plugins.influence.unblock_time import UnblockTime
 from impact.metrics.plugins.influence.review_breadth import ReviewBreadth
 from impact.metrics.plugins.influence.review_comment_substance import ReviewCommentSubstance
 from impact.metrics.plugins.influence.mentorship_signal import MentorshipSignal
-from impact.metrics.plugins.influence.contested_review_rate import ContestedReviewRate
 
 
 def get_metrics():
@@ -86,5 +85,4 @@ def get_metrics():
         "review_breadth": ReviewBreadth,
         "review_comment_substance": ReviewCommentSubstance,
         "mentorship_signal": MentorshipSignal,
-        "contested_review_rate": ContestedReviewRate,
     }

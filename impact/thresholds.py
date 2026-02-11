@@ -328,15 +328,6 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x < 10,
         "scores": [(0, 0), (10, 25), (20, 50), (40, 75), (60, 100)],
     },
-    # Contested Review Rate: low = feedback is respected (lower is better)
-    "contested_review_rate": {
-        "key": "contested_rate",
-        "excellent": lambda x: x <= 10,
-        "good": lambda x: 10 < x <= 25,
-        "neutral": lambda x: 25 < x <= 50,
-        "bad": lambda x: x > 50,
-        "scores": [(0, 100), (10, 75), (25, 50), (50, 25), (75, 0)],
-    },
     # Off-Hours Activity Rate: low % = good sustainability (high burnout risk)
     "off_hours_activity_rate": {
         "key": "off_hours_rate",

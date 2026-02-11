@@ -217,9 +217,3 @@ metrics:
       - good
       - neutral
       - bad
-  contested_review_rate:
-    allowed_ratings:
-      - excellent
-      - good
-      - neutral
-      - bad

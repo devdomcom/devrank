@@ -1,17 +1,14 @@
-"""Tests for the 6 new metrics: Follow-Up Commit Rate, PR Category Diversity,
-Review Breadth, Review Comment Substance, Mentorship Signal, Contested Review Rate.
+"""Tests for the 5 new metrics: Follow-Up Commit Rate, PR Category Diversity,
+Review Breadth, Review Comment Substance, Mentorship Signal.
 """
 from datetime import timedelta
 
 import pytest
-
-from impact.domain.models import ReviewState
 from impact.metrics.plugins.authored.follow_up_commit_rate import FollowUpCommitRate
 from impact.metrics.plugins.authored.pr_category_diversity import PRCategoryDiversity
 from impact.metrics.plugins.influence.review_breadth import ReviewBreadth
 from impact.metrics.plugins.influence.review_comment_substance import ReviewCommentSubstance
 from impact.metrics.plugins.influence.mentorship_signal import MentorshipSignal
-from impact.metrics.plugins.influence.contested_review_rate import ContestedReviewRate
 from impact.tests.conftest import (
     DEFAULT_START,
     make_bundle,
@@ -301,76 +298,3 @@ class TestMentorshipSignal:
         assert res.details["no_data"] is True
 
 
-# ---------------------------------------------------------------------------
-# Contested Review Rate
-# ---------------------------------------------------------------------------
-
-class TestContestedReviewRate:
-    def test_contested_cr_merged_without_followup(self):
-        reviewer = make_user(id=1, login="alice")
-        author = make_user(id=2, login="bob")
-        repo = make_repo(id=1, name="repo")
-        start = DEFAULT_START
-
-        # PR merged despite CR and no follow-up commits
-        pr1 = make_pr(1, author, repo, base_time=start, merged_delta_hours=48)
-
-        cr_review = make_review(
-            10, 1, reviewer, start + timedelta(hours=1),
-            state=ReviewState.CHANGES_REQUESTED,
-        )
-
-        bundle = make_bundle(
-            users=[reviewer, author],
-            repositories=[repo],
-            pull_requests=[pr1],
-            reviews=[cr_review],
-        )
-        ctx = make_context(bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=5))
-
-        res = ContestedReviewRate().run(ctx)
-        assert res.metric_slug == "contested_review_rate"
-        assert res.details["total_change_requests"] == 1
-        assert res.details["contested_count"] == 1
-        assert res.details["contested_rate"] == pytest.approx(100.0)
-
-    def test_not_contested_when_followed_up(self):
-        reviewer = make_user(id=1, login="alice")
-        author = make_user(id=2, login="bob")
-        repo = make_repo(id=1, name="repo")
-        start = DEFAULT_START
-
-        pr1 = make_pr(1, author, repo, base_time=start, merged_delta_hours=48)
-
-        cr_review = make_review(
-            10, 1, reviewer, start + timedelta(hours=1),
-            state=ReviewState.CHANGES_REQUESTED,
-        )
-        # Author pushes follow-up commit
-        follow_up = make_commit("fix1", author, start + timedelta(hours=3), 1)
-        # Reviewer re-reviews
-        re_review = make_review(
-            11, 1, reviewer, start + timedelta(hours=5),
-            state=ReviewState.APPROVED,
-        )
-
-        bundle = make_bundle(
-            users=[reviewer, author],
-            repositories=[repo],
-            pull_requests=[pr1],
-            reviews=[cr_review, re_review],
-            commits=[follow_up],
-        )
-        ctx = make_context(bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=5))
-
-        res = ContestedReviewRate().run(ctx)
-        assert res.details["contested_count"] == 0
-        assert res.details["contested_rate"] == pytest.approx(0.0)
-
-    def test_no_change_requests(self):
-        user = make_user(id=1, login="alice")
-        bundle = make_bundle(users=[user])
-        ctx = make_context(bundle, user_login="alice")
-
-        res = ContestedReviewRate().run(ctx)
-        assert res.details["no_data"] is True
