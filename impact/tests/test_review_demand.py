@@ -2,6 +2,7 @@
 from datetime import timedelta
 
 import pytest
+from impact.domain.models import TimelineEvent
 from impact.metrics.plugins.influence.review_demand import ReviewDemand
 from impact.tests.conftest import (
     DEFAULT_START,
@@ -9,12 +10,10 @@ from impact.tests.conftest import (
     make_context,
     make_pr,
     make_repo,
-    make_timeline_event,  # assume or use make
     make_user,
 )
 
 
-# Note: add make_timeline_event to conftest if needed; for now use direct
 class TestReviewDemand:
     """Comprehensive tests for ReviewDemand (review_requested events demand)."""
 
@@ -26,13 +25,14 @@ class TestReviewDemand:
         start = DEFAULT_START
         pr = make_pr(1, requester, repo, base_time=start)
 
-        # Timeline: review_requested event
-        timeline_evt = type('obj', (object,), {
-            'event': 'review_requested',
-            'actor': requester,
-            'created_at': start + timedelta(hours=1),
-            'pull_request_number': 1,
-        })()  # mock for test
+        timeline_evt = TimelineEvent(
+            id=1,
+            event="review_requested",
+            actor=requester,
+            requested_reviewer=user,
+            created_at=start + timedelta(hours=1),
+            pull_request_number=1,
+        )
 
         bundle = make_bundle(
             users=[user, requester],
