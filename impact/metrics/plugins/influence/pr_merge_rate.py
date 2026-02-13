@@ -20,6 +20,10 @@ class PRMergeRate(Metric):
     def description(self) -> str:
         return "Proportion of reviews leading to merge (close sequence, no other interveners)."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def run(self, context: MetricContext) -> MetricResult:
         # User's reviews (influence on others' PRs)
         reviews = context.ledger.get_reviews_for_user(
@@ -33,6 +37,12 @@ class PRMergeRate(Metric):
             if pr and pr.user.login != context.user_login:
                 filtered_reviews.append(rev)
         reviews = filtered_reviews
+
+        # Compute period length for no_data guard
+        if context.start_date and context.end_date:
+            period_days = (context.end_date - context.start_date).total_seconds() / 86400
+        else:
+            period_days = 30.0
 
         effective_count = 0
         per_review: list[dict] = []
@@ -56,8 +66,12 @@ class PRMergeRate(Metric):
             "total_reviews": total_reviews,
             "effective_merges": effective_count,
             "merge_rate": merge_rate,
+            "period_days": round(period_days, 1),
             "per_review": per_review,
         }
+
+        if total_reviews == 0 or (period_days < 14 and total_reviews < 3):
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

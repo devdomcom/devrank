@@ -18,7 +18,13 @@ class TestFileRatio(Metric):
     def description(self) -> str:
         return "% test file changes (target >=25% per quality benchmarks)."
 
+    @property
+    def category(self) -> str:
+        return "code_quality_size"
+
     def run(self, context: MetricContext) -> MetricResult:
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         # Filter for meaningful (exclude drafts; include closed/merged per assessment).
         # Reviewed: only quality metrics filter drafts; throughput/activity include all.
         all_prs = context.ledger.get_prs_for_user(
@@ -64,7 +70,10 @@ class TestFileRatio(Metric):
             "test_pr_numbers": test_pr_numbers,
             "non_test_pr_numbers": non_test_pr_numbers,
             "analyzed_pr_numbers": analyzed_pr_numbers,
+            "period_days": period_days,
         }
+        if len(prs) == 0 or (period_days < 14 and len(prs) < 3):
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

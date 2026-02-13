@@ -18,7 +18,13 @@ class FirstTimeApprovalRate(Metric):
     def description(self) -> str:
         return "% PRs approved on first review (no prior CRs/inline comments)."
 
+    @property
+    def category(self) -> str:
+        return "pr_hygiene_process"
+
     def run(self, context: MetricContext) -> MetricResult:
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
         )
@@ -50,8 +56,9 @@ class FirstTimeApprovalRate(Metric):
             "immediate_count": immediate_count,
             "merged_pr_count": total,
             "per_pr": per_pr,
+            "period_days": period_days,
         }
-        if not merged_prs:
+        if not merged_prs or (period_days < 14 and len(merged_prs) < 3):
             details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,

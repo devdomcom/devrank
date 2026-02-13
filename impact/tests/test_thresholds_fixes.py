@@ -9,8 +9,11 @@ Covers:
 
 import pytest
 
+from impact.config.role_metrics import get_role_config
 from impact.scripts.generate_report import get_metric_rating
 from impact.thresholds import METRIC_THRESHOLDS
+
+_ROLE_CONFIG = get_role_config("senior_dev")
 
 
 # ---------------------------------------------------------------------------
@@ -23,36 +26,36 @@ class TestNoDataGuard:
 
     def test_no_data_returns_insufficient_data_for_cycle_time(self):
         details = {"merged_count": 0, "median_hours": 0.0, "p75_hours": 0.0, "no_data": True}
-        rating = get_metric_rating("cycle_time", details)
+        rating = get_metric_rating("cycle_time", details, _ROLE_CONFIG)
         assert rating == "INSUFFICIENT_DATA"
 
     def test_no_data_returns_insufficient_data_for_trivial_contribution_rate(self):
         details = {"total_pr_count": 0, "trivial_prs_per_day": 0.0, "no_data": True}
-        rating = get_metric_rating("trivial_contribution_rate", details)
+        rating = get_metric_rating("trivial_contribution_rate", details, _ROLE_CONFIG)
         assert rating == "INSUFFICIENT_DATA"
 
     def test_no_data_returns_insufficient_data_for_any_metric(self):
         """no_data guard should work for any metric slug, even unknown ones."""
         details = {"some_key": 0.0, "no_data": True}
-        rating = get_metric_rating("pr_throughput", details)
+        rating = get_metric_rating("pr_throughput", details, _ROLE_CONFIG)
         assert rating == "INSUFFICIENT_DATA"
 
     def test_no_data_false_does_not_trigger_guard(self):
         """When no_data is explicitly False, normal rating logic applies."""
         details = {"median_hours": 0.5, "no_data": False}
-        rating = get_metric_rating("cycle_time", details)
+        rating = get_metric_rating("cycle_time", details, _ROLE_CONFIG)
         assert rating != "INSUFFICIENT_DATA"
 
     def test_no_data_absent_does_not_trigger_guard(self):
         """When no_data key is absent, normal rating logic applies."""
         details = {"median_hours": 0.5}
-        rating = get_metric_rating("cycle_time", details)
+        rating = get_metric_rating("cycle_time", details, _ROLE_CONFIG)
         assert rating != "INSUFFICIENT_DATA"
 
     def test_no_data_takes_precedence_over_no_cr_activity(self):
         """no_data check comes after no_cr_activity; but if only no_data is set it works."""
         details = {"median_hours": 0.0, "no_data": True}
-        rating = get_metric_rating("cycle_time", details)
+        rating = get_metric_rating("cycle_time", details, _ROLE_CONFIG)
         assert rating == "INSUFFICIENT_DATA"
 
 
@@ -89,13 +92,13 @@ class TestReviewTurnaroundThresholds:
         assert thresh["bad"](16) is False
 
     def test_rating_integration_excellent(self):
-        details = {"median_hours": 3.0}
-        rating = get_metric_rating("review_turnaround_time", details)
+        details = {"median_hours": 1.5}
+        rating = get_metric_rating("review_turnaround_time", details, _ROLE_CONFIG)
         assert rating == "excellent"
 
     def test_rating_integration_bad(self):
         details = {"median_hours": 20.0}
-        rating = get_metric_rating("review_turnaround_time", details)
+        rating = get_metric_rating("review_turnaround_time", details, _ROLE_CONFIG)
         assert rating == "bad"
 
 
@@ -169,13 +172,13 @@ class TestReviewLeverageScale:
 
     def test_rating_integration(self):
         details = {"effectiveness_rate": 0.85}
-        rating = get_metric_rating("review_leverage", details)
+        rating = get_metric_rating("review_leverage", details, _ROLE_CONFIG)
         assert rating == "excellent"
 
     def test_old_scale_values_dont_match_excellent(self):
         """80 on the 0-1 scale is way above 1.0, so should still be excellent.
         But the old key effectiveness_percentage should not be recognized."""
         details = {"effectiveness_percentage": 80}
-        rating = get_metric_rating("review_leverage", details)
+        rating = get_metric_rating("review_leverage", details, _ROLE_CONFIG)
         # The key doesn't match effectiveness_rate, so it should be unknown
         assert rating == "unknown"

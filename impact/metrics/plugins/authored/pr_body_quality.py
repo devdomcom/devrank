@@ -16,6 +16,10 @@ class PRBodyQualityScore(Metric):
     def description(self) -> str:
         return "Assesses PR body structure (markdown sections), length, and references to issues/PRs."
 
+    @property
+    def category(self) -> str:
+        return "code_quality_size"
+
     def run(self, context: MetricContext) -> MetricResult:
         all_prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
@@ -35,7 +39,9 @@ class PRBodyQualityScore(Metric):
             "per_pr": per_pr,
             "analyzed_pr_numbers": [pr.number for pr in all_prs],
         }
-        if not prs:
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+        details["period_days"] = period_days
+        if not prs or (period_days < 14 and len(prs) < 3):
             details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,

@@ -30,6 +30,10 @@ class CycleTime(Metric):
     def description(self) -> str:
         return "Measures median time from PR open to merge (speed of delivery)."
 
+    @property
+    def category(self) -> str:
+        return "productivity_throughput"
+
     def run(self, context: MetricContext) -> MetricResult:
         merged_prs = context.ledger.get_merged_prs_for_user(
             context.user_login, context.start_date, context.end_date

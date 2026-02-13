@@ -20,6 +20,10 @@ class ActiveWeeks(Metric):
     def description(self) -> str:
         return "Granular active weeks, gaps, and ratio to detect disengagement."
 
+    @property
+    def category(self) -> str:
+        return "productivity_throughput"
+
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
@@ -71,6 +75,12 @@ class ActiveWeeks(Metric):
                 "reviews": len(reviews),
             },
         }
+
+        if not activity_dates:
+            details["no_data"] = True
+
+        if week_details["total_weeks"] < 4:
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

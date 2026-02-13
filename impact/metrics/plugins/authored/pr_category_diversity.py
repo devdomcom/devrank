@@ -58,7 +58,13 @@ class PRCategoryDiversity(Metric):
     def description(self) -> str:
         return "Number of distinct PR categories (feat/fix/refactor/docs/etc.) for work breadth."
 
+    @property
+    def category(self) -> str:
+        return "scope_collaboration"
+
     def run(self, context: MetricContext) -> MetricResult:
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         all_prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
         )
@@ -84,7 +90,8 @@ class PRCategoryDiversity(Metric):
             "distribution": distribution,
             "pr_count": len(prs),
             "per_pr": per_pr,
+            "period_days": period_days,
         }
-        if not prs:
+        if not prs or (period_days < 14 and len(prs) < 3):
             details["no_data"] = True
         return MetricResult(metric_slug=self.slug, summary=summary, details=details)

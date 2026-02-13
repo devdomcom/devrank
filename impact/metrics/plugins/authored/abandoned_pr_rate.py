@@ -18,6 +18,10 @@ class AbandonedPRRate(Metric):
     def description(self) -> str:
         return "% open PRs stale (>30d; measures abandoned/blocked; rating worsens w/ longer window)."
 
+    @property
+    def category(self) -> str:
+        return "pr_hygiene_process"
+
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login
         all_prs = context.ledger.get_prs_for_user(
@@ -45,7 +49,7 @@ class AbandonedPRRate(Metric):
         )
         rate = (stale_count / len(open_prs) * 100) if open_prs else 0.0
         # Rating worsens w/ window: scale by days/30
-        period_days = (end_date - context.start_date).days if context.start_date and end_date else 30
+        period_days = (end_date - context.start_date).days if (context.start_date and end_date) else 30
         weighted = rate * (period_days / 30.0)
         summary = f"Abandoned PR rate: {rate:.1f}% stale ({stale_count}/{len(open_prs)} open; weighted {weighted:.1f} for window)."
         details = {

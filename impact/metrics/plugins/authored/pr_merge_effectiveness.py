@@ -31,14 +31,20 @@ class PRMergeEffectiveness(Metric):
     def description(self) -> str:
         return "Combines merge speed with review interaction count for merge smoothness."
 
+    @property
+    def category(self) -> str:
+        return "pr_hygiene_process"
+
     def run(self, context: MetricContext) -> MetricResult:
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         merged_prs = context.ledger.get_merged_prs_for_user(
             context.user_login, context.start_date, context.end_date
         )
 
         if not merged_prs:
             summary = "No PRs merged in the period."
-            details = {}
+            details = {"no_data": True, "period_days": period_days}
         else:
             count = len(merged_prs)
             merge_times = []
@@ -78,6 +84,9 @@ class PRMergeEffectiveness(Metric):
                 "average_merge_time_hours": avg_merge_time,
                 "average_back_and_forth": avg_back_forth,
                 "pr_details": pr_rows,
+                "period_days": period_days,
             }
+            if not merged_prs or (period_days < 14 and len(merged_prs) < 3):
+                details["no_data"] = True
 
         return MetricResult(metric_slug=self.slug, summary=summary, details=details)

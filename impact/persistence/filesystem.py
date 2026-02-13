@@ -45,6 +45,9 @@ class FileSystemDumpWriter:
                         if key == "files":
                             item = dict(item)
                             item["pull_request_number"] = pr_number
+                        if key == "timeline":
+                            item = dict(item)
+                            item["pull_request_number"] = pr_number
                         f.write(json.dumps(item) + "\n")
                 else:
                     f.write(json.dumps(data) + "\n")

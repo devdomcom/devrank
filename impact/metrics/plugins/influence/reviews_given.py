@@ -19,6 +19,10 @@ class ReviewsGiven(Metric):
     def description(self) -> str:
         return "Count of reviews given (collaboration volume, normalized by period)."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date
@@ -50,6 +54,9 @@ class ReviewsGiven(Metric):
             "reviews_per_week": round(reviews_per_week, 1),
             "review_pr_numbers": list({r.pull_request_number for r in reviews}),
         }
+
+        if review_count == 0 or (period_days < 14 and review_count < 3):
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

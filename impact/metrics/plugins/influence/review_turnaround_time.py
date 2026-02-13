@@ -20,6 +20,10 @@ class ReviewTurnaroundTime(Metric):
     def description(self) -> str:
         return "Median hours to first review/action on opened PRs (balanced by period)."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def run(self, context: MetricContext) -> MetricResult:
         # PRs reviewed by user (influence)
         reviews = context.ledger.get_reviews_for_user(
@@ -98,7 +102,7 @@ class ReviewTurnaroundTime(Metric):
             "per_pr": per_pr,
         }
 
-        if not durations:
+        if not durations or (period_days < 14 and len(per_pr) < 3):
             details["no_data"] = True
             # Also add note when no timeline data was available for any PR
             details["note"] = "Measured from PR creation; may overcount if reviewer was assigned late"

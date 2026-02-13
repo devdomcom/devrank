@@ -20,6 +20,10 @@ class ChangeInducingReviewRate(Metric):
     def description(self) -> str:
         return "% reviews followed by immediate commit (proximity/no-intervening)."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date
@@ -53,6 +57,8 @@ class ChangeInducingReviewRate(Metric):
         total_reviews = len(actionable_reviews)
         inducing_rate = inducing_count / total_reviews if total_reviews else 0.0
 
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         summary = (
             f"{inducing_count}/{total_reviews} reviews induced changes ({inducing_rate:.2f} rate)."
         )
@@ -60,8 +66,12 @@ class ChangeInducingReviewRate(Metric):
             "total_reviews": total_reviews,
             "inducing_count": inducing_count,
             "inducing_rate": inducing_rate,
+            "period_days": round(period_days, 1),
             "per_review": per_review,
         }
+
+        if total_reviews == 0 or (period_days < 14 and total_reviews < 3):
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

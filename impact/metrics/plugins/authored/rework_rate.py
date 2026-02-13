@@ -18,6 +18,10 @@ class ReworkRate(Metric):
     def description(self) -> str:
         return "% changes that rework own code from prior 21 days (DORA-style effort waste)."
 
+    @property
+    def category(self) -> str:
+        return "descriptive"
+
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
@@ -32,7 +36,8 @@ class ReworkRate(Metric):
         rate = details["rework_rate"]
         summary = f"Rework rate: {rate:.1f}% ({details['reworked_lines']}/{details['total_changed']} lines; {details['pr_count']} PRs)."
         if details.get("no_data"):
-            summary += " (non-computable: short period or no patch data)."
+            reason = details.get("no_data_reason", "insufficient data")
+            summary += f" (non-computable: {reason})."
         return MetricResult(
             metric_slug=self.slug,
             summary=summary,

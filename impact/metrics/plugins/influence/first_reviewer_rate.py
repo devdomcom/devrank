@@ -17,6 +17,10 @@ class FirstReviewerRate(Metric):
     def description(self) -> str:
         return "% reviews where user was the first reviewer on PR (position driver)."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date
@@ -33,9 +37,14 @@ class FirstReviewerRate(Metric):
         first_count = 0
         per_review = []
         for rev in reviews:
+            pr = context.ledger.get_pr(rev.pull_request_number)
             pr_reviews = context.ledger.get_reviews_for_pr(rev.pull_request_number)
-            # Sort ALL reviews by time (keep user to check if first; per feedback)
-            all_sorted = sorted(pr_reviews, key=lambda r: r.submitted_at)
+            # Exclude PR author's self-reviews: only external reviewers count
+            external_reviews = [
+                r for r in pr_reviews
+                if not pr or r.user.login != pr.user.login
+            ]
+            all_sorted = sorted(external_reviews, key=lambda r: r.submitted_at)
             is_first = all_sorted and all_sorted[0].id == rev.id
             if is_first:
                 first_count += 1
@@ -66,6 +75,9 @@ class FirstReviewerRate(Metric):
             "first_per_day": round(first_per_day, 2),
             "per_review": per_review,
         }
+
+        if total == 0 or (period_days < 14 and total < 3):
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

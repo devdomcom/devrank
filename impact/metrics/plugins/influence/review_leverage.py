@@ -41,6 +41,10 @@ class ReviewLeverage(Metric):
     def description(self) -> str:
         return "Effectiveness of change requests in driving author updates (review impact)."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def _is_effective_change_request(self, review, context):
         pr = context.ledger.get_pr(review.pull_request_number)
         if not pr or not pr.merged:
@@ -97,9 +101,11 @@ class ReviewLeverage(Metric):
         # Treat formal change requests OR inline-comment reviews as "change requests" for leverage.
         change_requests = [r for r in reviews if is_change_request(r, context.ledger)]
 
-        if not change_requests:
-            summary = "No change requests made."
-            details = {}
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
+        if not change_requests or (period_days < 14 and len(change_requests) < 3):
+            summary = "No change requests made." if not change_requests else f"Only {len(change_requests)} change requests in short period."
+            details: dict[str, object] = {"no_data": True, "period_days": round(period_days, 1), "change_requests": len(change_requests)}
         else:
             effective_changes = sum(
                 1 for r in change_requests if self._is_effective_change_request(r, context)
@@ -136,6 +142,7 @@ class ReviewLeverage(Metric):
                 "effectiveness_rate": effectiveness_rate,
                 "updated_after_review": updated_after_review,
                 "merged_after_review": merged_after_review,
+                "period_days": round(period_days, 1),
                 "change_request_details": [
                     {
                         "pr_number": r.pull_request_number,

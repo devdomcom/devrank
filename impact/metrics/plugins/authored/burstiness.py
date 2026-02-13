@@ -20,6 +20,10 @@ class Burstiness(Metric):
     def description(self) -> str:
         return "Burst ratio (max/avg activity per active week) for pacing/sustainability."
 
+    @property
+    def category(self) -> str:
+        return "productivity_throughput"
+
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
@@ -69,6 +73,9 @@ class Burstiness(Metric):
             "per_week": weekly_counts,
         }
         if total_activities == 0:
+            details["no_data"] = True
+
+        if total_weeks < 4:
             details["no_data"] = True
 
         return MetricResult(

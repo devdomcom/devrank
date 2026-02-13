@@ -58,6 +58,10 @@ class ModuleAreaBreadth(Metric):
     def description(self) -> str:
         return "Avg distinct codebase areas touched per PR (measures understanding breadth)."
 
+    @property
+    def category(self) -> str:
+        return "scope_collaboration"
+
     def run(self, context: MetricContext) -> MetricResult:
         # Filter: exclude drafts for breadth/quality (incomplete contributions).
         all_prs = context.ledger.get_prs_for_user(
@@ -93,6 +97,10 @@ class ModuleAreaBreadth(Metric):
             "areas_per_pr": areas_per_pr,
             "truncation_levels": truncation_levels,
         }
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+        details["period_days"] = period_days
+        if not prs or (period_days < 14 and len(prs) < 3):
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

@@ -52,6 +52,19 @@ from impact.metrics.plugins.influence.review_demand import ReviewDemand
 from impact.metrics.plugins.influence.first_reviewer_rate import FirstReviewerRate
 
 
+def validate_metrics() -> None:
+    """Validate all registered metrics have valid category slugs."""
+    from impact.config.categories import CATEGORY_SLUGS
+
+    errors = []
+    for slug, cls in get_metrics().items():
+        m = cls()
+        if m.category not in CATEGORY_SLUGS:
+            errors.append(f"{slug}: unknown category '{m.category}'")
+    if errors:
+        raise ValueError(f"Invalid metric categories: {'; '.join(errors)}")
+
+
 def get_metrics():
     return {
         "pr_merge_effectiveness": PRMergeEffectiveness,

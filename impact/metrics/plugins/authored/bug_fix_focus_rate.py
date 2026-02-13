@@ -18,7 +18,13 @@ class BugFixFocusRate(Metric):
     def description(self) -> str:
         return "% PRs/commits with bug-fix indicators (titles/bodies/messages), deduplicated."
 
+    @property
+    def category(self) -> str:
+        return "risk_sustainability"
+
     def run(self, context: MetricContext) -> MetricResult:
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         # Filter: exclude drafts for focus/quality (incomplete).
         all_prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
@@ -70,8 +76,9 @@ class BugFixFocusRate(Metric):
             "bug_pr_numbers": [pr.number for pr in bug_prs],
             "non_bug_pr_numbers": non_bug_pr_numbers,
             "analyzed_pr_numbers": analyzed_pr_numbers,
+            "period_days": period_days,
         }
-        if total_items == 0:
+        if total_items == 0 or (period_days < 14 and total_items < 3):
             details["no_data"] = True
 
         return MetricResult(

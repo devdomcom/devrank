@@ -20,6 +20,10 @@ class BlockingCommentRate(Metric):
     def description(self) -> str:
         return "% blocking CRs/comments (ownership vs cosmetic feedback)."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date
@@ -66,6 +70,9 @@ class BlockingCommentRate(Metric):
             "blocking_per_day": round(blocking_per_day, 2),
             "per_review": per_review,
         }
+
+        if total_reviews == 0 or (period_days < 14 and total_reviews < 3):
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

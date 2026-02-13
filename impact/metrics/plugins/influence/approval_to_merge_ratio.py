@@ -20,6 +20,10 @@ class ApprovalToMergeRatio(Metric):
     def description(self) -> str:
         return "% approvals that were last activity leading to merge (no reworks)."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date
@@ -50,13 +54,19 @@ class ApprovalToMergeRatio(Metric):
         total_approvals = len([r for r in reviews if r.state.value == "approved"])
         ratio = final_approvals / total_approvals if total_approvals else 0.0
 
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         summary = f"{final_approvals}/{total_approvals} approvals were final ({ratio:.2f} ratio)."
         details: dict[str, object] = {
             "total_approvals": total_approvals,
             "final_approvals": final_approvals,
             "ratio": ratio,
+            "period_days": round(period_days, 1),
             "per_review": per_review,
         }
+
+        if total_approvals == 0 or (period_days < 14 and total_approvals < 2):
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

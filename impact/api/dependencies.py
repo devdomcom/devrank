@@ -11,7 +11,7 @@ from impact.ledger.ledger import Ledger
 
 # Allowed base directories for dump paths (prevents path traversal).
 # Override via DEVRANK_ALLOWED_DUMP_DIRS env var (colon-separated).
-_DEFAULT_ALLOWED_BASES = [Path("/tmp"), Path.home() / ".devrank"]
+_DEFAULT_ALLOWED_BASES = [Path("/tmp"), Path.home() / ".devrank", Path.cwd()]
 _ENV_BASES = os.environ.get("DEVRANK_ALLOWED_DUMP_DIRS", "")
 ALLOWED_DUMP_BASES: list[Path] = (
     [Path(p) for p in _ENV_BASES.split(":") if p.strip()]
@@ -124,8 +124,8 @@ def build_context(
 def get_metric_context_query(
     dump_path: str = Query(..., description="Path to dump directory"),
     user_login: str | None = Query(None, description="GitHub login (inferred from manifest if omitted)"),
-    start_date: str | None = Query(None, description="ISO 8601 start date (inferred from manifest if omitted)"),
-    end_date: str | None = Query(None, description="ISO 8601 end date (inferred from manifest if omitted)"),
+    start_date: str | None = Query(None, description="ISO 8601 start date", examples=["2026-01-19T00:00:00Z"]),
+    end_date: str | None = Query(None, description="ISO 8601 end date", examples=["2026-01-29T00:00:00Z"]),
 ) -> MetricContext:
     """Build MetricContext from query params (used by GET /metrics/{slug})."""
     return build_context(

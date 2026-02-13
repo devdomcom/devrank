@@ -18,10 +18,14 @@ class OffHoursActivityRate(Metric):
     def description(self) -> str:
         return "% activity (commits/PRs) in weekends/late nights (sustainability/burnout signal; user TZ aware)."
 
+    @property
+    def category(self) -> str:
+        return "risk_sustainability"
+
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login
         # User TZ from bundle (manifest); data UTC
-        tz_str = getattr(context.ledger.bundle, "user_timezone", "UTC")
+        tz_str = getattr(context.ledger.bundle, "user_timezone", None) or "UTC"
         user_tz = ZoneInfo(tz_str)
         # Off-hours def (local): weekend or 22:00-06:00
         off_count = 0
@@ -81,6 +85,10 @@ class OffHoursActivityRate(Metric):
             "user_timezone": tz_str,
             "off_activities": off_activities[:10],  # cap for report
         }
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+        details["period_days"] = period_days
+        if total == 0 or (period_days < 14 and total < 5):
+            details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,
             summary=summary,

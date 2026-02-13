@@ -16,10 +16,23 @@ class SelfMergeRate(Metric):
     def description(self) -> str:
         return "% PRs (own+others) merged by author w/o approval; bad if repo culture uses reviews."
 
+    @property
+    def category(self) -> str:
+        return "pr_hygiene_process"
+
     def run(self, context: MetricContext) -> MetricResult:
         details = compute_self_merge_rate(context.ledger, context.user_login)
         rate = details["self_merge_rate"]
         summary = f"Self-merge rate: {rate:.1f}% ({details['no_approval_count']}/{details['engineer_merged_count']} merges; repo {details['repo_self_merge_rate']:.1f}%)."
+
+        if context.start_date and context.end_date:
+            period_days = (context.end_date - context.start_date).total_seconds() / 86400
+        else:
+            period_days = 30.0
+        details["period_days"] = round(period_days, 1)
+
+        if details["engineer_merged_count"] == 0 or (period_days < 21 and details["engineer_merged_count"] < 3):
+            details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,
             summary=summary,

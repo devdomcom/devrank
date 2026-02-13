@@ -18,6 +18,10 @@ class CodingDays(Metric):
     def description(self) -> str:
         return "% working days (Mon-Fri) with >=1 commit (daily engagement)."
 
+    @property
+    def category(self) -> str:
+        return "productivity_throughput"
+
     def run(self, context: MetricContext) -> MetricResult:
         commits = context.ledger.get_commits_for_user(
             context.user_login, context.start_date, context.end_date
@@ -37,7 +41,9 @@ class CodingDays(Metric):
             "ratio_pct": ratio_pct,
             "commit_count": len(commits),
         }
-        if not commits or day_details["total_working_days"] == 0:
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+        details["period_days"] = period_days
+        if not commits or day_details["total_working_days"] == 0 or (period_days < 14 and len(commits) < 3):
             details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,

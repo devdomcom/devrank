@@ -15,10 +15,20 @@ class ReviewBreadth(Metric):
     def description(self) -> str:
         return "Number of distinct PR authors reviewed (cross-team reach and mentorship surface)."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date
         )
+
+        # Compute period length for no_data guard
+        if context.start_date and context.end_date:
+            period_days = (context.end_date - context.start_date).total_seconds() / 86400
+        else:
+            period_days = 30.0
 
         # Collect unique PR authors (excluding self-reviews)
         author_pr_counts: dict[str, set[int]] = {}
@@ -49,7 +59,8 @@ class ReviewBreadth(Metric):
             "unique_authors": unique_authors,
             "per_author": per_author,
             "total_prs_reviewed": sum(len(v) for v in author_pr_counts.values()),
+            "period_days": round(period_days, 1),
         }
-        if unique_authors == 0:
+        if not reviews or (period_days < 21 and len(reviews) < 3):
             details["no_data"] = True
         return MetricResult(metric_slug=self.slug, summary=summary, details=details)

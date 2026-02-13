@@ -18,6 +18,10 @@ class CodingTimeToPR(Metric):
     def description(self) -> str:
         return "Median hours from first commit to PR creation (pre-PR coding time)."
 
+    @property
+    def category(self) -> str:
+        return "productivity_throughput"
+
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date

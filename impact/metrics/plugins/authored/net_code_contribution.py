@@ -16,6 +16,10 @@ class NetCodeContribution(Metric):
     def description(self) -> str:
         return "Net lines (add - del) + add/del ratio over period (create/maintain/refactor signal)."
 
+    @property
+    def category(self) -> str:
+        return "descriptive"
+
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login
         all_prs = context.ledger.get_prs_for_user(user, context.start_date, context.end_date)
@@ -52,6 +56,8 @@ class NetCodeContribution(Metric):
             "per_pr": per_pr,
             "analyzed_pr_numbers": [p.number for p in all_prs],
         }
+        if not prs:
+            details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,
             summary=summary,

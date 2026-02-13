@@ -16,6 +16,10 @@ class CodeChurnRate(Metric):
     def description(self) -> str:
         return "% lines in PRs modifying own recent code (<=30d; flags output instability)."
 
+    @property
+    def category(self) -> str:
+        return "code_quality_size"
+
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login
         all_prs = context.ledger.get_prs_for_user(

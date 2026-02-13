@@ -20,6 +20,10 @@ class MentorshipSignal(Metric):
     def description(self) -> str:
         return "% reviews targeting low-activity contributors (<5 PRs in period); mentorship investment."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date
@@ -62,6 +66,8 @@ class MentorshipSignal(Metric):
         junior_reviews = sum(1 for r in reviewed_authors if r["is_junior"])
         mentorship_rate = (junior_reviews / total_reviewed * 100) if total_reviewed else 0.0
 
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         summary = (
             f"Mentorship signal: {mentorship_rate:.1f}% of reviews target low-activity authors "
             f"({junior_reviews}/{total_reviewed} PRs)."
@@ -71,8 +77,9 @@ class MentorshipSignal(Metric):
             "junior_review_count": junior_reviews,
             "total_reviewed_prs": total_reviewed,
             "junior_threshold": self.JUNIOR_PR_THRESHOLD,
+            "period_days": round(period_days, 1),
             "per_review": reviewed_authors,
         }
-        if total_reviewed == 0:
+        if total_reviewed == 0 or (period_days < 21 and total_reviewed < 3):
             details["no_data"] = True
         return MetricResult(metric_slug=self.slug, summary=summary, details=details)

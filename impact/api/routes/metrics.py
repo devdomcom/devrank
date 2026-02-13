@@ -17,7 +17,7 @@ from impact.api.schemas import (
     Rating,
     TimeWindow,
 )
-from impact.config.role_metrics import get_role_config
+from impact.config.role_metrics import get_available_roles, get_role_config
 from impact.domain.models import MetricContext
 from impact.metrics import get_metrics
 from impact.scripts.generate_report import get_metric_rating
@@ -33,14 +33,24 @@ def _get_metric_list() -> list[MetricListItem]:
     global _METRIC_LIST_CACHE
     if _METRIC_LIST_CACHE is None:
         _METRIC_LIST_CACHE = [
-            MetricListItem(slug=slug, name=metric().name, description=metric().description)
+            MetricListItem(slug=slug, name=metric().name, description=metric().description, category=metric().category)
             for slug, metric in get_metrics().items()
         ]
     return _METRIC_LIST_CACHE
 
 
+def _validate_role(role: str) -> None:
+    """Raise 400 if role YAML doesn't exist."""
+    available = get_available_roles()
+    if role not in available:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Role '{role}' not found. Available roles: {available}",
+        )
+
+
 def _resolve_rating_and_score(
-    metric_slug: str, details: dict, role: str = "default"
+    metric_slug: str, details: dict, role: str
 ) -> tuple[Rating, float | None]:
     """Compute rating + continuous_score (DRY extension of existing pattern)."""
     role_config = get_role_config(role)
@@ -49,7 +59,7 @@ def _resolve_rating_and_score(
         rating = Rating(rating_str)
     except ValueError:
         rating = Rating.UNKNOWN
-    score = get_continuous_score(metric_slug, details)
+    score = get_continuous_score(metric_slug, details, role_config)
     return rating, score
 
 
@@ -65,7 +75,7 @@ def list_metrics() -> list[MetricListItem]:
 
 @router.post("/compute", response_model=MetricsReport, summary="Compute metrics report")
 def compute_metrics(req: ComputeMetricsRequest) -> MetricsReport:
-    # Build context directly from the request body (no double-parsing via Depends)
+    _validate_role(req.role)
     context = build_context(req.dump_path, req.user_login, req.start_date, req.end_date)
 
     available = get_metrics()
@@ -76,12 +86,13 @@ def compute_metrics(req: ComputeMetricsRequest) -> MetricsReport:
             continue
         metric = available[slug]()
         result = metric.run(context)
-        rating, score = _resolve_rating_and_score(slug, result.details)
+        rating, score = _resolve_rating_and_score(slug, result.details, req.role)
         metrics_results.append(
             MetricResponse(
                 slug=slug,
                 name=metric.name,
                 description=metric.description,
+                category=metric.category,
                 rating=rating,
                 summary=result.summary,
                 details=result.details,
@@ -101,8 +112,9 @@ def compute_metrics(req: ComputeMetricsRequest) -> MetricsReport:
 def resolve_single_metric(
     metric_slug: str,
     context: Annotated[MetricContext, Depends(get_metric_context_query)],
-    role: str = Query("default", description="Role for rating thresholds"),
+    role: str = Query(..., description="Role for rating thresholds"),
 ) -> MetricResponse:
+    _validate_role(role)
     available = get_metrics()
     if metric_slug not in available:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Metric not found")
@@ -113,6 +125,7 @@ def resolve_single_metric(
         slug=metric_slug,
         name=metric.name,
         description=metric.description,
+        category=metric.category,
         rating=rating,
         summary=result.summary,
         details=result.details,
@@ -123,6 +136,7 @@ def resolve_single_metric(
 @router.post("/compare", response_model=MetricsComparisonReport, summary="Compare metrics across two time windows")
 def compare_metrics(req: CompareMetricsRequest) -> MetricsComparisonReport:
     """Compare metrics in two windows (reuses build/resolve; score_delta always higher=better)."""
+    _validate_role(req.role)
     # Build separate contexts for each window (shared dump/user; dates from req)
     context1 = build_context(
         req.dump_path, req.user_login, req.window1.start_date, req.window1.end_date
@@ -150,6 +164,7 @@ def compare_metrics(req: CompareMetricsRequest) -> MetricsComparisonReport:
                 slug=slug,
                 name=metric.name,
                 description=metric.description,
+                category=metric.category,
                 rating1=rating1,
                 rating2=rating2,
                 summary1=res1.summary,

@@ -49,6 +49,10 @@ class PRSizeDistribution(Metric):
     def description(self) -> str:
         return "Analyzes PR size distribution and % large changes (flags risk/monoliths)."
 
+    @property
+    def category(self) -> str:
+        return "code_quality_size"
+
     def run(self, context: MetricContext) -> MetricResult:
         # Filter: exclude drafts for quality/size (incomplete); include closed (attempted).
         # Reviewed all: only quality metrics filter; throughput/activity include drafts.
@@ -84,10 +88,12 @@ class PRSizeDistribution(Metric):
                 large_prs.append(pr)
 
         pr_count = len(prs)
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
         if pr_count == 0:
             summary = "No PRs found in the window."
             details: dict[str, object] = {
                 "pr_count": 0,
+                "period_days": period_days,
                 "additions_median": 0.0,
                 "deletions_median": 0.0,
                 "changes_median": 0.0,
@@ -104,6 +110,7 @@ class PRSizeDistribution(Metric):
                 "medium_pr_numbers": [],
                 "large_pr_numbers": [],
                 "trivial_pr_numbers": [],
+                "no_data": True,
             }
         else:
             additions_median = percentile(additions, 0.5)
@@ -125,6 +132,7 @@ class PRSizeDistribution(Metric):
             summary = f"{changes_median:.2f} median changes. Small: {small_percent:.1f}%, Medium: {medium_percent:.1f}%, Large: {large_percent:.1f}%"
             details: dict[str, object] = {
                 "pr_count": pr_count,
+                "period_days": period_days,
                 "additions_median": additions_median,
                 "deletions_median": deletions_median,
                 "changes_median": changes_median,
@@ -142,6 +150,8 @@ class PRSizeDistribution(Metric):
                 "large_pr_numbers": [pr.number for pr in large_prs],
                 "trivial_pr_numbers": [pr.number for pr in trivial_prs],
             }
+            if period_days < 14 and pr_count < 3:
+                details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

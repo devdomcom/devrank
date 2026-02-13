@@ -36,6 +36,71 @@ class GitHubAdapter(ProviderAdapter):
     requested as reviewer but never acted).
     """
 
+    @staticmethod
+    def _normalize_timeline_event(
+        tl_dict: dict, ensure_user_fn: callable,
+    ) -> TimelineEvent | None:
+        """Normalize a raw timeline dict into a TimelineEvent, or None if unparseable.
+
+        Centralizes all timeline-specific parsing: skipping non-event entries
+        (e.g. 'committed' which lack id/actor/event), extracting PR number,
+        actor resolution, and requested_reviewer handling.
+        """
+        # 'committed' entries have no 'event' key — skip (commits parsed separately)
+        if "event" not in tl_dict:
+            return None
+        # Require id and created_at
+        if "id" not in tl_dict or not tl_dict.get("created_at"):
+            return None
+
+        actor_dict = tl_dict.get("actor") or {}
+        try:
+            actor = ensure_user_fn(actor_dict)
+        except (ValueError, KeyError, TypeError):
+            return None
+
+        created_dt = datetime.fromisoformat(
+            tl_dict["created_at"].replace("Z", "+00:00")
+        )
+
+        # PR number: prefer enriched field, fall back to URL parsing for legacy dumps
+        pr_number = tl_dict.get("pull_request_number")
+        if pr_number is None:
+            url = tl_dict.get("url", "")
+            try:
+                pr_number = int(url.rstrip("/").split("/")[-2])
+            except (ValueError, IndexError):
+                return None
+
+        # requested_reviewer for review_demand
+        requested = None
+        if tl_dict["event"] == "review_requested":
+            req_dict = (
+                tl_dict.get("requested_reviewer")
+                or tl_dict.get("review_requester")
+            )
+            if req_dict:
+                try:
+                    requested = ensure_user_fn(req_dict)
+                except (ValueError, KeyError, TypeError):
+                    pass
+
+        return TimelineEvent(
+            id=tl_dict["id"],
+            node_id=tl_dict.get("node_id"),
+            url=tl_dict.get("url"),
+            event=tl_dict["event"],
+            actor=actor,
+            created_at=created_dt,
+            pull_request_number=pr_number,
+            commit_id=tl_dict.get("commit_id"),
+            commit_url=tl_dict.get("commit_url"),
+            comment_id=tl_dict.get("comment_id"),
+            state=tl_dict.get("state"),
+            html_url=tl_dict.get("html_url"),
+            requested_reviewer=requested,
+        )
+
     def parse_dump(self, dump_path: str) -> CanonicalBundle:
         path = Path(dump_path)
 
@@ -277,63 +342,16 @@ class GitHubAdapter(ProviderAdapter):
             with tl_file.open() as f:
                 for line in f:
                     tl_dict = json.loads(line)
-                    url = tl_dict.get("url", "")
-                    try:
-                        pr_number = int(url.rstrip("/").split("/")[-2])
-                    except (ValueError, IndexError) as e:
-                        log.debug(
-                            "Skipping timeline event: cannot parse PR number from URL %r - %s",
-                            url,
-                            e,
-                        )
+                    evt = self._normalize_timeline_event(tl_dict, ensure_user)
+                    if evt is None:
                         continue
-                    if pr_number not in pr_raw:
+                    if evt.pull_request_number not in pr_raw:
                         continue
-                    created_raw = tl_dict.get("created_at")
-                    if not created_raw:
+                    if not (start_dt <= evt.created_at <= end_dt):
                         continue
-                    created_dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
-                    if not (start_dt <= created_dt <= end_dt):
-                        continue
-                    actor_dict = tl_dict.get("actor") or {}
-                    try:
-                        actor = ensure_user(actor_dict)
-                    except (ValueError, KeyError, TypeError) as e:
-                        log.debug(
-                            "Skipping timeline event %s: invalid actor data - %s",
-                            tl_dict.get("id", "unknown"),
-                            e,
-                        )
-                        continue
-
-                    # requested_reviewer for review_demand (accurate target of request)
-                    requested = None
-                    if tl_dict.get("event") == "review_requested":
-                        req_dict = tl_dict.get("requested_reviewer") or tl_dict.get("review_requester")  # fallback variants in data
-                        if req_dict:
-                            try:
-                                requested = ensure_user(req_dict)
-                            except (ValueError, KeyError, TypeError):
-                                pass
-                    timeline_events.append(
-                        TimelineEvent(
-                            id=tl_dict["id"],
-                            node_id=tl_dict.get("node_id"),
-                            url=tl_dict.get("url"),
-                            event=tl_dict["event"],
-                            actor=actor,
-                            created_at=created_dt,
-                            pull_request_number=pr_number,
-                            commit_id=tl_dict.get("commit_id"),
-                            commit_url=tl_dict.get("commit_url"),
-                            comment_id=tl_dict.get("comment_id"),
-                            state=tl_dict.get("state"),
-                            html_url=tl_dict.get("html_url"),
-                            requested_reviewer=requested,
-                        )
-                    )
-                    if actor.login == user_login:
-                        acted_pr_numbers.add(pr_number)
+                    timeline_events.append(evt)
+                    if evt.actor.login == user_login:
+                        acted_pr_numbers.add(evt.pull_request_number)
 
         # ---------------------------
         # Files

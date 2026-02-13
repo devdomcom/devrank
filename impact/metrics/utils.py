@@ -389,9 +389,15 @@ def is_bug_fix_indicator(text: str) -> bool:
     if not text:
         return False
     text_lower = text.lower()
+    # Conventional commit: fix: or fix(scope): or fix!:
+    if re.match(r'^fix(\(.*?\))?!?:', text_lower):
+        return True
     # Specific prefix patterns (no false positives)
-    prefix_patterns = ["fix:", "bugfix:", "bug fix", "fixes #", "closes #", "resolves #", "bug:", "hotfix", "issue #"]
+    prefix_patterns = ["bugfix:", "bug fix", "bug:", "hotfix"]
     if any(p in text_lower for p in prefix_patterns):
+        return True
+    # Issue/PR refs require actual digits after # (avoids PR template boilerplate)
+    if re.search(r'(?:fixes|closes|resolves|issue)\s*#\d+', text_lower):
         return True
     # Ambiguous terms need word boundaries
     word_boundary_patterns = [r'\berror\b', r'\bcrash\b', r'\bregression\b']
@@ -419,8 +425,14 @@ def is_test_file(filename: str) -> bool:
     ]
     if any(p in f_lower for p in substring_patterns):
         return True
-    # test_ should only match at start of filename or after /
+    # Root-level test directories (no leading /)
+    if f_lower.startswith("tests/") or f_lower.startswith("test/"):
+        return True
+    # test_ prefix at start of filename or after /
     if re.search(r'(^|/)test_', f_lower):
+        return True
+    # _test. suffix (e.g., foo_test.py, bar_test.ts)
+    if re.search(r'_test\.', f_lower):
         return True
     # Tool/framework names should match as path segments
     if re.search(r'(^|/)(jest|mocha|pytest)(/|\.|\b)', f_lower):
@@ -572,7 +584,7 @@ def compute_code_churn(
         if dates:
             period_days = (max(dates) - min(dates)).days or 1
     churn_per_week = (churned_lines / max(1, period_days / 7.0))
-    return {
+    result = {
         "churn_rate": rate,
         "churned_lines": churned_lines,
         "total_lines": total_lines,
@@ -584,6 +596,9 @@ def compute_code_churn(
         "churn_per_week": churn_per_week,
         "period_days": period_days,
     }
+    if not prs:
+        result["no_data"] = True
+    return result
 
 
 def _parse_hunk_lines(patch: str | None, side: str = "-") -> set[int]:
@@ -668,7 +683,14 @@ def compute_rework_rate(ledger, user_login: str, prs: list, window_days: int = 2
         dates = [p.created_at for p in prs if p.created_at]
         if dates:
             period_days = (max(dates) - min(dates)).days or 1
-    no_data = period_days < window_days or total_changed == 0
+    short_period = period_days < window_days
+    no_patches = total_changed == 0
+    no_data = short_period or no_patches
+    no_data_reason = None
+    if short_period:
+        no_data_reason = f"period ({period_days}d) shorter than lookback window ({window_days}d)"
+    elif no_patches:
+        no_data_reason = "no patch data available for line-level analysis"
     return {
         "rework_rate": rate,
         "reworked_lines": reworked_lines,
@@ -678,6 +700,7 @@ def compute_rework_rate(ledger, user_login: str, prs: list, window_days: int = 2
         "pr_count": len(prs),
         "period_days": period_days,
         "no_data": no_data,
+        "no_data_reason": no_data_reason,
     }
 
 

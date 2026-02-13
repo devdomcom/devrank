@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from impact.domain.models import CanonicalBundle, MetricContext, MetricResult
 
@@ -25,6 +25,7 @@ class MetricListItem(BaseModel):
     slug: str
     name: str
     description: str
+    category: str
 
 
 class MetricResponse(BaseModel):
@@ -32,6 +33,7 @@ class MetricResponse(BaseModel):
     slug: str
     name: str
     description: str
+    category: str
     rating: Rating
     summary: str
     details: dict[str, Any]
@@ -50,20 +52,21 @@ class MetricsReport(BaseModel):
 class ComputeMetricsRequest(BaseModel):
     """Request for metrics computation.
 
-    Only ``dump_path`` is required.  ``user_login``, ``start_date``, and
-    ``end_date`` are inferred from the dump manifest when omitted.
+    ``dump_path`` and ``role`` are required.  ``user_login``, ``start_date``,
+    and ``end_date`` are inferred from the dump manifest when omitted.
     """
-    dump_path: str
-    user_login: str | None = None
-    start_date: datetime | None = None
-    end_date: datetime | None = None
+    dump_path: str = Field(examples=["impact/samples/github_live_dump"])
+    role: str = Field(examples=["senior_dev"])
+    user_login: str | None = Field(None, examples=["msyavuz"])
+    start_date: datetime | None = Field(None, examples=["2026-01-19T00:00:00Z"])
+    end_date: datetime | None = Field(None, examples=["2026-01-29T00:00:00Z"])
     metric_slugs: list[str] | None = None  # optional filter
 
 
 class TimeWindow(BaseModel):
     """Time window spec for comparisons (start/end inferred from manifest if omitted)."""
-    start_date: datetime | None = None
-    end_date: datetime | None = None
+    start_date: datetime | None = Field(None, examples=["2026-01-19T00:00:00Z"])
+    end_date: datetime | None = Field(None, examples=["2026-01-29T00:00:00Z"])
 
 
 class CompareMetricsRequest(BaseModel):
@@ -71,12 +74,12 @@ class CompareMetricsRequest(BaseModel):
 
     Reuses dump/role patterns from compute; metrics optional (runs all if omitted).
     """
-    dump_path: str
+    dump_path: str = Field(examples=["impact/samples/github_live_dump"])
     metrics: list[str] | None = None
     window1: TimeWindow
     window2: TimeWindow
-    role: str = "default"
-    user_login: str | None = None  # shared across windows
+    role: str = Field(examples=["senior_dev"])
+    user_login: str | None = Field(None, examples=["msyavuz"])
 
 
 class HealthResponse(BaseModel):
@@ -105,6 +108,7 @@ class MetricComparison(BaseModel):
     slug: str
     name: str
     description: str
+    category: str
     rating1: Rating
     rating2: Rating
     summary1: str

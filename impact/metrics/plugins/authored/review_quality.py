@@ -20,7 +20,13 @@ class ReviewIterations(Metric):
     def description(self) -> str:
         return "Avg change-request cycles per merged PR (review churn/rounds)."
 
+    @property
+    def category(self) -> str:
+        return "pr_hygiene_process"
+
     def run(self, context: MetricContext) -> MetricResult:
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
         )
@@ -40,8 +46,9 @@ class ReviewIterations(Metric):
             "merged_prs": len(merged),
             "average_iterations": avg,
             "per_pr": per_pr,
+            "period_days": period_days,
         }
-        if not counts:
+        if not counts or (period_days < 14 and len(counts) < 3):
             details["no_data"] = True
         return MetricResult(metric_slug=self.slug, summary=summary, details=details)
 
@@ -62,6 +69,10 @@ class TimeToFirstReview(Metric):
     @property
     def description(self) -> str:
         return "Median time from PR creation to initial reviewer feedback."
+
+    @property
+    def category(self) -> str:
+        return "pr_hygiene_process"
 
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(
@@ -115,6 +126,10 @@ class SlowReviewResponse(Metric):
     @property
     def description(self) -> str:
         return "Median author response time to changes-requested reviews."
+
+    @property
+    def category(self) -> str:
+        return "pr_hygiene_process"
 
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(

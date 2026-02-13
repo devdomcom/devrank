@@ -16,6 +16,10 @@ class DependencyChangeRate(Metric):
     def description(self) -> str:
         return "Frequency of dep file updates (package.json/requirements/etc.) for repo health."
 
+    @property
+    def category(self) -> str:
+        return "scope_collaboration"
+
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login
         all_prs = context.ledger.get_prs_for_user(user, context.start_date, context.end_date)
@@ -50,6 +54,8 @@ class DependencyChangeRate(Metric):
             "per_pr": per_pr,
             "analyzed_pr_numbers": [p.number for p in all_prs],
         }
+        if not prs:
+            details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,
             summary=summary,

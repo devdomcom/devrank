@@ -408,40 +408,86 @@ METRIC_THRESHOLDS = {
 }
 
 
-def score_metric(slug: str, value: float) -> float | None:
-    """Return a continuous 0-100 score for a metric value using linear interpolation.
-
-    Uses the "scores" breakpoints defined in METRIC_THRESHOLDS to interpolate
-    smoothly between rating bands, eliminating hard cliff effects.
-
-    Returns None if the metric has no scoring breakpoints (e.g. no_rating metrics).
-    """
-    thresh = METRIC_THRESHOLDS.get(slug)
-    if not thresh or "scores" not in thresh:
-        return None
-
-    breakpoints = thresh["scores"]
-    # Clamp to the range of defined breakpoints
+def _interpolate_breakpoints(value: float, breakpoints: list) -> float:
+    """Linear interpolation over (value, score) breakpoints. Shared by code + YAML paths."""
     if value <= breakpoints[0][0]:
         return float(breakpoints[0][1])
     if value >= breakpoints[-1][0]:
         return float(breakpoints[-1][1])
-
-    # Find the two surrounding breakpoints and interpolate linearly
     for i in range(len(breakpoints) - 1):
         x0, y0 = breakpoints[i]
         x1, y1 = breakpoints[i + 1]
         if x0 <= value <= x1:
             t = (value - x0) / (x1 - x0)
             return y0 + t * (y1 - y0)
-
     return float(breakpoints[-1][1])
 
 
-def get_continuous_score(metric_slug: str, details: dict[str, Any]) -> float | None:
-    """Compute continuous 0-100 score (DRY helper)."""
+def score_metric(slug: str, value: float) -> float | None:
+    """Return a continuous 0-100 score using METRIC_THRESHOLDS breakpoints (code fallback)."""
+    thresh = METRIC_THRESHOLDS.get(slug)
+    if not thresh or "scores" not in thresh:
+        return None
+    return _interpolate_breakpoints(value, thresh["scores"])
+
+
+# --- YAML role threshold resolution ---
+
+
+def resolve_role_metric_cfg(slug: str, role_config: dict | None) -> dict | None:
+    """Return the YAML metric config for *slug* if it defines thresholds, else None."""
+    if not role_config or "metrics" not in role_config:
+        return None
+    mcfg = role_config["metrics"].get(slug)
+    if not mcfg or "key" not in mcfg or "direction" not in mcfg:
+        return None
+    return mcfg
+
+
+def rate_from_yaml(value: float, metric_cfg: dict) -> str:
+    """Compute discrete rating from YAML threshold config (direction-aware)."""
+    direction = metric_cfg.get("direction", "higher_is_better")
+    if direction == "lower_is_better":
+        for level in ["excellent", "good", "neutral"]:
+            if level in metric_cfg and value <= metric_cfg[level]:
+                return level
+        return "bad"
+    elif direction == "higher_is_better":
+        for level in ["excellent", "good", "neutral"]:
+            if level in metric_cfg and value >= metric_cfg[level]:
+                return level
+        return "bad"
+    elif direction == "band":
+        for level in ["excellent", "good", "neutral"]:
+            bounds = metric_cfg.get(level)
+            if bounds and bounds[0] <= value <= bounds[1]:
+                return level
+        return "bad"
+    return "unknown"
+
+
+def score_from_yaml(value: float, metric_cfg: dict) -> float | None:
+    """Continuous 0-100 score from YAML breakpoints."""
+    breakpoints = metric_cfg.get("scores")
+    if not breakpoints:
+        return None
+    return _interpolate_breakpoints(value, breakpoints)
+
+
+def get_continuous_score(metric_slug: str, details: dict[str, Any], role_config: dict | None = None) -> float | None:
+    """Compute continuous 0-100 score. Tries YAML role config first, falls back to code thresholds."""
     if is_no_data(details):
         return None
+    # Try YAML thresholds
+    mcfg = resolve_role_metric_cfg(metric_slug, role_config)
+    if mcfg:
+        key = mcfg["key"]
+        if key in details:
+            try:
+                return score_from_yaml(float(details[key]), mcfg)
+            except (TypeError, ValueError):
+                return None
+    # Fallback to code thresholds
     key = METRIC_THRESHOLDS.get(metric_slug, {}).get("key")
     if key and key in details:
         try:

@@ -32,6 +32,10 @@ class TrivialContributionRate(Metric):
     def description(self) -> str:
         return "Daily rate of tiny PRs (<10 lines) to detect low-impact/gaming behavior."
 
+    @property
+    def category(self) -> str:
+        return "pr_hygiene_process"
+
     def run(self, context: MetricContext) -> MetricResult:
         # Filter: exclude drafts for quality/trivial rate (incomplete); include closed.
         all_prs = context.ledger.get_prs_for_user(
@@ -68,9 +72,10 @@ class TrivialContributionRate(Metric):
             "trivial_prs_per_day": trivial_prs_per_day,
             "trivial_pr_numbers": [pr.number for pr in trivial_prs],
         }
-        # Mark as no_data when there are no PRs to evaluate,
-        # so the threshold system does not reward 0.0 as "excellent".
-        if total_pr_count == 0:
+        # Mark as no_data when there are no PRs to evaluate or the sample is
+        # too small (short period with few PRs), so the threshold system does
+        # not reward 0.0 as "excellent".
+        if total_pr_count == 0 or (days < 14 and total_pr_count < 5):
             details["no_data"] = True
 
         return MetricResult(

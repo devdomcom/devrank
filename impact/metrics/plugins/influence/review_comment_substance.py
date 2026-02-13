@@ -60,6 +60,10 @@ class ReviewCommentSubstance(Metric):
     def description(self) -> str:
         return "Avg quality score of review comments (length, code suggestions, questions, refs)."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date
@@ -105,6 +109,8 @@ class ReviewCommentSubstance(Metric):
 
         avg_score = sum(scores) / len(scores) if scores else 0.0
 
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         summary = (
             f"Avg review comment substance: {avg_score:.1f}/100 "
             f"({len(scores)} comments across {len(reviewed_prs)} PRs)."
@@ -113,8 +119,9 @@ class ReviewCommentSubstance(Metric):
             "avg_substance_score": avg_score,
             "total_comments": len(scores),
             "reviewed_pr_count": len(reviewed_prs),
+            "period_days": round(period_days, 1),
             "per_comment": per_comment[:50],  # cap output size
         }
-        if not scores:
+        if not scores or (period_days < 14 and len(scores) < 3):
             details["no_data"] = True
         return MetricResult(metric_slug=self.slug, summary=summary, details=details)

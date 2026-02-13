@@ -30,6 +30,10 @@ class PRThroughput(Metric):
     def description(self) -> str:
         return "Quantifies PR volume (opened/merged counts) and success ratio for productivity."
 
+    @property
+    def category(self) -> str:
+        return "productivity_throughput"
+
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
@@ -40,14 +44,23 @@ class PRThroughput(Metric):
         merged_count = len(merged)
         merge_ratio = merged_count / opened_count if opened_count else 0.0
 
+        if context.start_date and context.end_date:
+            period_days = (context.end_date - context.start_date).total_seconds() / 86400
+        else:
+            period_days = 30.0
+
         summary = f"{opened_count} PRs opened, {merged_count} merged in window. Merge ratio: {merge_ratio:.2f}"
         details: dict[str, object] = {
             "opened_count": opened_count,
             "merged_count": merged_count,
             "merge_ratio": merge_ratio,
+            "period_days": round(period_days, 1),
             "opened_pr_numbers": [pr.number for pr in prs],
             "merged_pr_numbers": [pr.number for pr in merged],
         }
+
+        if opened_count == 0 or (period_days < 14 and opened_count < 5):
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

@@ -20,7 +20,13 @@ class RevertIntroductionRate(Metric):
     def description(self) -> str:
         return "% of user's commits that were reverted (attributed to original author, not reverter)."
 
+    @property
+    def category(self) -> str:
+        return "risk_sustainability"
+
     def run(self, context: MetricContext) -> MetricResult:
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         # Get all commits for the user (denominator: user's total commits)
         user_commits = context.ledger.get_commits_for_user(
             context.user_login, context.start_date, context.end_date
@@ -63,8 +69,9 @@ class RevertIntroductionRate(Metric):
             "revert_count": len(user_reverted),
             "rate": rate,
             "revert_shas": [c.sha for c in user_reverted],
+            "period_days": period_days,
         }
-        if total_commits == 0:
+        if total_commits == 0 or (period_days < 14 and total_commits < 5):
             details["no_data"] = True
 
         return MetricResult(

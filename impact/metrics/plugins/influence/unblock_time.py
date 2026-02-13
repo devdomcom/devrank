@@ -20,6 +20,10 @@ class UnblockTime(Metric):
     def description(self) -> str:
         return "Median hours to re-review after blocking CR + commits (unblock speed)."
 
+    @property
+    def category(self) -> str:
+        return "influence_review"
+
     def run(self, context: MetricContext) -> MetricResult:
         # User's CR reviews
         reviews = context.ledger.get_reviews_for_user(
@@ -69,6 +73,8 @@ class UnblockTime(Metric):
             response_times.append(hours)
             per_cr.append({"cr_id": cr.id, "pr_number": pr_num, "hours": hours})
 
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+
         if response_times:
             median = percentile(response_times, 0.5)
             p75 = percentile(response_times, 0.75)
@@ -81,8 +87,10 @@ class UnblockTime(Metric):
             "cr_count": len(per_cr),
             "median_hours": median,
             "p75_hours": p75,
+            "period_days": round(period_days, 1),
             "per_cr": per_cr,
             "no_cr_activity": len(cr_reviews) == 0,
+            "no_data": len(response_times) == 0 or (period_days < 21 and len(response_times) < 2),
         }
 
         return MetricResult(

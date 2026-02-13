@@ -32,6 +32,7 @@ htmlcov/
 .vscode/
 
 # Local dumps (keep samples under impact/samples/)
+/dumps/
 /tmp/dump*/
 
 # Logs

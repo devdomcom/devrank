@@ -19,60 +19,55 @@ from impact.ingestion.dump import DumpIngestion
 from impact.ledger.ledger import Ledger
 from impact.metrics import get_metrics
 from impact.templates.pdf_report import generate_candidate_pdf
-from impact.thresholds import METRIC_THRESHOLDS, score_metric
+from impact.thresholds import METRIC_THRESHOLDS, get_continuous_score, rate_from_yaml, resolve_role_metric_cfg
 
 
-def get_metric_rating(metric_slug, details, role_config=None):
+def _apply_allowed_ratings(rating: str, metric_slug: str, role_config: dict) -> str:
+    """Restrict rating to allowed set from role YAML (force neutral if not allowed)."""
+    if not role_config or "metrics" not in role_config:
+        return rating
+    mcfg = role_config["metrics"].get(metric_slug)
+    if not mcfg:
+        return rating
+    allowed = mcfg.get("allowed_ratings")
+    if allowed and rating not in allowed:
+        return "neutral"
+    return rating
+
+
+def get_metric_rating(metric_slug, details, role_config):
     # Special case: no activity (e.g. unblock_time with 0 CRs) rates neutral (not excellent)
     if details.get("no_cr_activity"):
         return "neutral"
-    # Guard: metrics with no_data flag should not be rated (avoids rewarding 0.0 as "excellent")
+    # Guard: metrics with no_data flag should not be rated
     if details.get("no_data"):
         return "INSUFFICIENT_DATA"
-    if metric_slug not in METRIC_THRESHOLDS:
-        return "unknown"
-    thresh = METRIC_THRESHOLDS[metric_slug]
-    key = thresh["key"]
-    if key not in details:
+
+    # Check no_rating (descriptive only; e.g. net_code_contribution)
+    mcfg = resolve_role_metric_cfg(metric_slug, role_config)
+    if mcfg and mcfg.get("no_rating"):
+        return "descriptive"
+    thresh = METRIC_THRESHOLDS.get(metric_slug, {})
+    if thresh.get("no_rating"):
+        return "descriptive"
+
+    # Resolve key + value
+    key = (mcfg or {}).get("key") or thresh.get("key")
+    if not key or key not in details:
         return "unknown"
     val = details[key]
-    # New pattern first: no_rating metrics (descriptive only; e.g. net code ratio; overrides role knobs)
-    if thresh.get("no_rating") or (
-        role_config
-        and "metrics" in role_config
-        and metric_slug in role_config["metrics"]
-        and role_config["metrics"][metric_slug].get("no_rating")
-    ):
-        return "descriptive"  # no quality signal; surfaces info only
-    # First pattern: role YAML knobs override thresholds (bounds; extensible to all metrics)
-    if (
-        role_config
-        and "metrics" in role_config
-        and metric_slug in role_config["metrics"]
-        and "thresholds" in role_config["metrics"][metric_slug]
-    ):
-        custom = role_config["metrics"][metric_slug]["thresholds"].get(key, {})
-        for level in ["excellent", "good", "neutral", "bad"]:
-            if level in custom:
-                bound = custom[level]
-                # Assume min bound for > ; extendable
-                if val >= bound:
-                    rating = level
-                    # Still respect allowed_ratings
-                    allowed = role_config["metrics"][metric_slug].get("allowed_ratings", ["neutral", "good"])
-                    if rating not in allowed:
-                        rating = "neutral"
-                    return rating
-    # Default code thresholds
+
+    # Try YAML thresholds first (direction-aware)
+    if mcfg:
+        rating = rate_from_yaml(val, mcfg)
+        return _apply_allowed_ratings(rating, metric_slug, role_config)
+
+    # Fallback to code thresholds
+    if metric_slug not in METRIC_THRESHOLDS:
+        return "unknown"
     for level in ["excellent", "good", "neutral", "bad"]:
         if level in thresh and thresh[level](val):
-            rating = level
-            # Role config: per-metric atomic restrict (e.g. dep rate never BAD; configurable)
-            if role_config and "metrics" in role_config and metric_slug in role_config["metrics"]:
-                allowed = role_config["metrics"][metric_slug].get("allowed_ratings", ["neutral", "good"])
-                if rating not in allowed:
-                    rating = "neutral"  # force for restricted (e.g. no BAD)
-            return rating
+            return _apply_allowed_ratings(level, metric_slug, role_config)
     return "unknown"
 
 
@@ -114,8 +109,8 @@ def main():
     )
     parser.add_argument(
         "--role",
-        default="default",
-        help="Role name for YAML config (e.g. default/senior_dev from roles/; copy/edit YAMLs).",
+        required=True,
+        help="Role name for YAML config (e.g. senior_dev from roles/; copy/edit YAMLs).",
     )
     parser.add_argument(
         "--role-config",
@@ -186,16 +181,18 @@ def main():
     ingestion = DumpIngestion(str(dump_dir))
     bundle = ingestion.ingest()
 
-    # Read manifest for user and dates if metrics are requested
+    # Read manifest for user, dates, and repositories
+    manifest_path = os.path.join(dump_dir, "dump_manifest.json")
+    manifest: dict = {}
     user_login = None
     start_date = None
     end_date = None
     manifest_role = None
-    if args.metrics:
-        manifest_path = os.path.join(dump_dir, "dump_manifest.json")
+    repositories: list[str] = []
+    if os.path.exists(manifest_path):
         with open(manifest_path) as f:
             manifest = json.load(f)
-        user_login = manifest["user"]
+        user_login = manifest.get("user")
         start_date = (
             datetime.fromisoformat(manifest["from"].replace("Z", "+00:00"))
             if "from" in manifest
@@ -206,8 +203,8 @@ def main():
             if "to" in manifest
             else None
         )
-        # Persist role from manifest if present (for on-fly/config)
         manifest_role = manifest.get("role")
+        repositories = manifest.get("repositories", [])
 
     # Header
     print("🚀 DevRank Impact Report")
@@ -228,7 +225,7 @@ def main():
 
     # Role config for ratings (YAML from roles/ dir; on-fly via --role-config or --role;
     # copy/paste/edit YAMLs; seamless with report/thresholds)
-    role = args.role or manifest_role or "default"
+    role = args.role
     role_config = get_role_config(role, getattr(args, "role_config", None))
 
     metrics_results = []  # Collect for export (always init)
@@ -254,11 +251,9 @@ def main():
             metric = metric_class()
             result = metric.run(context)
 
-            # Compute rating (respects role config map for allowed types e.g. no BAD for dep rate)
+            # Compute rating + continuous score (YAML thresholds first, code fallback)
             rating = get_metric_rating(metric.slug, result.details, role_config)
-            # Continuous score (0-100) with interpolation for finer granularity
-            key = METRIC_THRESHOLDS.get(metric.slug, {}).get("key")
-            continuous_score = score_metric(metric.slug, result.details[key]) if key and key in result.details else None
+            continuous_score = get_continuous_score(metric.slug, result.details, role_config)
 
             # Print result with modern formatting
             print("=" * 80)
@@ -284,6 +279,7 @@ def main():
                 "name": metric.name,
                 "slug": metric.slug,
                 "description": metric.description,
+                "category": metric.category,
                 "rating": rating,
                 "score": continuous_score,
                 "summary": result.summary,
@@ -291,9 +287,11 @@ def main():
             })
 
     # Export mode (e.g. --export candidate.pdf for PDF template; modern sections/rating)
-    if args.export and args.export.endswith(".pdf") and "metrics_results" in locals():
+    if args.export and args.export.endswith(".pdf") and metrics_results:
         period_str = f"{start_date.date()} to {end_date.date()}" if start_date and end_date else "N/A"
-        generate_candidate_pdf(metrics_results, user_login or "Candidate", period_str, args.export)
+        generate_candidate_pdf(
+            metrics_results, user_login or "Candidate", period_str, args.export, repositories,
+        )
 
     if args.out:
         print(f"Output to {args.out} is not implemented yet.")
