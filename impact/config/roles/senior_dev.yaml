@@ -36,6 +36,27 @@ metrics:
       - good
       - neutral
       - bad
+  # Coding Time To PR: full for senior
+  coding_time_to_pr:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # Merge Delay: full for senior
+  merge_delay:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # Coding Days: full for senior
+  coding_days:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
   pr_size_distribution:
     allowed_ratings:
       - excellent
@@ -126,6 +147,13 @@ metrics:
       - good
       - neutral
       - bad
+  # First-time approval: full ratings for senior (high=excellent)
+  first_time_approval_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
   review_turnaround_time:
     allowed_ratings:
       - excellent
@@ -158,6 +186,13 @@ metrics:
       - bad
   # code_churn_rate: full (senior may tolerate higher churn)
   code_churn_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # Rework Rate: full (senior may have some rework)
+  rework_rate:
     allowed_ratings:
       - excellent
       - good

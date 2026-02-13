@@ -306,6 +306,15 @@ class GitHubAdapter(ProviderAdapter):
                         )
                         continue
 
+                    # requested_reviewer for review_demand (accurate target of request)
+                    requested = None
+                    if tl_dict.get("event") == "review_requested":
+                        req_dict = tl_dict.get("requested_reviewer") or tl_dict.get("review_requester")  # fallback variants in data
+                        if req_dict:
+                            try:
+                                requested = ensure_user(req_dict)
+                            except (ValueError, KeyError, TypeError):
+                                pass
                     timeline_events.append(
                         TimelineEvent(
                             id=tl_dict["id"],
@@ -320,6 +329,7 @@ class GitHubAdapter(ProviderAdapter):
                             comment_id=tl_dict.get("comment_id"),
                             state=tl_dict.get("state"),
                             html_url=tl_dict.get("html_url"),
+                            requested_reviewer=requested,
                         )
                     )
                     if actor.login == user_login:
@@ -344,6 +354,8 @@ class GitHubAdapter(ProviderAdapter):
                                 changes=file_dict["changes"],
                                 status=file_dict["status"],
                                 pull_request_number=pr_number,
+                                # Patch loaded for rework (hunk-based line overlap)
+                                patch=file_dict.get("patch"),
                             )
                         )
 

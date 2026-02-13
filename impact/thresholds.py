@@ -34,6 +34,24 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x > 7,
         "scores": [(0, 100), (1, 75), (3, 50), (7, 25), (14, 0)],
     },
+    # Coding Time To PR: lower = fast pre-PR coding (elite <8h per benchmarks)
+    "coding_time_to_pr": {
+        "key": "median_hours",
+        "excellent": lambda x: x <= 8,
+        "good": lambda x: 8 < x <= 24,
+        "neutral": lambda x: 24 < x <= 48,
+        "bad": lambda x: x > 48,
+        "scores": [(0, 100), (8, 75), (24, 50), (48, 25), (72, 0)],
+    },
+    # Merge Delay: lower = fast post-approval to merge (isolates CI/gates; elite <4h)
+    "merge_delay": {
+        "key": "median_hours",
+        "excellent": lambda x: x <= 4,
+        "good": lambda x: 4 < x <= 12,
+        "neutral": lambda x: 12 < x <= 24,
+        "bad": lambda x: x > 24,
+        "scores": [(0, 100), (4, 75), (12, 50), (24, 25), (48, 0)],
+    },
     "pr_merge_effectiveness": {
         "key": "average_back_and_forth",
         "excellent": lambda x: x <= 1,
@@ -116,6 +134,15 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x > 4.0,
         "scores": [(0, 100), (1.5, 75), (2.5, 50), (4.0, 25), (8.0, 0)],
     },
+    # Coding Days: high ratio = consistent daily work (elite ~60-80% per benchmarks)
+    "coding_days": {
+        "key": "ratio",
+        "excellent": lambda x: x >= 0.7,
+        "good": lambda x: 0.5 <= x < 0.7,
+        "neutral": lambda x: 0.3 <= x < 0.5,
+        "bad": lambda x: x < 0.3,
+        "scores": [(0, 0), (0.3, 25), (0.5, 50), (0.7, 75), (1.0, 100)],
+    },
     # Reviews Given: opinionated on collab volume (industry ~2-5/week avg for active)
     "reviews_given": {
         "key": "reviews_per_week",
@@ -124,6 +151,24 @@ METRIC_THRESHOLDS = {
         "neutral": lambda x: 1.0 <= x < 3.0,
         "bad": lambda x: x < 1.0,
         "scores": [(0, 0), (1.0, 25), (3.0, 50), (5.0, 75), (10.0, 100)],
+    },
+    # Review Demand: high requests/week = sought-after reviewer (demand signal)
+    "review_demand": {
+        "key": "demand_per_week",
+        "excellent": lambda x: x >= 10.0,
+        "good": lambda x: 5.0 <= x < 10.0,
+        "neutral": lambda x: 2.0 <= x < 5.0,
+        "bad": lambda x: x < 2.0,
+        "scores": [(0, 0), (2.0, 25), (5.0, 50), (10.0, 75), (20.0, 100)],
+    },
+    # First Reviewer Rate: high = driving reviews as first (position/initiative)
+    "first_reviewer_rate": {
+        "key": "rate",
+        "excellent": lambda x: x >= 0.6,
+        "good": lambda x: 0.4 <= x < 0.6,
+        "neutral": lambda x: 0.2 <= x < 0.4,
+        "bad": lambda x: x < 0.2,
+        "scores": [(0, 0), (0.2, 25), (0.4, 50), (0.6, 75), (1.0, 100)],
     },
     # PR Merge Rate: high % of reviews leading to merge = strong influence
     "pr_merge_rate": {
@@ -146,6 +191,15 @@ METRIC_THRESHOLDS = {
     # Approval To Merge Ratio: high = accurate approvals on ready code
     "approval_to_merge_ratio": {
         "key": "ratio",
+        "excellent": lambda x: x >= 0.8,
+        "good": lambda x: 0.6 <= x < 0.8,
+        "neutral": lambda x: 0.4 <= x < 0.6,
+        "bad": lambda x: x < 0.4,
+        "scores": [(0, 0), (0.4, 25), (0.6, 50), (0.8, 75), (1.0, 100)],
+    },
+    # First-Time Approval Rate: high = PRs approved immediately (elite >80%)
+    "first_time_approval_rate": {
+        "key": "rate",
         "excellent": lambda x: x >= 0.8,
         "good": lambda x: 0.6 <= x < 0.8,
         "neutral": lambda x: 0.4 <= x < 0.6,
@@ -257,6 +311,15 @@ METRIC_THRESHOLDS = {
         "neutral": lambda x: 25 < x <= 40,
         "bad": lambda x: x > 40,
         "scores": [(0, 100), (10, 75), (25, 50), (40, 25), (80, 0)],
+    },
+    # Rework Rate: low % = minimal self-rework on recent code (DORA elite <2%; high=bad)
+    "rework_rate": {
+        "key": "rework_rate",
+        "excellent": lambda x: x <= 2,
+        "good": lambda x: 2 < x <= 8,
+        "neutral": lambda x: 8 < x <= 16,
+        "bad": lambda x: x > 16,
+        "scores": [(0, 100), (2, 75), (8, 50), (16, 25), (30, 0)],
     },
     # Self-Merge Rate: low % = good (no approval skips); worst if repo low but engineer high
     "self_merge_rate": {

@@ -116,6 +116,8 @@ class FileRecord(BaseModel):
     changes: int
     status: str
     pull_request_number: int
+    # Patch for rework detection (unified diff hunks; loaded from files.jsonl)
+    patch: str | None = None
 
 
 class TimelineEvent(BaseModel):
@@ -131,6 +133,8 @@ class TimelineEvent(BaseModel):
     comment_id: int | None = None
     state: str | None = None
     html_url: str | None = None
+    # requested_reviewer for accurate review_demand (who was requested)
+    requested_reviewer: User | None = None
 
 
 class CanonicalBundle(BaseModel):

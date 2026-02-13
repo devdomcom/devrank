@@ -1,7 +1,7 @@
 # Proposed Metrics — Unimplemented
 
-Status: 38 metrics currently implemented (26 authored, 12 influence).
-All 12 metrics from the previous proposal round have been implemented or intentionally dropped.
+Status: 42 metrics currently implemented (30 authored, 12 influence).
+All 12 metrics from the previous proposal round have been implemented or intentionally dropped (First-Time Approval Rate + Coding Time To PR + Coding Days + Rework Rate + Merge Delay now live).
 
 The gaps below were identified by cross-referencing our metric set against
 DORA (2025), LinearB benchmarks (8.1M PRs), SPACE, Pluralsight Flow, GitClear,
@@ -28,7 +28,7 @@ data are listed.
 - **Why it matters:** The single most requested code-quality-at-submission metric.
   LinearB benchmark: elite teams achieve >80%.
 
-### 2. Coding Time
+### 2. Coding Time To PR (implemented)
 
 Median time from an engineer's first commit on a branch to PR creation.
 
@@ -39,11 +39,11 @@ Median time from an engineer's first commit on a branch to PR creation.
 - **Data:** For each PR, find the earliest commit timestamp in that PR's commit
   list, then compute `pr.created_at - earliest_commit.date`.
 - **Feasibility:** YES — `Commit.date`, `Commit.pull_request_number`, `Commit.idx`
-  (ordering), and `PullRequest.created_at` are all present.
+  (ordering), and `PullRequest.created_at` are all present. (See `coding_time_to_pr.py`.)
 - **Why it matters:** Long coding times reveal excessive batching or blocked
   engineers. LinearB benchmark: elite <1h, strong <8h.
 
-### 3. Coding Days
+### 3. Coding Days (implemented)
 
 Number of distinct calendar days with at least one commit, expressed as a ratio
 of working days in the period.
@@ -54,11 +54,11 @@ of working days in the period.
   weekly gaps for spotting inconsistency.
 - **Data:** Deduplicate commit dates per engineer → count unique days.
 - **Feasibility:** YES — `Commit.date` and `Commit.author.login` are present.
-  Timezone-aware day bucketing possible via `CanonicalBundle.user_timezone`.
+  Timezone-aware day bucketing possible via `CanonicalBundle.user_timezone`. (See `coding_days.py`.)
 - **Why it matters:** Industry-standard engagement metric.
   GitClear benchmark: median developer averages 156 active days/year (~60%).
 
-### 4. Rework Rate
+### 4. Rework Rate (implemented)
 
 % of code changes in an engineer's PRs that modify lines the same author wrote
 within the previous 21 days (self-rework on recently written code).
@@ -70,18 +70,13 @@ within the previous 21 days (self-rework on recently written code).
   Neither captures the "wasted effort" dimension of rewriting your own recent code.
 - **Data:** For each changed file in a PR, compare modified line ranges against
   the same author's changes in PRs merged within the prior 21 days. Requires
-  file-level diff analysis across PRs.
-- **Feasibility:** NOT YET — requires plumbing change. Raw `files.jsonl` contains
-  `patch` fields with unified diffs and hunk headers (`@@ -33,6 +33,12 @@`), but
-  the adapter does not load them — `FileRecord` has no `patch` field. To enable:
-  (a) add `patch: str | None` to `FileRecord` model, (b) update `github.py`
-  adapter to load `file_dict.get("patch")`, (c) parse hunk headers for line-range
-  overlap detection across PRs.
+  file-level diff analysis across PRs. (Plumbing added: FileRecord.patch + hunk parser in utils.)
+- **Feasibility:** YES — now enabled via patch loading and _parse_hunk_lines.
 - **Why it matters:** THE breakout metric of 2025. Being DORA's 5th metric gives
   it institutional weight. DORA benchmark: elite teams <2%, median 8-16%.
   Directly measures wasted engineering effort.
 
-### 5. Merge Delay
+### 5. Merge Delay (implemented)
 
 Median time from last approval to actual merge (approval → merge gap).
 
@@ -90,7 +85,7 @@ Median time from last approval to actual merge (approval → merge gap).
   isolates the post-approval bottleneck — CI queues, merge-train waits,
   manual deployment gates, or simple inattention.
 - **Data:** For each merged PR, find the latest APPROVED review timestamp,
-  then compute `pr.merged_at - latest_approval.submitted_at`.
+  then compute `pr.merged_at - latest_approval.submitted_at`. (See `merge_delay.py`.)
 - **Feasibility:** YES — `ReviewRecord.state` (APPROVED), `ReviewRecord.submitted_at`,
   and `PullRequest.merged_at` are all present.
 - **Why it matters:** A PR approved but not merged is dead inventory. This

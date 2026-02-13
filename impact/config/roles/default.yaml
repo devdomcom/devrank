@@ -42,6 +42,27 @@ metrics:
       - good
       - neutral
       - bad
+  # Coding Time To PR: full ratings (lower better; no special no_rating)
+  coding_time_to_pr:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # Merge Delay: full (lower better)
+  merge_delay:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # Coding Days: full (higher ratio better)
+  coding_days:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
   pr_size_distribution:
     allowed_ratings:
       - excellent
@@ -132,6 +153,13 @@ metrics:
       - good
       - neutral
       - bad
+  # First-time approval inherits full ratings (no_rating=False); high rate rewarded
+  first_time_approval_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
   review_turnaround_time:
     allowed_ratings:
       - excellent
@@ -164,6 +192,13 @@ metrics:
       - bad
   # code_churn_rate: full ratings (high=bad per thresholds)
   code_churn_rate:
+    allowed_ratings:
+      - excellent
+      - good
+      - neutral
+      - bad
+  # Rework Rate: full (high % rework bad; DORA focus)
+  rework_rate:
     allowed_ratings:
       - excellent
       - good

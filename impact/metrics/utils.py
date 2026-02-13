@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Any, TypedDict
 import re
 
-from impact.domain.models import MetricContext, ReviewState
+from impact.domain.models import MetricContext, ReviewState, UserType
 from impact.ledger.ledger import Ledger
 
 
@@ -41,6 +41,35 @@ def calculate_merge_time_hours(pr) -> float | None:
         delta = pr.merged_at - pr.created_at
         return delta.total_seconds() / 3600
     return None
+
+
+def calculate_coding_time_to_pr_hours(ledger, pr) -> float | None:
+    """Time (hours) from first commit on PR's branch to PR creation (pre-PR coding)."""
+    commits = ledger.get_commits_for_pr(pr.number)
+    if not commits or not pr.created_at:
+        return None
+    # First commit (sorted by date in ledger)
+    first_commit = min(commits, key=lambda c: c.date)
+    if first_commit.date >= pr.created_at:
+        return 0.0  # commit at/after open (no pre-PR coding)
+    delta = pr.created_at - first_commit.date
+    return delta.total_seconds() / 3600
+
+
+def calculate_merge_delay_hours(ledger, pr) -> float | None:
+    """Median post-approval delay: latest APPROVED review to merge (bottleneck isolation)."""
+    if not (pr.merged and pr.merged_at):
+        return None
+    reviews = ledger.get_reviews_for_pr(pr.number)
+    approvals = [r for r in reviews if r.state == ReviewState.APPROVED]
+    if not approvals:
+        return None
+    # Latest approval before merge
+    last_approval = max(approvals, key=lambda r: r.submitted_at)
+    if last_approval.submitted_at >= pr.merged_at:
+        return 0.0
+    delta = pr.merged_at - last_approval.submitted_at
+    return delta.total_seconds() / 3600
 
 
 def collect_pr_interactions(
@@ -211,6 +240,34 @@ def get_weekly_activity_counts(dates: list[datetime]) -> dict:
     return {fmt(wk): count for wk, count in sorted(week_counts.items())}
 
 
+def compute_coding_days_ratio(
+    dates: list[datetime], start_date: datetime | None, end_date: datetime | None
+) -> dict:
+    """Distinct commit days / working days (Mon-Fri) in period; ratio 0-1."""
+    if not start_date or not end_date or not dates:
+        return {"active_days": 0, "total_working_days": 0, "ratio": 0.0, "per_day": []}
+    # Dedup active days
+    active_days = sorted({d.date() for d in dates})  # date() for day-level
+    # All working days (exclude weekends)
+    working_days = []
+    current = start_date.date()
+    end_d = end_date.date()
+    while current <= end_d:
+        if current.weekday() < 5:  # Mon=0 ... Fri=4
+            working_days.append(current)
+        current += timedelta(days=1)
+    # Active working days
+    active_working = [d for d in active_days if d.weekday() < 5]
+    total_working = len(working_days)
+    ratio = len(active_working) / total_working if total_working else 0.0
+    return {
+        "active_days": len(active_working),
+        "total_working_days": total_working,
+        "ratio": ratio,
+        "per_day": [d.isoformat() for d in active_working],  # for details
+    }
+
+
 def review_led_to_merge(ledger, review, max_hours=48) -> bool:
     """Check if user's review led to merge with close proximity (review -> commit -> merge, no intervening other reviews)."""
     pr_num = review.pull_request_number
@@ -300,6 +357,31 @@ def approval_was_final(ledger, review, max_hours_to_merge=48) -> bool:
     if not pr or not pr.merged_at:
         return True
     return (pr.merged_at - rev_time).total_seconds() / 3600 <= max_hours_to_merge
+
+
+def is_immediate_approval(ledger: Ledger, pr_number: int, author_login: str) -> bool:
+    """First non-self non-bot review is APPROVED; no prior CR/inline via is_change_request."""
+    reviews = ledger.get_reviews_for_pr(pr_number)
+    non_self = [
+        r for r in reviews
+        if r.user.login != author_login and getattr(r.user, "type", UserType.USER) != UserType.BOT
+    ]
+    if not non_self:
+        return False
+    non_self.sort(key=lambda r: r.submitted_at)
+    # Find first APPROVED
+    first_approved = next((r for r in non_self if r.state == ReviewState.APPROVED), None)
+    if not first_approved:
+        return False
+    # No CR before first approval
+    idx = non_self.index(first_approved)
+    for r in non_self[:idx]:
+        if is_change_request(r, ledger):
+            return False
+    # First approval itself has no inline comments (separate check; approved state ignores is_change_request)
+    if ledger.get_review_comments_for_review(first_approved.id):
+        return False
+    return True
 
 
 def is_bug_fix_indicator(text: str) -> bool:
@@ -501,6 +583,101 @@ def compute_code_churn(
         "weekly_rates": weekly_rates,
         "churn_per_week": churn_per_week,
         "period_days": period_days,
+    }
+
+
+def _parse_hunk_lines(patch: str | None, side: str = "-") -> set[int]:
+    """Parse unified diff hunks for changed line numbers (side='-' for old, '+' for new)."""
+    if not patch:
+        return set()
+    lines = set()
+    for line in patch.splitlines():
+        if line.startswith("@@"):
+            # @@ -old_start,old_count +new_start,new_count @@
+            match = re.search(r"@@\s+-(?P<old_start>\d+)(?:,(?P<old_count>\d+))?\s+\+(?P<new_start>\d+)(?:,(?P<new_count>\d+))?\s+@@", line)
+            if match:
+                g = "old" if side == "-" else "new"
+                start = int(match.group(f"{g}_start"))
+                count = int(match.group(f"{g}_count") or 1)
+                for i in range(count):
+                    lines.add(start + i)
+    return lines
+
+
+def compute_rework_rate(ledger, user_login: str, prs: list, window_days: int = 21) -> dict:
+    """% lines changed that overlap author's prior 21d changes (self-rework on recent code).
+    Uses patch hunks for line ranges; falls back if period short/no patches.
+    """
+    if not prs:
+        return {
+            "rework_rate": 0.0,
+            "reworked_lines": 0,
+            "total_changed": 0,
+            "per_pr": [],
+            "window_days": window_days,
+            "pr_count": 0,
+            "period_days": 0,
+            "no_data": True,
+        }
+    # File history: file -> list of (date, changed_lines_set) for author's prior PRs
+    file_history = defaultdict(list)
+    all_user_prs = ledger.get_prs_for_user(user_login)  # all time for history
+    for upr in all_user_prs:
+        for f in ledger.get_files_for_pr(upr.number):
+            if f.patch:
+                changed = _parse_hunk_lines(f.patch, "+")  # new lines written
+                file_history[f.filename].append((upr.created_at, changed))
+    # For target PRs in window
+    reworked_lines = 0
+    total_changed = 0
+    per_pr = []
+    for pr in prs:
+        pr_date = pr.created_at
+        pr_rework = 0
+        pr_total = 0
+        for f in ledger.get_files_for_pr(pr.number):
+            if not f.patch:
+                continue
+            this_changed = _parse_hunk_lines(f.patch, "+")
+            pr_total += len(this_changed) or f.changes  # fallback
+            # Prior author changes in window
+            prior = [
+                (t, ch) for t, ch in file_history.get(f.filename, [])
+                if t < pr_date and (pr_date - t).days <= window_days
+            ]
+            if prior:
+                # Union all prior lines (no double-count; accumulate unique overlaps)
+                prior_lines = set()
+                for _, prev in prior:
+                    prior_lines |= prev
+                overlap = len(this_changed & prior_lines)
+                pr_rework += overlap
+        total_changed += pr_total
+        reworked_lines += pr_rework
+        rate = (pr_rework / pr_total * 100) if pr_total else 0.0
+        per_pr.append({
+            "number": pr.number,
+            "rework_lines": pr_rework,
+            "total_lines": pr_total,
+            "rework_rate": rate,
+        })
+    rate = (reworked_lines / total_changed * 100) if total_changed else 0.0
+    # Non-computable if window too short for 21d lookback
+    period_days = 0
+    if prs:
+        dates = [p.created_at for p in prs if p.created_at]
+        if dates:
+            period_days = (max(dates) - min(dates)).days or 1
+    no_data = period_days < window_days or total_changed == 0
+    return {
+        "rework_rate": rate,
+        "reworked_lines": reworked_lines,
+        "total_changed": total_changed,
+        "per_pr": per_pr,
+        "window_days": window_days,
+        "pr_count": len(prs),
+        "period_days": period_days,
+        "no_data": no_data,
     }
 
 

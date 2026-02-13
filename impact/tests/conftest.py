@@ -191,8 +191,9 @@ def make_file(
     changes: int = 1,
     status: str = "modified",
     pr_number: int = 1,
+    patch: str | None = None,
 ) -> FileRecord:
-    """Create a FileRecord for testing."""
+    """Create a FileRecord for testing (patch for rework tests)."""
     return FileRecord(
         sha=sha,
         filename=filename,
@@ -201,6 +202,7 @@ def make_file(
         changes=changes,
         status=status,
         pull_request_number=pr_number,
+        patch=patch,
     )
 
 

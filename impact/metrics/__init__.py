@@ -3,6 +3,9 @@ from impact.metrics.plugins.authored.active_weeks import ActiveWeeks
 from impact.metrics.plugins.authored.bug_fix_focus_rate import BugFixFocusRate
 from impact.metrics.plugins.authored.burstiness import Burstiness
 from impact.metrics.plugins.authored.cycle_time import CycleTime
+from impact.metrics.plugins.authored.coding_time_to_pr import CodingTimeToPR
+from impact.metrics.plugins.authored.coding_days import CodingDays
+from impact.metrics.plugins.authored.merge_delay import MergeDelay
 from impact.metrics.plugins.authored.module_area_breadth import ModuleAreaBreadth
 from impact.metrics.plugins.authored.pr_merge_effectiveness import PRMergeEffectiveness
 from impact.metrics.plugins.authored.pr_size_distribution import PRSizeDistribution
@@ -21,6 +24,7 @@ from impact.metrics.plugins.authored.dependency_change_rate import DependencyCha
 from impact.metrics.plugins.authored.inline_comment_density import InlineCommentDensity
 from impact.metrics.plugins.authored.commit_message_clarity import ConventionalCommitRate
 from impact.metrics.plugins.authored.code_churn_rate import CodeChurnRate
+from impact.metrics.plugins.authored.rework_rate import ReworkRate
 from impact.metrics.plugins.authored.self_merge_rate import SelfMergeRate
 from impact.metrics.plugins.authored.abandoned_pr_rate import AbandonedPRRate
 from impact.metrics.plugins.authored.documentation_touch_rate import DocumentationTouchRate
@@ -28,6 +32,7 @@ from impact.metrics.plugins.authored.net_code_contribution import NetCodeContrib
 from impact.metrics.plugins.authored.off_hours_activity_rate import OffHoursActivityRate
 from impact.metrics.plugins.authored.follow_up_commit_rate import FollowUpCommitRate
 from impact.metrics.plugins.authored.pr_category_diversity import PRCategoryDiversity
+from impact.metrics.plugins.authored.first_time_approval_rate import FirstTimeApprovalRate
 from impact.metrics.plugins.influence.approval_to_merge_ratio import ApprovalToMergeRatio
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
@@ -43,6 +48,8 @@ from impact.metrics.plugins.influence.unblock_time import UnblockTime
 from impact.metrics.plugins.influence.review_breadth import ReviewBreadth
 from impact.metrics.plugins.influence.review_comment_substance import ReviewCommentSubstance
 from impact.metrics.plugins.influence.mentorship_signal import MentorshipSignal
+from impact.metrics.plugins.influence.review_demand import ReviewDemand
+from impact.metrics.plugins.influence.first_reviewer_rate import FirstReviewerRate
 
 
 def get_metrics():
@@ -51,6 +58,9 @@ def get_metrics():
         "review_leverage": ReviewLeverage,
         "pr_throughput": PRThroughput,
         "cycle_time": CycleTime,
+        "coding_time_to_pr": CodingTimeToPR,
+        "coding_days": CodingDays,
+        "merge_delay": MergeDelay,
         "pr_size_distribution": PRSizeDistribution,
         "trivial_contribution_rate": TrivialContributionRate,
         "module_area_breadth": ModuleAreaBreadth,
@@ -68,6 +78,7 @@ def get_metrics():
         "inline_comment_density": InlineCommentDensity,
         "conventional_commit_rate": ConventionalCommitRate,
         "code_churn_rate": CodeChurnRate,
+        "rework_rate": ReworkRate,
         "self_merge_rate": SelfMergeRate,
         "abandoned_pr_rate": AbandonedPRRate,
         "documentation_touch_rate": DocumentationTouchRate,
@@ -82,7 +93,10 @@ def get_metrics():
         "unblock_time": UnblockTime,
         "follow_up_commit_rate": FollowUpCommitRate,
         "pr_category_diversity": PRCategoryDiversity,
+        "first_time_approval_rate": FirstTimeApprovalRate,
         "review_breadth": ReviewBreadth,
         "review_comment_substance": ReviewCommentSubstance,
         "mentorship_signal": MentorshipSignal,
+        "review_demand": ReviewDemand,
+        "first_reviewer_rate": FirstReviewerRate,
     }
