@@ -35,5 +35,8 @@ htmlcov/
 /dumps/
 /tmp/dump*/
 
+# Generated reports (all PDFs go in dumps/)
+*.pdf
+
 # Logs
 *.log
