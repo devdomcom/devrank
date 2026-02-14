@@ -1,5 +1,6 @@
 """
 Tests verifying fixes for influence metric bugs (Issues 6, 7, 13, 14, 19, 20, 24, 26).
+Plus Bug 8: MentorshipSignal threshold scaling.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -8,6 +9,7 @@ from impact.domain.models import ReviewState, TimelineEvent
 from impact.metrics.plugins.authored.co_author_contribution_rate import CoAuthorContributionRate
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
+from impact.metrics.plugins.influence.mentorship_signal import MentorshipSignal
 from impact.metrics.plugins.influence.pr_merge_rate import PRMergeRate
 from impact.metrics.plugins.influence.review_leverage import ReviewLeverage
 from impact.metrics.plugins.influence.review_turnaround_time import ReviewTurnaroundTime
@@ -181,14 +183,17 @@ class TestCoAuthorNoArtificialFloor:
 
 
 # ---------------------------------------------------------------------------
-# Issue 13: change_inducing_review_rate excludes approvals from denominator
+# Issue 13 (updated): change_inducing_review_rate includes ALL reviews in denominator
 # ---------------------------------------------------------------------------
 
-class TestChangeInducingExcludesApprovals:
-    """Issue 13: Approvals should be excluded from the denominator."""
+class TestChangeInducingIncludesApprovals:
+    """Issue 13 (updated): All non-self reviews should be in the denominator,
+    including approvals. Approvals CAN induce commits (e.g., approval -> author
+    pushes CI fix -> merge). The inducing check handles approvals that didn't
+    induce anything naturally."""
 
-    def test_approvals_excluded_from_denominator(self):
-        """Only actionable reviews (non-approved) should count in denominator."""
+    def test_approvals_included_in_denominator(self):
+        """All non-self reviews (including approvals) should count in denominator."""
         reviewer = make_user(id=1, login="alice")
         author = make_user(id=2, login="bob")
         owner = make_user(id=3, login="org")
@@ -201,7 +206,7 @@ class TestChangeInducingExcludesApprovals:
             10, 1, reviewer, start + timedelta(hours=1),
             state=ReviewState.CHANGES_REQUESTED,
         )
-        # One approval (should NOT be in denominator)
+        # One approval (should be in denominator too)
         approval_review = make_review(
             11, 1, reviewer, start + timedelta(hours=5),
             state=ReviewState.APPROVED,
@@ -222,10 +227,10 @@ class TestChangeInducingExcludesApprovals:
         metric = ChangeInducingReviewRate()
         res = metric.run(context)
 
-        # Denominator should be 1 (only the CR), not 2 (CR + approval)
-        assert res.details["total_reviews"] == 1
+        # Denominator should be 2 (CR + approval)
+        assert res.details["total_reviews"] == 2
         assert res.details["inducing_count"] == 1
-        assert res.details["inducing_rate"] == 1.0
+        assert res.details["inducing_rate"] == 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -480,8 +485,7 @@ class TestSelfReviewFiltering:
         context = self._make_self_review_context()
         metric = ChangeInducingReviewRate()
         res = metric.run(context)
-        # Approval on own PR filtered out; CR on bob's PR remains
-        # But CR is the only actionable review (approval excluded from denominator too)
+        # Self-review (approval on own PR) filtered out; CR on bob's PR remains
         assert res.details["total_reviews"] == 1
 
     def test_review_turnaround_time_excludes_self_reviews(self):
@@ -541,3 +545,107 @@ class TestPeriodDefaults:
         metric = ReviewTurnaroundTime()
         res = metric.run(context)
         assert res.details["period_days"] == 30.0
+
+
+# ---------------------------------------------------------------------------
+# Bug 8: MentorshipSignal threshold scaling by period length
+# ---------------------------------------------------------------------------
+
+class TestMentorshipSignalThresholdScaling:
+    """Bug 8: The junior_threshold should scale by period length.
+
+    ~5 PRs/month baseline, minimum 2.
+    - 30-day period -> threshold = 5
+    - 14-day period -> threshold = max(2, int(5 * 14/30)) = max(2, 2) = 2
+    - 180-day period -> threshold = max(2, int(5 * 180/30)) = max(2, 30) = 30
+    """
+
+    def test_threshold_scales_with_long_period(self):
+        """A 180-day (6-month) period should have a much higher threshold."""
+        alice = make_user(id=1, login="alice")  # reviewer
+        bob = make_user(id=2, login="bob")      # PR author with few PRs
+        owner = make_user(id=3, login="org")
+        repo = make_repo(id=1, name="repo", owner=owner)
+        start = DEFAULT_START
+
+        # Bob has 10 PRs in the period (would be "junior" at threshold=5
+        # but NOT junior at threshold=30 for 180 days)
+        bob_prs = []
+        for i in range(10):
+            bob_prs.append(make_pr(i + 1, bob, repo, base_time=start,
+                                   created_delta_hours=i * 24))
+
+        # Alice reviews one of Bob's PRs
+        review = make_review(100, 1, alice, start + timedelta(hours=5),
+                             state=ReviewState.APPROVED)
+
+        bundle = make_bundle(
+            users=[alice, bob, owner],
+            repositories=[repo],
+            pull_requests=bob_prs,
+            reviews=[review],
+        )
+        # 180-day window -> threshold = max(2, int(5 * 180/30)) = 30
+        end = start + timedelta(days=180)
+        context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+        metric = MentorshipSignal()
+        res = metric.run(context)
+
+        # With 180-day threshold of 30, Bob (10 PRs) IS junior
+        assert res.details["junior_threshold"] == 30
+        assert res.details["junior_review_count"] == 1
+
+    def test_threshold_has_minimum_of_2(self):
+        """Even for very short periods, threshold should be at least 2."""
+        alice = make_user(id=1, login="alice")
+        bob = make_user(id=2, login="bob")
+        owner = make_user(id=3, login="org")
+        repo = make_repo(id=1, name="repo", owner=owner)
+        start = DEFAULT_START
+
+        bob_pr = make_pr(1, bob, repo, base_time=start, created_delta_hours=0)
+        review = make_review(100, 1, alice, start + timedelta(hours=1),
+                             state=ReviewState.APPROVED)
+
+        bundle = make_bundle(
+            users=[alice, bob, owner],
+            repositories=[repo],
+            pull_requests=[bob_pr],
+            reviews=[review],
+        )
+        # Very short period: 3 days -> int(5 * 3/30) = int(0.5) = 0 -> clamped to 2
+        end = start + timedelta(days=3)
+        context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+        metric = MentorshipSignal()
+        res = metric.run(context)
+
+        assert res.details["junior_threshold"] == 2
+
+    def test_30_day_period_uses_baseline_threshold(self):
+        """A 30-day period should use the baseline threshold of 5."""
+        alice = make_user(id=1, login="alice")
+        bob = make_user(id=2, login="bob")
+        owner = make_user(id=3, login="org")
+        repo = make_repo(id=1, name="repo", owner=owner)
+        start = DEFAULT_START
+
+        bob_pr = make_pr(1, bob, repo, base_time=start, created_delta_hours=0)
+        review = make_review(100, 1, alice, start + timedelta(hours=1),
+                             state=ReviewState.APPROVED)
+
+        bundle = make_bundle(
+            users=[alice, bob, owner],
+            repositories=[repo],
+            pull_requests=[bob_pr],
+            reviews=[review],
+        )
+        end = start + timedelta(days=30)
+        context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+        metric = MentorshipSignal()
+        res = metric.run(context)
+
+        # int(5 * 30/30) = 5
+        assert res.details["junior_threshold"] == 5

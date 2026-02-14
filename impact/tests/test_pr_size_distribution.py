@@ -29,7 +29,7 @@ def test_pr_size_distribution_with_various_sizes():
     )  # medium
     pr4 = make_pr(
         4, user, repo, base_time=start, created_delta_hours=72, additions=500, deletions=600
-    )  # large (1100 changes)
+    )  # medium (500 + 600*0.5 = 800 weighted changes)
     pr5 = make_pr(
         5, user, repo, base_time=start, created_delta_hours=96, additions=0, deletions=0
     )  # trivial
@@ -51,28 +51,22 @@ def test_pr_size_distribution_with_various_sizes():
     assert res.details["additions_median"] == 50.0
     # Deletions: 5,20,100,600,0 -> 0,5,20,100,600 median=20
     assert res.details["deletions_median"] == 20.0
-    # Changes: 15,70,300,1100,0 -> 0,15,70,300,1100 median=70
-    assert res.details["changes_median"] == 70.0
-    # P75: additions p75 = 200 (75% of 4th index? wait, for 5 items: k=4*0.75=3, f=3, c=4, interp 200*(4-3)+500*(3-3)=200
-    # Actually, percentile function: for pct=0.75, k=(5-1)*0.75=3, f=3, c=4, since f!=c, 200*(4-3) + 500*(3-3)=200? Wait, formula is sorted[f]*(c-k) + sorted[c]*(k-f), wait let's check code:
-    # return sorted_values[f] * (c - k) + sorted_values[c] * (k - f)
-    # For k=3, f=3, c=4, sorted[3]=200, sorted[4]=500, 200*(4-3) + 500*(3-3) = 200*1 + 500*0 = 200
-    # Yes, 200
+    # Weighted changes (add + del*0.5): 12.5,60,250,800,0 -> sorted: 0,12.5,60,250,800 median=60
+    assert res.details["changes_median"] == 60.0
     assert res.details["additions_p75"] == 200.0
-    # Deletions p75: sorted 0,5,20,100,600 -> same 100
     assert res.details["deletions_p75"] == 100.0
-    # Changes p75: 0,15,70,300,1100 -> 300
-    assert res.details["changes_p75"] == 300.0
-    assert res.details["small_pr_count"] == 2  # pr1(15), pr2(70) — trivial pr5 no longer double-counted
-    assert res.details["medium_pr_count"] == 1  # pr3(300)
-    assert res.details["large_pr_count"] == 1  # pr4(1100)
+    # Changes p75: sorted 0,12.5,60,250,800 -> k=3, 250
+    assert res.details["changes_p75"] == 250.0
+    assert res.details["small_pr_count"] == 2  # pr1(12.5), pr2(60)
+    assert res.details["medium_pr_count"] == 2  # pr3(250), pr4(800)
+    assert res.details["large_pr_count"] == 0  # pr4 was large but now medium with weighted deletions
     assert res.details["small_pr_percent"] == 40.0
-    assert res.details["medium_pr_percent"] == 20.0
-    assert res.details["large_pr_percent"] == 20.0
+    assert res.details["medium_pr_percent"] == 40.0
+    assert res.details["large_pr_percent"] == 0.0
     assert res.details["small_pr_numbers"] == [1, 2]
-    assert res.details["medium_pr_numbers"] == [3]
-    assert res.details["large_pr_numbers"] == [4]
-    assert res.details["trivial_pr_numbers"] == [5]  # <10 changes
+    assert res.details["medium_pr_numbers"] == [3, 4]
+    assert res.details["large_pr_numbers"] == []
+    assert res.details["trivial_pr_numbers"] == [5]  # <10 weighted changes
 
 
 def test_pr_size_distribution_no_prs():
@@ -104,11 +98,11 @@ def test_pr_size_distribution_single_pr():
     assert res.details["pr_count"] == 1
     assert res.details["additions_median"] == 100.0
     assert res.details["deletions_median"] == 50.0
-    assert res.details["changes_median"] == 150.0
+    assert res.details["changes_median"] == 125.0  # 100 + 50*0.5 weighted
     assert res.details["small_pr_count"] == 0
     assert res.details["medium_pr_count"] == 1
     assert res.details["large_pr_count"] == 0
     assert res.details["small_pr_numbers"] == []
     assert res.details["medium_pr_numbers"] == [1]
     assert res.details["large_pr_numbers"] == []
-    assert res.details["trivial_pr_numbers"] == []  # 150 >10
+    assert res.details["trivial_pr_numbers"] == []  # 125 >10

@@ -72,7 +72,7 @@ class PRSizeDistribution(Metric):
         for pr in prs:
             add = pr.additions
             del_ = pr.deletions
-            ch = add + del_
+            ch = add + del_ * 0.5  # Deletions carry half the risk weight of additions
             additions.append(add)
             deletions.append(del_)
             changes.append(ch)

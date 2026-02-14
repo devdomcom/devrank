@@ -29,13 +29,16 @@ class CoAuthorContributionRate(Metric):
         all_prs = context.ledger.get_prs_for_user(user, context.start_date, context.end_date)
         prs = filter_prs_for_contribution(all_prs, exclude_drafts=True, only_merged=False)
         commits = context.ledger.get_commits_for_user(user, context.start_date, context.end_date)
+        # Inbound collaboration: others helped the user on the user's own PRs.
+        # A Co-authored-by trailer on a commit in the user's PR means someone
+        # else contributed to that commit (e.g., pair programming, suggestions).
         inbound_co = 0
         inbound_total = 0
         per_pr_co = []
         for pr in prs:
             pr_commits = context.ledger.get_commits_for_pr(pr.number)
             total = len(pr_commits)
-            # Count commits that have Co-authored-by trailers mentioning someone other than the PR author
+            # Count commits that have Co-authored-by trailers (others helped on user's PR)
             co = 0
             for c in pr_commits:
                 co_authors = CO_AUTHOR_PATTERN.findall(c.message)
@@ -45,13 +48,16 @@ class CoAuthorContributionRate(Metric):
             inbound_total += total
             per_pr_co.append({"number": pr.number, "co_authors": co, "total_commits": total})
         inbound_rate = (inbound_co / inbound_total * 100) if inbound_total else 0.0
-        # Outbound: user appears as a co-author on commits in other people's PRs
+        # Outbound collaboration: user helped others on their PRs.
+        # The user authored a commit on someone else's PR with a Co-authored-by
+        # trailer, indicating collaborative work where the user contributed to
+        # another engineer's PR.
         outbound = 0
         for c in commits:
             if c.pull_request_number:
                 pr = context.ledger.get_pr(c.pull_request_number)
                 if pr and pr.user.login != user:
-                    # User authored commit on someone else's PR - check if there are co-author trailers
+                    # User authored commit on someone else's PR with co-author trailer
                     co_authors = CO_AUTHOR_PATTERN.findall(c.message)
                     if co_authors:
                         outbound += 1

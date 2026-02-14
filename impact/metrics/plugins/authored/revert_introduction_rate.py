@@ -54,10 +54,12 @@ class RevertIntroductionRate(Metric):
             # Find the original commit (support prefix matching)
             original_commit = sha_to_commit.get(original_sha)
             if not original_commit:
-                # Try prefix match
-                original_commit = next(
-                    (c for c in all_commits if c.sha.startswith(original_sha)), None
-                )
+                # Try prefix match; skip if ambiguous (>1 candidate)
+                candidates = [c for c in all_commits if c.sha.startswith(original_sha)]
+                if len(candidates) == 1:
+                    original_commit = candidates[0]
+                else:
+                    original_commit = None  # ambiguous or not found
             if original_commit and original_commit.author.login == context.user_login:
                 user_reverted.append(rc)
 

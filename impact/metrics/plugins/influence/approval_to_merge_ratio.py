@@ -37,9 +37,11 @@ class ApprovalToMergeRatio(Metric):
                 filtered_reviews.append(rev)
         reviews = filtered_reviews
 
+        approvals = [r for r in reviews if r.state.value == "approved"]
+        total_approvals = len(approvals)
         final_approvals = 0
         per_review: list[dict] = []
-        for rev in reviews:
+        for rev in approvals:
             was_final = approval_was_final(context.ledger, rev)
             if was_final:
                 final_approvals += 1
@@ -50,8 +52,6 @@ class ApprovalToMergeRatio(Metric):
                     "was_final": was_final,
                 }
             )
-
-        total_approvals = len([r for r in reviews if r.state.value == "approved"])
         ratio = final_approvals / total_approvals if total_approvals else 0.0
 
         period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0

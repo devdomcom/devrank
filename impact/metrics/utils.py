@@ -715,12 +715,14 @@ def compute_self_merge_rate(ledger, user_login: str) -> dict:
     no_approval_count = 0
     per_pr = []
     for pr in eng_merged:
-        # Approval = any APPROVED review before/ at merge
+        # Approval = any APPROVED review from OTHER users before/at merge
+        # Self-reviews don't count as valid approval (masks self-merge behavior)
         reviews = ledger.get_reviews_for_pr(pr.number)
         has_approval = any(
             r.state == ReviewState.APPROVED
             for r in reviews
-            if not pr.merged_at or r.submitted_at <= pr.merged_at
+            if r.user.login != pr.user.login
+            and (not pr.merged_at or r.submitted_at <= pr.merged_at)
         )
         if not has_approval:
             no_approval_count += 1

@@ -25,7 +25,27 @@ class OffHoursActivityRate(Metric):
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login
         # User TZ from bundle (manifest); data UTC
-        tz_str = getattr(context.ledger.bundle, "user_timezone", None) or "UTC"
+        tz_str = getattr(context.ledger.bundle, "user_timezone", None)
+        if not tz_str:
+            # Without timezone data, off-hours classification is unreliable
+            # (e.g., a UTC+8 engineer's morning commits would be flagged as night activity)
+            period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+            return MetricResult(
+                metric_slug=self.slug,
+                summary="Off-hours rate: N/A (timezone data not available; cannot classify off-hours without user timezone).",
+                details={
+                    "off_hours_rate": 0.0,
+                    "off_count": 0,
+                    "total_activities": 0,
+                    "weekend_count": 0,
+                    "night_count": 0,
+                    "user_timezone": None,
+                    "off_activities": [],
+                    "period_days": period_days,
+                    "no_data": True,
+                    "no_data_reason": "timezone data not available in bundle",
+                },
+            )
         user_tz = ZoneInfo(tz_str)
         # Off-hours def (local): weekend or 22:00-06:00
         off_count = 0

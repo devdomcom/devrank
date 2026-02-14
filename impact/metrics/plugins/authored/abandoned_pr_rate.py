@@ -16,7 +16,7 @@ class AbandonedPRRate(Metric):
 
     @property
     def description(self) -> str:
-        return "% open PRs stale (>30d; measures abandoned/blocked; rating worsens w/ longer window)."
+        return "% open PRs stale (>=30d; measures abandoned/blocked; rating worsens w/ longer window)."
 
     @property
     def category(self) -> str:
@@ -45,19 +45,17 @@ class AbandonedPRRate(Metric):
         threshold = timedelta(days=30)
         stale_count = sum(
             1 for pr in open_prs
-            if end_date and (end_date - pr.created_at) > threshold
+            if end_date and (end_date - pr.created_at) >= threshold
         )
         rate = (stale_count / len(open_prs) * 100) if open_prs else 0.0
-        # Rating worsens w/ window: scale by days/30
         period_days = (end_date - context.start_date).days if (context.start_date and end_date) else 30
-        weighted = rate * (period_days / 30.0)
-        summary = f"Abandoned PR rate: {rate:.1f}% stale ({stale_count}/{len(open_prs)} open; weighted {weighted:.1f} for window)."
+        summary = f"Abandoned PR rate: {rate:.1f}% stale ({stale_count}/{len(open_prs)} open)."
         details = {
             "abandoned_rate": rate,
             "stale_count": stale_count,
             "open_pr_count": len(open_prs),
             "period_days": period_days,
-            "weighted_score": weighted,
+            "weighted_score": rate,
             "per_pr": [{"number": pr.number, "age_days": (end_date - pr.created_at).days if end_date else 0} for pr in open_prs],
         }
         if not open_prs:

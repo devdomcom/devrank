@@ -21,9 +21,11 @@ class ConventionalCommitRate(Metric):
         return "code_quality_size"
 
     def run(self, context: MetricContext) -> MetricResult:
-        commits = context.ledger.get_commits_for_user(
+        all_commits = context.ledger.get_commits_for_user(
             context.user_login, context.start_date, context.end_date
         )
+        # Filter out merge commits — they penalize merge-commit workflows unfairly
+        commits = [c for c in all_commits if not c.message.strip().lower().startswith("merge ")]
         conventional = sum(1 for c in commits if is_conventional_commit(c.message))
         total = len(commits)
         rate = (conventional / total * 100) if total else 0.0

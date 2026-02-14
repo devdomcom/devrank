@@ -74,6 +74,8 @@ class TestFileRatio(Metric):
         }
         if len(prs) == 0 or (period_days < 14 and len(prs) < 3):
             details["no_data"] = True
+        elif total_changes == 0 and len(prs) > 0:
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

@@ -1,6 +1,5 @@
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import is_change_request
 
 
 class BlockingCommentRate(Metric):
@@ -40,7 +39,7 @@ class BlockingCommentRate(Metric):
         blocking_count = 0
         per_review: list[dict] = []
         for rev in reviews:
-            is_blocking = is_change_request(rev, context.ledger)  # DRY reuse
+            is_blocking = rev.state.value == "changes_requested"
             if is_blocking:
                 blocking_count += 1
             per_review.append(

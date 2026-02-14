@@ -49,17 +49,21 @@ class ReviewLeverage(Metric):
         pr = context.ledger.get_pr(review.pull_request_number)
         if not pr or not pr.merged:
             return False
-        # Time window
-        window_end = pr.merged_at or pr.closed_at
-        if window_end is None:
-            window_end = review.submitted_at + timedelta(hours=72)
-        max_time = review.submitted_at + timedelta(hours=72)
-        window_end = min(window_end, max_time)
-
         # review comments for file paths
         review_comment_paths = {
             c.path for c in context.ledger.get_review_comments_for_review(review.id) if c.path
         }
+
+        # Time window: use a tighter 48h window for CRs without inline comments,
+        # since there are no file paths to validate against and any commit in the
+        # window is assumed to be a response. With inline comments, use 72h since
+        # file-path overlap provides additional signal.
+        max_hours = 48 if not review_comment_paths else 72
+        window_end = pr.merged_at or pr.closed_at
+        if window_end is None:
+            window_end = review.submitted_at + timedelta(hours=max_hours)
+        max_time = review.submitted_at + timedelta(hours=max_hours)
+        window_end = min(window_end, max_time)
 
         # Check commits after the review within window by PR author, respecting latest-review gate and path overlap
         commits = context.ledger.get_commits_for_pr(review.pull_request_number)

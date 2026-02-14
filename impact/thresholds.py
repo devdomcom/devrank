@@ -330,7 +330,7 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x > 40,
         "scores": [(0, 100), (5, 75), (20, 50), (40, 25), (80, 0)],
     },
-    # Abandoned PR Rate: low % = good; worsens w/ longer window (weighted)
+    # Abandoned PR Rate: low % stale = good (0-100 scale, same as abandoned_rate)
     "abandoned_pr_rate": {
         "key": "weighted_score",
         "excellent": lambda x: x <= 10,

@@ -38,8 +38,6 @@ class Burstiness(Metric):
         activity_dates = []
         for pr in prs:
             activity_dates.append(pr.created_at)
-            if pr.merged_at:
-                activity_dates.append(pr.merged_at)
         for c in commits:
             activity_dates.append(c.date)
         for r in reviews:
@@ -58,7 +56,7 @@ class Burstiness(Metric):
         else:
             total_weeks = active_weeks  # fallback
 
-        avg_weekly = total_activities / total_weeks if total_weeks > 0 else 0.0
+        avg_weekly = total_activities / active_weeks if active_weeks > 0 else 0.0
         max_weekly = max(counts) if counts else 0
         burst_ratio = max_weekly / avg_weekly if avg_weekly > 0 else 0.0
 

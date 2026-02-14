@@ -56,6 +56,72 @@ def test_self_merge_rate():
     assert "Self-merge rate:" in res.summary
 
 
+def test_self_merge_rate_self_approval_not_counted():
+    """Bug 5: Self-reviews should NOT count as valid approval.
+
+    If alice self-approves her own PR, it should still count as
+    'no approval' because only reviews from OTHER users are valid.
+    """
+    author = make_user(id=1, login="alice")
+    owner = make_user(id=2, login="org")
+    repo = make_repo(id=1, name="repo", owner=owner)
+    start = DEFAULT_START
+
+    # PR1: alice merges own PR with only her own self-approval
+    pr1 = make_pr(1, author, repo, base_time=start, merged_delta_hours=10)
+    pr1.merged_by = author
+    # Self-review: alice approves her own PR (should NOT count)
+    self_review = make_review(1, 1, author, start + timedelta(hours=5), ReviewState.APPROVED)
+
+    bundle = make_bundle(
+        users=[author, owner],
+        repositories=[repo],
+        pull_requests=[pr1],
+        reviews=[self_review],
+    )
+    context = make_context(bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=5))
+
+    metric = SelfMergeRate()
+    res = metric.run(context)
+
+    # Self-approval should not count -> no_approval_count = 1
+    assert res.details["no_approval_count"] == 1
+    assert res.details["engineer_merged_count"] == 1
+    assert res.details["self_merge_rate"] == 100.0
+    # Verify the per_pr detail shows has_approval=False
+    assert res.details["per_pr"][0]["has_approval"] is False
+
+
+def test_self_merge_rate_other_approval_still_counted():
+    """Bug 5: Approval from another user should still count as valid."""
+    author = make_user(id=1, login="alice")
+    other = make_user(id=2, login="bob")
+    owner = make_user(id=3, login="org")
+    repo = make_repo(id=1, name="repo", owner=owner)
+    start = DEFAULT_START
+
+    # PR1: alice merges own PR with both self-approval and other-approval
+    pr1 = make_pr(1, author, repo, base_time=start, merged_delta_hours=10)
+    pr1.merged_by = author
+    self_review = make_review(1, 1, author, start + timedelta(hours=3), ReviewState.APPROVED)
+    other_review = make_review(2, 1, other, start + timedelta(hours=5), ReviewState.APPROVED)
+
+    bundle = make_bundle(
+        users=[author, other, owner],
+        repositories=[repo],
+        pull_requests=[pr1],
+        reviews=[self_review, other_review],
+    )
+    context = make_context(bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=5))
+
+    metric = SelfMergeRate()
+    res = metric.run(context)
+
+    # Bob's approval counts -> has_approval = True
+    assert res.details["no_approval_count"] == 0
+    assert res.details["per_pr"][0]["has_approval"] is True
+
+
 def test_self_merge_rate_no_merges():
     """Edge: no merges -> 0."""
     user = make_user(login="alice")

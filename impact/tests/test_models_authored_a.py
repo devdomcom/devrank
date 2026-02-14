@@ -75,14 +75,14 @@ def test_pull_request_draft_field_on_model():
 
 
 # --------------------------------------------------------------------------- #
-# Issue 3 – burstiness total_weeks from analysis period
+# Issue 3 – burstiness avg uses active weeks (not total period weeks)
 # --------------------------------------------------------------------------- #
 
-def test_burstiness_uses_total_period_weeks():
+def test_burstiness_uses_active_weeks():
     """
     With a 4-week analysis window but activity in only 1 week,
-    avg_weekly should be total_activities / 4 (not / 1).
-    burst_ratio = max_weekly / avg_weekly.
+    avg_weekly should be total_activities / active_weeks (1 / 1 = 1.0).
+    burst_ratio = max_weekly / avg_weekly = 1.0.
     """
     user = make_user(id=1, login="alice")
     owner = make_user(id=2, login="org")
@@ -109,9 +109,9 @@ def test_burstiness_uses_total_period_weeks():
     assert res.details["total_weeks"] == 4
     assert res.details["active_weeks"] == 1
     assert res.details["total_activities"] == 1
-    # avg_weekly = 1 / 4 = 0.25; max_weekly = 1; burst_ratio = 1 / 0.25 = 4.0
-    assert res.details["avg_weekly"] == 1 / 4
-    assert res.details["burst_ratio"] == 1 / (1 / 4)  # 4.0
+    # avg_weekly = 1 / 1 = 1.0; max_weekly = 1; burst_ratio = 1 / 1 = 1.0
+    assert res.details["avg_weekly"] == 1.0
+    assert res.details["burst_ratio"] == 1.0
 
 
 def test_burstiness_no_activity():
@@ -190,10 +190,10 @@ def test_pr_size_distribution_categories_mutually_exclusive():
     owner = make_user(id=2, login="org")
     repo = make_repo(id=1, name="repo", owner=owner)
 
-    pr_trivial = make_pr(1, user, repo, additions=3, deletions=2, merged_delta_hours=1)    # 5 changes
-    pr_small = make_pr(2, user, repo, additions=30, deletions=20, merged_delta_hours=1)    # 50 changes
-    pr_medium = make_pr(3, user, repo, additions=300, deletions=200, merged_delta_hours=1)  # 500 changes
-    pr_large = make_pr(4, user, repo, additions=600, deletions=500, merged_delta_hours=1)   # 1100 changes
+    pr_trivial = make_pr(1, user, repo, additions=3, deletions=2, merged_delta_hours=1)    # 3+2*0.5=4 weighted
+    pr_small = make_pr(2, user, repo, additions=30, deletions=20, merged_delta_hours=1)    # 30+20*0.5=40 weighted
+    pr_medium = make_pr(3, user, repo, additions=300, deletions=200, merged_delta_hours=1)  # 300+200*0.5=400 weighted
+    pr_large = make_pr(4, user, repo, additions=900, deletions=500, merged_delta_hours=1)   # 900+500*0.5=1150 weighted
 
     bundle = make_bundle(
         users=[user, owner],

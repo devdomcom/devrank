@@ -32,12 +32,12 @@ class NetCodeContribution(Metric):
             add = pr.additions or 0
             del_ = pr.deletions or 0
             net = add - del_
-            ratio = (add / del_) if del_ > 0 else (add / 1.0)  # avoid div0; high if no del
+            ratio = min(add / max(del_, 1), 100.0)  # cap at 100 to avoid unbounded ratios
             total_add += add
             total_del += del_
             per_pr.append({"number": pr.number, "additions": add, "deletions": del_, "net": net, "ratio": ratio})
         total_net = total_add - total_del
-        overall_ratio = (total_add / total_del) if total_del > 0 else (total_add / 1.0)
+        overall_ratio = min(total_add / max(total_del, 1), 100.0)
         # Period norm: net/month, ratio
         start = context.start_date or context.end_date or None
         end = context.end_date

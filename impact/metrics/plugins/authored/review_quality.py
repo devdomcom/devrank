@@ -37,8 +37,18 @@ class ReviewIterations(Metric):
         for pr in merged:
             reviews = context.ledger.get_reviews_for_pr(pr.number)
             changes_requested = [r for r in reviews if is_change_request(r, context.ledger)]
-            per_pr.append({"number": pr.number, "iterations": len(changes_requested)})
-            counts.append(len(changes_requested))
+            # Group CRs by time proximity: CRs within 4 hours of each other
+            # count as 1 cycle (e.g., 3 reviewers requesting changes simultaneously
+            # is 1 round, not 3)
+            cr_times = sorted([r.submitted_at for r in changes_requested])
+            cycles = 0
+            last_cycle_time = None
+            for t in cr_times:
+                if last_cycle_time is None or (t - last_cycle_time).total_seconds() > 4 * 3600:
+                    cycles += 1
+                    last_cycle_time = t
+            per_pr.append({"number": pr.number, "iterations": cycles})
+            counts.append(cycles)
 
         avg = sum(counts) / len(counts) if counts else 0.0
         summary = f"{len(merged)} merged PRs; avg iterations: {avg:.2f}"

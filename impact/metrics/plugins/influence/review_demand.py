@@ -1,5 +1,3 @@
-from collections import defaultdict
-
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 
@@ -25,9 +23,10 @@ class ReviewDemand(Metric):
 
     def run(self, context: MetricContext) -> MetricResult:
         # Aggregate review_requested targeting the user (accurate demand via requested_reviewer)
-        # Accumulate per-PR (re-requests after push count separately; no de-dup)
+        # Deduplicate by PR — count at most 1 request per PR (re-requests after
+        # force-pushes on the same PR should not inflate demand)
         demand_count = 0
-        pr_requests = defaultdict(int)
+        requested_prs: set[int] = set()
         total_timeline_events = 0
         for pr in context.ledger.bundle.pull_requests:
             for evt in context.ledger.get_timeline_for_pr(pr.number):
@@ -37,9 +36,11 @@ class ReviewDemand(Metric):
                     and getattr(evt, "requested_reviewer", None)
                     and evt.requested_reviewer.login == context.user_login
                 ):
-                    demand_count += 1
-                    pr_requests[pr.number] += 1
-        per_pr = [{"pr_number": num, "requests": count} for num, count in sorted(pr_requests.items())]
+                    if pr.number not in requested_prs:
+                        requested_prs.add(pr.number)
+                        demand_count += 1
+                    break  # only count first request per PR
+        per_pr = [{"pr_number": num, "requests": 1} for num in sorted(requested_prs)]
 
         # Normalize (DRY with reviews_given)
         if context.start_date and context.end_date:
@@ -65,7 +66,7 @@ class ReviewDemand(Metric):
             "period_days": round(period_days, 1),
             "demand_per_day": round(demand_per_day, 2),
             "demand_per_week": round(demand_per_week, 1),
-            "affected_prs": len(pr_requests),
+            "affected_prs": len(requested_prs),
             "per_pr": per_pr,
             "no_data": no_data,
         }

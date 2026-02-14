@@ -6,6 +6,11 @@ Tests for the 6 authored metric bug fixes:
 4. bug_fix_focus_rate: no double-counting of PR commits
 5. revert_introduction_rate: attributes to original author
 6. conventional_commit_rate: new slug name
+
+Plus tests for additional bug fixes:
+7. follow_up_commit_rate: merge commits filtered out
+8. off_hours_activity_rate: returns no_data when timezone missing
+9. revert_introduction_rate: ambiguous SHA prefix matching
 """
 
 from datetime import timedelta
@@ -15,7 +20,9 @@ import pytest
 from impact.domain.models import CommentType, ReviewState
 from impact.metrics.plugins.authored.bug_fix_focus_rate import BugFixFocusRate
 from impact.metrics.plugins.authored.commit_message_clarity import ConventionalCommitRate
+from impact.metrics.plugins.authored.follow_up_commit_rate import FollowUpCommitRate
 from impact.metrics.plugins.authored.inline_comment_density import InlineCommentDensity
+from impact.metrics.plugins.authored.off_hours_activity_rate import OffHoursActivityRate
 from impact.metrics.plugins.authored.pr_throughput import PRThroughput
 from impact.metrics.plugins.authored.revert_introduction_rate import RevertIntroductionRate
 from impact.metrics.plugins.authored.review_quality import (
@@ -597,3 +604,208 @@ class TestConventionalCommitRate:
         metrics = get_metrics()
         assert "conventional_commit_rate" in metrics
         assert "commit_message_clarity" not in metrics
+
+
+# ---------------------------------------------------------------------------
+# 7. follow_up_commit_rate: merge commits filtered out
+# ---------------------------------------------------------------------------
+
+class TestFollowUpCommitRateMergeFiltering:
+    def test_merge_commits_excluded_from_count(self):
+        """Bug 7: Merge commits (e.g. 'Merge branch main into feature')
+        should NOT count as follow-up iterations."""
+        alice = make_user(id=1, login="alice")
+        owner = make_user(id=2, login="org")
+        repo = make_repo(id=1, name="repo", owner=owner)
+        start = DEFAULT_START
+
+        pr = make_pr(1, alice, repo, base_time=start, created_delta_hours=0)
+        # 1 real commit + 1 merge commit = only 1 real commit (no follow-up)
+        c1 = make_commit("sha1", alice, start + timedelta(hours=1), 1, message="feat: initial impl")
+        c2 = make_commit("sha2", alice, start + timedelta(hours=5), 1,
+                         message="Merge branch 'main' into feature-1")
+
+        bundle = make_bundle(
+            users=[alice, owner],
+            repositories=[repo],
+            pull_requests=[pr],
+            commits=[c1, c2],
+        )
+        end = start + timedelta(days=30)
+        context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+        metric = FollowUpCommitRate()
+        res = metric.run(context)
+
+        # Only 1 real commit (merge excluded) -> no follow-up
+        assert res.details["per_pr"][0]["has_follow_up"] is False
+        assert res.details["per_pr"][0]["author_commit_count"] == 1
+        assert res.details["follow_up_rate"] == 0.0
+
+    def test_real_follow_up_still_detected(self):
+        """Real follow-up commits (non-merge) should still be counted."""
+        alice = make_user(id=1, login="alice")
+        owner = make_user(id=2, login="org")
+        repo = make_repo(id=1, name="repo", owner=owner)
+        start = DEFAULT_START
+
+        pr = make_pr(1, alice, repo, base_time=start, created_delta_hours=0)
+        c1 = make_commit("sha1", alice, start + timedelta(hours=1), 1, message="feat: initial impl")
+        c2 = make_commit("sha2", alice, start + timedelta(hours=5), 1, message="fix: address review feedback")
+
+        bundle = make_bundle(
+            users=[alice, owner],
+            repositories=[repo],
+            pull_requests=[pr],
+            commits=[c1, c2],
+        )
+        end = start + timedelta(days=30)
+        context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+        metric = FollowUpCommitRate()
+        res = metric.run(context)
+
+        assert res.details["per_pr"][0]["has_follow_up"] is True
+        assert res.details["per_pr"][0]["author_commit_count"] == 2
+        assert res.details["follow_up_rate"] == 100.0
+
+
+# ---------------------------------------------------------------------------
+# 8. off_hours_activity_rate: returns no_data when timezone missing
+# ---------------------------------------------------------------------------
+
+class TestOffHoursActivityRateTimezone:
+    def test_no_timezone_returns_no_data(self):
+        """Bug 9: When timezone is missing from bundle, should return no_data=True
+        instead of silently defaulting to UTC."""
+        alice = make_user(id=1, login="alice")
+        owner = make_user(id=2, login="org")
+        repo = make_repo(id=1, name="repo", owner=owner)
+        start = DEFAULT_START
+
+        pr = make_pr(1, alice, repo, base_time=start, created_delta_hours=0)
+        c1 = make_commit("sha1", alice, start + timedelta(hours=1), 1)
+
+        # No user_timezone in bundle (defaults to None)
+        bundle = make_bundle(
+            users=[alice, owner],
+            repositories=[repo],
+            pull_requests=[pr],
+            commits=[c1],
+            user_timezone=None,
+        )
+        end = start + timedelta(days=30)
+        context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+        metric = OffHoursActivityRate()
+        res = metric.run(context)
+
+        assert res.details["no_data"] is True
+        assert res.details["user_timezone"] is None
+        assert "timezone" in res.summary.lower()
+
+    def test_with_timezone_works_normally(self):
+        """When timezone IS provided, the metric should work normally."""
+        alice = make_user(id=1, login="alice")
+        owner = make_user(id=2, login="org")
+        repo = make_repo(id=1, name="repo", owner=owner)
+        start = DEFAULT_START
+
+        c1 = make_commit("sha1", alice, start + timedelta(hours=1), 1)
+
+        bundle = make_bundle(
+            users=[alice, owner],
+            repositories=[repo],
+            pull_requests=[],
+            commits=[c1],
+            user_timezone="America/New_York",
+        )
+        end = start + timedelta(days=30)
+        context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+        metric = OffHoursActivityRate()
+        res = metric.run(context)
+
+        assert res.details["user_timezone"] == "America/New_York"
+        assert res.details["total_activities"] >= 1
+        # no_data should not be set (enough data with timezone)
+        # (may still be set due to period/activity thresholds, but not due to timezone)
+
+
+# ---------------------------------------------------------------------------
+# 9. revert_introduction_rate: ambiguous SHA prefix matching
+# ---------------------------------------------------------------------------
+
+class TestRevertIntroductionRateAmbiguousSHA:
+    def test_ambiguous_prefix_match_skipped(self):
+        """Bug 11: When a SHA prefix matches multiple commits,
+        the revert should be skipped (ambiguous) instead of picking first match."""
+        alice = make_user(id=1, login="alice")
+        bob = make_user(id=2, login="bob")
+        owner = make_user(id=3, login="org")
+        repo = make_repo(id=1, name="repo", owner=owner)
+        start = DEFAULT_START
+
+        # Two commits that share a 7-char hex prefix "abc1234"
+        c1 = make_commit("abc1234aaa111111", alice, start + timedelta(hours=1), 1, message="feat: A")
+        c2 = make_commit("abc1234bbb222222", bob, start + timedelta(hours=2), 1, message="feat: B")
+
+        # Revert references the ambiguous prefix "abc1234" (matches both c1 and c2)
+        revert = make_commit(
+            "eeeeeeeeee000000", bob, start + timedelta(hours=5), 1,
+            message='Revert "feat: A"\n\nThis reverts commit abc1234.',
+        )
+
+        pr = make_pr(1, alice, repo, base_time=start)
+
+        bundle = make_bundle(
+            users=[alice, bob, owner],
+            repositories=[repo],
+            pull_requests=[pr],
+            commits=[c1, c2, revert],
+        )
+        end = start + timedelta(days=30)
+        context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+        metric = RevertIntroductionRate()
+        res = metric.run(context)
+
+        # Ambiguous prefix -> revert should be skipped, not attributed to alice
+        assert res.details["revert_count"] == 0
+        assert res.details["rate"] == 0.0
+
+    def test_unambiguous_prefix_match_works(self):
+        """When a SHA prefix matches exactly one commit, it should work."""
+        alice = make_user(id=1, login="alice")
+        bob = make_user(id=2, login="bob")
+        owner = make_user(id=3, login="org")
+        repo = make_repo(id=1, name="repo", owner=owner)
+        start = DEFAULT_START
+
+        # Only c1 has the "abc1234" prefix
+        c1 = make_commit("abc1234aaa111111", alice, start + timedelta(hours=1), 1, message="feat: A")
+        c2 = make_commit("def5678bbb222222", bob, start + timedelta(hours=2), 1, message="feat: B")
+
+        # Revert references "abc1234" which only matches c1
+        revert = make_commit(
+            "eeeeeeeeee000000", bob, start + timedelta(hours=5), 1,
+            message='Revert "feat: A"\n\nThis reverts commit abc1234.',
+        )
+
+        pr = make_pr(1, alice, repo, base_time=start)
+
+        bundle = make_bundle(
+            users=[alice, bob, owner],
+            repositories=[repo],
+            pull_requests=[pr],
+            commits=[c1, c2, revert],
+        )
+        end = start + timedelta(days=30)
+        context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+        metric = RevertIntroductionRate()
+        res = metric.run(context)
+
+        # Unambiguous prefix match -> revert attributed to alice
+        assert res.details["revert_count"] == 1
+        assert res.details["rate"] == pytest.approx(100.0)

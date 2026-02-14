@@ -33,9 +33,12 @@ class FollowUpCommitRate(Metric):
 
         for pr in prs:
             commits = context.ledger.get_commits_for_pr(pr.number)
-            # Only count commits by the PR author
+            # Only count commits by the PR author, excluding merge commits
+            # (e.g., "Merge branch 'main' into feature") which aren't real iterations
             author_commits = sorted(
-                [c for c in commits if c.author.login == context.user_login],
+                [c for c in commits
+                 if c.author.login == context.user_login
+                 and not c.message.lower().startswith("merge ")],
                 key=lambda c: c.date,
             )
             has_follow_up = len(author_commits) > 1

@@ -29,6 +29,10 @@ class MentorshipSignal(Metric):
             context.user_login, context.start_date, context.end_date
         )
 
+        # Scale the junior threshold by period length (~5 PRs/month baseline, min 2)
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 30
+        junior_threshold = max(2, int(self.JUNIOR_PR_THRESHOLD * (period_days / 30.0)))
+
         # Build activity map: how many PRs each author has in the period
         author_pr_counts: dict[str, int] = {}
 
@@ -54,7 +58,7 @@ class MentorshipSignal(Metric):
                 )
                 author_pr_counts[author] = len(author_prs)
 
-            is_junior = author_pr_counts[author] < self.JUNIOR_PR_THRESHOLD
+            is_junior = author_pr_counts[author] < junior_threshold
             reviewed_authors.append({
                 "pr_number": pr.number,
                 "author": author,
@@ -76,7 +80,7 @@ class MentorshipSignal(Metric):
             "mentorship_rate": mentorship_rate,
             "junior_review_count": junior_reviews,
             "total_reviewed_prs": total_reviewed,
-            "junior_threshold": self.JUNIOR_PR_THRESHOLD,
+            "junior_threshold": junior_threshold,
             "period_days": round(period_days, 1),
             "per_review": reviewed_authors,
         }

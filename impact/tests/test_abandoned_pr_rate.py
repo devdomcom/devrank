@@ -13,7 +13,7 @@ from impact.tests.conftest import (
 
 
 def test_abandoned_pr_rate():
-    """% stale open PRs (>30d; weighted worsens w/ window)."""
+    """% stale open PRs (>=30d)."""
     user = make_user(id=1, login="alice")
     owner = make_user(id=2, login="org")
     repo = make_repo(id=1, name="repo", owner=owner)
@@ -39,9 +39,9 @@ def test_abandoned_pr_rate():
     res = metric.run(context)
 
     assert res.metric_slug == "abandoned_pr_rate"
-    # 1/2 open stale -> 50%; weighted ~50 (period~51d)
+    # 1/2 open stale -> 50%; weighted_score == rate (no period scaling)
     assert res.details["abandoned_rate"] == 50.0
-    assert res.details["weighted_score"] > 50
+    assert res.details["weighted_score"] == 50.0
     assert res.details["open_pr_count"] == 2
     assert "Abandoned PR rate:" in res.summary
 

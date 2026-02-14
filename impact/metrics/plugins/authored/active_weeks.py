@@ -42,12 +42,6 @@ class ActiveWeeks(Metric):
                     activity_dates.append(pr.created_at)
             else:
                 activity_dates.append(pr.created_at)
-            if pr.merged_at:
-                if context.start_date and context.end_date:
-                    if context.start_date <= pr.merged_at <= context.end_date:
-                        activity_dates.append(pr.merged_at)
-                else:
-                    activity_dates.append(pr.merged_at)
         for c in commits:
             if context.start_date and context.end_date:
                 if context.start_date <= c.date <= context.end_date:
