@@ -1,6 +1,6 @@
-# DevDom
+# DevRank
 
-DevDom is a Scenario-Driven Evaluation Framework for Engineering Excellence and Impact that vets candidates using real-world metrics.
+DevRank is a Scenario-Driven Evaluation Framework for Engineering Excellence and Impact that vets candidates using real-world metrics.
 
 ## Overview
 
@@ -25,8 +25,8 @@ The impact assessment tool analyzes GitHub activity to compute metrics that quan
 
 1. Clone the repository:
    ```bash
-   git clone <repo-url>
-   cd devdom_eng_metrics
+   git clone https://github.com/devdomcom/devrank
+   cd devrank
    ```
 
 2. Install dependencies:
