@@ -43,7 +43,7 @@ class ReviewLeverage(Metric):
 
     @property
     def category(self) -> str:
-        return "influence_review"
+        return "review_impact"
 
     def _is_effective_change_request(self, review, context):
         pr = context.ledger.get_pr(review.pull_request_number)
@@ -107,8 +107,8 @@ class ReviewLeverage(Metric):
 
         period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
 
-        if not change_requests or (period_days < 14 and len(change_requests) < 3):
-            summary = "No change requests made." if not change_requests else f"Only {len(change_requests)} change requests in short period."
+        if period_days < 14 and len(change_requests) < 3:
+            summary = f"Only {len(change_requests)} change requests in short period."
             details: dict[str, object] = {"no_data": True, "period_days": round(period_days, 1), "change_requests": len(change_requests)}
         else:
             effective_changes = sum(

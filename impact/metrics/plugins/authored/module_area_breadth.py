@@ -60,7 +60,7 @@ class ModuleAreaBreadth(Metric):
 
     @property
     def category(self) -> str:
-        return "scope_collaboration"
+        return "process_discipline"
 
     def run(self, context: MetricContext) -> MetricResult:
         # Filter: exclude drafts for breadth/quality (incomplete contributions).

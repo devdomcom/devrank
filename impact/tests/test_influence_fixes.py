@@ -6,7 +6,7 @@ Plus Bug 8: MentorshipSignal threshold scaling.
 from datetime import UTC, datetime, timedelta
 
 from impact.domain.models import ReviewState, TimelineEvent
-from impact.metrics.plugins.authored.co_author_contribution_rate import CoAuthorContributionRate
+from impact.metrics.plugins.mixed.co_author_contribution_rate import CoAuthorContributionRate
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
 from impact.metrics.plugins.influence.mentorship_signal import MentorshipSignal

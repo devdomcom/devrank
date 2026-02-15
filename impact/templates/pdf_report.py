@@ -25,7 +25,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from impact.config.categories import get_category_name, get_category_order
+from impact.config.categories import UNSCORED_CATEGORIES, compute_group_scores, get_category_name, get_category_order
 
 # ---------------------------------------------------------------------------
 # Color palette
@@ -329,7 +329,7 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
         "stats": [
             ("review_count", "Reviews", "count"),
             ("reviews_per_week", "Per Week", "ratio"),
-            ("period_days", "Period", "days"),
+            ("period_days", "Period (days)", "count"),
         ],
     },
     "review_turnaround_time": {
@@ -563,6 +563,11 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             fontName="Helvetica-Bold", fontSize=11, textColor=DARK_TEXT,
             spaceAfter=4, leading=14,
         ),
+        "metric_desc": ParagraphStyle(
+            "RptMetricDesc", parent=base["Normal"],
+            fontName="Helvetica-Oblique", fontSize=8, textColor=LIGHT_TEXT,
+            spaceAfter=3, leading=10,
+        ),
         "metric_summary": ParagraphStyle(
             "RptMetricSummary", parent=base["Normal"],
             fontName="Helvetica", fontSize=9, textColor=MED_TEXT,
@@ -681,6 +686,20 @@ def _humanize_key(key: str) -> str:
 # Build a metric card
 # ---------------------------------------------------------------------------
 
+_SIGNAL_TAG_COLORS: dict[str, tuple[str, str]] = {
+    "authored": ("#1D4ED8", "#DBEAFE"),    # blue
+    "influence": ("#047857", "#D1FAE5"),   # green
+    "mixed": ("#B45309", "#FEF3C7"),       # amber
+}
+
+
+def _signal_tag(signal_type: str) -> str:
+    """Inline XML fragment for a small signal-type label."""
+    fg, _bg = _SIGNAL_TAG_COLORS.get(signal_type, ("#6B7280", "#F3F4F6"))
+    label = signal_type.capitalize()
+    return f'  <font color="{fg}" size="8">[{label}]</font>'
+
+
 def _build_metric_card(
     metric: dict,
     styles: dict,
@@ -694,6 +713,8 @@ def _build_metric_card(
     score = metric.get("score")
     details = metric.get("details", {})
     summary = metric.get("summary", "")
+    description = metric.get("description", "")
+    signal_type = metric.get("signal_type", "authored")
 
     # Truncate summary
     if len(summary) > 140:
@@ -705,11 +726,18 @@ def _build_metric_card(
     # Badge
     badge = _rating_badge(rating, styles)
 
-    # Name + score line
+    # Name + score + signal tag line
+    tag = _signal_tag(signal_type)
     name_p = Paragraph(
-        f'{display_name}<font color="{LIGHT_TEXT.hexval()}" size="9">{score_text}</font>',
+        f'{display_name}<font color="{LIGHT_TEXT.hexval()}" size="9">{score_text}</font>{tag}',
         styles["metric_name"],
     )
+
+    # Description line (purpose of the metric)
+    desc_p = Paragraph(
+        f'<i><font color="{LIGHT_TEXT.hexval()}">{description}</font></i>',
+        styles["metric_desc"],
+    ) if description else None
 
     # Summary line
     summary_p = Paragraph(summary, styles["metric_summary"])
@@ -770,7 +798,11 @@ def _build_metric_card(
             stat_elements.append(fb)
 
     # Combine into card: [badge | content]
-    content_parts = [name_p, summary_p] + stat_elements
+    content_parts = [name_p]
+    if desc_p:
+        content_parts.append(desc_p)
+    content_parts.append(summary_p)
+    content_parts.extend(stat_elements)
     # Build an inner table for content
     content_rows = [[e] for e in content_parts]
     inner = Table(content_rows, colWidths=[page_width - 1.8 * inch])
@@ -809,6 +841,22 @@ def _auto_format(v: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Group-averaged scoring (delegates to shared utility)
+# ---------------------------------------------------------------------------
+
+def _compute_group_scores(
+    metrics: list[dict],
+) -> tuple[float | None, dict[str, float]]:
+    """Thin wrapper: extract (score, category) pairs and delegate."""
+    pairs = [
+        (m["score"], m.get("category", "contextual"))
+        for m in metrics
+        if m.get("score") is not None
+    ]
+    return compute_group_scores(pairs)
+
+
+# ---------------------------------------------------------------------------
 # Executive summary page
 # ---------------------------------------------------------------------------
 
@@ -830,24 +878,74 @@ def _build_executive_summary(
     ))
     elements.append(Spacer(1, 0.3 * inch))
 
-    # Compute overall score
-    scored = [m for m in metrics if m.get("score") is not None]
-    if scored:
-        avg_score = sum(m["score"] for m in scored) / len(scored)
+    # Compute group-averaged overall score
+    overall_score, group_scores = _compute_group_scores(metrics)
+    if overall_score is not None:
         score_color = (
-            RATING_COLORS["excellent"] if avg_score >= 75
-            else RATING_COLORS["good"] if avg_score >= 50
-            else RATING_COLORS["neutral"] if avg_score >= 25
+            RATING_COLORS["excellent"] if overall_score >= 75
+            else RATING_COLORS["good"] if overall_score >= 50
+            else RATING_COLORS["neutral"] if overall_score >= 25
             else RATING_COLORS["bad"]
         )
         elements.append(Paragraph(
-            f'<font color="{score_color.hexval()}">{avg_score:.0f}</font>',
+            f'<font color="{score_color.hexval()}">{overall_score:.0f}</font>',
             styles["score_big"],
         ))
         elements.append(Paragraph(
-            f"Overall Score (avg of {len(scored)} metrics)",
+            f"Overall Score ({len(group_scores)} groups)",
             styles["score_label"],
         ))
+
+    # Group score breakdown
+    if group_scores:
+        cat_order = get_category_order()
+        gs_rows = []
+        for cat in cat_order:
+            if cat in UNSCORED_CATEGORIES or cat not in group_scores:
+                continue
+            gs = group_scores[cat]
+            gc = (
+                RATING_COLORS["excellent"] if gs >= 75
+                else RATING_COLORS["good"] if gs >= 50
+                else RATING_COLORS["neutral"] if gs >= 25
+                else RATING_COLORS["bad"]
+            )
+            gs_rows.append([
+                Paragraph(get_category_name(cat), styles["stat_label"]),
+                Paragraph(
+                    f'<font color="{gc.hexval()}"><b>{gs:.0f}</b></font>/100',
+                    styles["stat_value"],
+                ),
+            ])
+        if gs_rows:
+            n_cols = min(3, len(gs_rows))
+            # Arrange in rows of 3
+            padded = gs_rows + [["", ""]] * (n_cols - len(gs_rows) % n_cols) if len(gs_rows) % n_cols else gs_rows
+            flat_rows = []
+            for i in range(0, len(padded), n_cols):
+                name_row = []
+                score_row = []
+                for j in range(n_cols):
+                    if i + j < len(gs_rows):
+                        name_row.append(gs_rows[i + j][0])
+                        score_row.append(gs_rows[i + j][1])
+                    else:
+                        name_row.append("")
+                        score_row.append("")
+                flat_rows.append(name_row)
+                flat_rows.append(score_row)
+            col_w = (page_width - 0.5 * inch) / n_cols
+            gs_table = Table(flat_rows, colWidths=[col_w] * n_cols)
+            gs_table.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            elements.append(Spacer(1, 0.15 * inch))
+            elements.append(gs_table)
+
     elements.append(Spacer(1, 0.25 * inch))
 
     # Rating distribution
@@ -981,7 +1079,7 @@ def _group_by_category(metrics: list[dict]) -> dict[str, list[dict]]:
     category_order = get_category_order()
     groups: dict[str, list[dict]] = {cat: [] for cat in category_order}
     for m in metrics:
-        cat = m.get("category", "descriptive")
+        cat = m.get("category", "contextual")
         if cat not in groups:
             groups[cat] = []
         groups[cat].append(m)
@@ -1024,25 +1122,10 @@ def _build_category_section(
     elements.append(header_t)
     elements.append(Spacer(1, 0.15 * inch))
 
-    # Separate rated vs insufficient
-    rated = [m for m in metrics if m.get("rating") not in ("INSUFFICIENT_DATA",)]
-    insufficient = [m for m in metrics if m.get("rating") == "INSUFFICIENT_DATA"]
-
-    # Rated metrics as cards
-    for m in rated:
+    # All metrics rendered as cards (including INSUFFICIENT_DATA)
+    for m in metrics:
         card_elements = _build_metric_card(m, styles, page_width)
         elements.extend(card_elements)
-
-    # Insufficient data metrics (compact)
-    if insufficient:
-        elements.append(Spacer(1, 0.12 * inch))
-        for m in insufficient:
-            cfg = METRIC_DISPLAY_CONFIG.get(m["slug"])
-            name = cfg["name"] if cfg else _humanize_key(m["slug"])
-            elements.append(Paragraph(
-                f'<font color="#9CA3AF">{name} — Insufficient Data</font>',
-                styles["insuf_line"],
-            ))
 
     elements.append(Spacer(1, 0.3 * inch))
     return elements

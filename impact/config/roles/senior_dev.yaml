@@ -2,10 +2,26 @@
 # Each metric defines: key (details field), direction, rating bounds, score breakpoints, allowed_ratings.
 # Direction: lower_is_better | higher_is_better | band
 # To create a new role, copy this file and adjust thresholds/allowed_ratings.
+#
+# ORG-DEPENDENT METRICS
+# ---------------------
+# Some metrics reflect org policy or culture more than individual skill.
+# These are marked `no_rating: true` (descriptive only) in this default config
+# so they appear in reports as data without affecting the engineer's rating.
+# Override per-org by creating a custom role file with `no_rating: false` and
+# appropriate thresholds for metrics that ARE meaningful in your org.
+#
+# Org-dependent metrics in this config:
+#   - self_merge_rate:             Org may forbid self-merge (everyone 0%)
+#   - co_author_contribution_rate: Org may not use Co-authored-by trailers
+#   - conventional_commit_rate:    Org may not enforce conventional commits
+#   - blocking_comment_rate:       "Right" blocking rate varies by review culture
+#   - review_leverage:             Depends on org formally using change requests
+#   - first_time_approval_rate:    Multi-approval policies skew this metric
 
 metrics:
 
-  # ── Productivity & Throughput ──────────────────────────────────────────────
+  # ── Delivery & Velocity ────────────────────────────────────────────────────
 
   pr_throughput:
     key: merge_ratio
@@ -61,16 +77,7 @@ metrics:
     scores: [[0, 100], [1, 75], [2, 50], [4, 25], [8, 0]]
     allowed_ratings: [excellent, good, neutral, bad]
 
-  burstiness:
-    key: burst_ratio
-    direction: lower_is_better
-    excellent: 1.5
-    good: 2.5
-    neutral: 4.0
-    scores: [[0, 100], [1.5, 75], [2.5, 50], [4.0, 25], [8.0, 0]]
-    allowed_ratings: [excellent, good, neutral, bad]
-
-  # ── Code Quality & Size ────────────────────────────────────────────────────
+  # ── Code Quality ───────────────────────────────────────────────────────────
 
   pr_size_distribution:
     key: large_pr_percent
@@ -90,39 +97,6 @@ metrics:
     scores: [[0, 0], [8, 25], [20, 50], [30, 75], [50, 100]]
     allowed_ratings: [excellent, good, neutral, bad]
 
-  inline_comment_density:
-    key: avg_inline_per_pr
-    direction: higher_is_better
-    excellent: 5
-    good: 2
-    neutral: 0
-    scores: [[0, 50], [2, 75], [5, 100]]
-    allowed_ratings: [excellent, good, neutral]
-
-  conventional_commit_rate:
-    key: conventional_commit_rate
-    direction: higher_is_better
-    excellent: 90
-    good: 70
-    neutral: 50
-    scores: [[0, 0], [50, 25], [70, 50], [90, 75], [100, 100]]
-    allowed_ratings: [excellent, good, neutral, bad]
-
-  pr_body_quality_score:
-    key: average_score
-    direction: higher_is_better
-    excellent: 85
-    good: 65
-    neutral: 45
-    scores: [[0, 0], [45, 25], [65, 50], [85, 75], [100, 100]]
-    allowed_ratings: [excellent, good, neutral, bad]
-
-  net_code_contribution:
-    key: add_to_del_ratio
-    direction: higher_is_better
-    no_rating: true
-    allowed_ratings: [descriptive]
-
   code_churn_rate:
     key: max_weekly_churn
     direction: lower_is_better
@@ -141,7 +115,24 @@ metrics:
     scores: [[0, 100], [2, 75], [8, 50], [16, 25], [30, 0]]
     allowed_ratings: [excellent, good, neutral, bad]
 
-  # ── PR Hygiene & Process ───────────────────────────────────────────────────
+  revert_introduction_rate:
+    key: rate
+    direction: lower_is_better
+    excellent: 2
+    good: 8
+    neutral: 20
+    scores: [[0, 100], [2, 75], [8, 50], [20, 25], [40, 0]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  # ORG-DEPENDENT: Orgs with mandatory multi-approval policies skew this.
+  # Override with no_rating: false if your org uses single-approval flow.
+  first_time_approval_rate:
+    key: rate
+    direction: higher_is_better
+    no_rating: true
+    allowed_ratings: [descriptive]
+
+  # ── Process & Discipline ───────────────────────────────────────────────────
 
   pr_merge_effectiveness:
     key: average_back_and_forth
@@ -152,14 +143,70 @@ metrics:
     scores: [[0, 100], [1, 75], [2, 50], [4, 25], [8, 0]]
     allowed_ratings: [excellent, good, neutral, bad]
 
-  review_iterations:
-    key: average_iterations
-    direction: lower_is_better
-    excellent: 1
-    good: 2
-    neutral: 4
-    scores: [[0, 100], [1, 75], [2, 50], [4, 25], [8, 0]]
+  pr_body_quality_score:
+    key: average_score
+    direction: higher_is_better
+    excellent: 85
+    good: 65
+    neutral: 45
+    scores: [[0, 0], [45, 25], [65, 50], [85, 75], [100, 100]]
     allowed_ratings: [excellent, good, neutral, bad]
+
+  # ORG-DEPENDENT: Not all orgs enforce conventional commit format.
+  # Override with no_rating: false if your org uses commitlint/similar.
+  conventional_commit_rate:
+    key: conventional_commit_rate
+    direction: higher_is_better
+    no_rating: true
+    allowed_ratings: [descriptive]
+
+  # ORG-DEPENDENT: Org may forbid self-merge via branch protection, making
+  # everyone score 0% regardless of individual discipline.
+  # Override with no_rating: false if your org allows self-merge.
+  self_merge_rate:
+    key: self_merge_rate
+    direction: lower_is_better
+    no_rating: true
+    allowed_ratings: [descriptive]
+
+  abandoned_pr_rate:
+    key: weighted_score
+    direction: lower_is_better
+    excellent: 10
+    good: 30
+    neutral: 60
+    scores: [[0, 100], [10, 75], [30, 50], [60, 25], [100, 0]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  # Restricted: what counts as "trivial" varies by codebase type.
+  # No "excellent" — low trivial rate is expected, not praiseworthy.
+  trivial_contribution_rate:
+    key: trivial_prs_per_day
+    direction: lower_is_better
+    good: 0.05
+    neutral: 0.15
+    scores: [[0, 75], [0.05, 50], [0.15, 25], [0.3, 0]]
+    allowed_ratings: [good, neutral, bad]
+
+  module_area_breadth:
+    key: areas_per_pr
+    direction: higher_is_better
+    excellent: 2.0
+    good: 1.0
+    neutral: 0.5
+    scores: [[0, 0], [0.5, 25], [1.0, 50], [2.0, 75], [4.0, 100]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  pr_category_diversity:
+    key: distinct_categories
+    direction: higher_is_better
+    excellent: 5
+    good: 3
+    neutral: 2
+    scores: [[1, 20], [2, 40], [3, 60], [4, 80], [5, 100]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  # ── Responsiveness & Follow-through ────────────────────────────────────────
 
   time_to_first_review:
     key: median_hours
@@ -179,13 +226,13 @@ metrics:
     scores: [[0, 100], [2, 75], [12, 50], [48, 25], [96, 0]]
     allowed_ratings: [excellent, good, neutral, bad]
 
-  first_time_approval_rate:
-    key: rate
-    direction: higher_is_better
-    excellent: 0.8
-    good: 0.6
-    neutral: 0.4
-    scores: [[0, 0], [0.4, 25], [0.6, 50], [0.8, 75], [1.0, 100]]
+  review_iterations:
+    key: average_iterations
+    direction: lower_is_better
+    excellent: 1
+    good: 2
+    neutral: 4
+    scores: [[0, 100], [1, 75], [2, 50], [4, 25], [8, 0]]
     allowed_ratings: [excellent, good, neutral, bad]
 
   follow_up_commit_rate:
@@ -197,108 +244,25 @@ metrics:
     scores: [[0, 25], [15, 50], [30, 75], [45, 100], [60, 75], [75, 50], [85, 25], [100, 0]]
     allowed_ratings: [excellent, good, neutral, bad]
 
-  trivial_contribution_rate:
-    key: trivial_prs_per_day
-    direction: lower_is_better
-    excellent: 0.05
-    good: 0.15
-    neutral: 0.3
-    scores: [[0, 100], [0.05, 75], [0.15, 50], [0.3, 25], [0.6, 0]]
-    allowed_ratings: [excellent, good, neutral, bad]
-
-  self_merge_rate:
-    key: self_merge_rate
+  review_turnaround_time:
+    key: median_hours
     direction: lower_is_better
     excellent: 2
-    good: 10
-    neutral: 30
-    scores: [[0, 100], [2, 75], [10, 50], [30, 25], [60, 0]]
+    good: 6
+    neutral: 12
+    scores: [[0, 100], [2, 75], [6, 50], [12, 25], [24, 0]]
     allowed_ratings: [excellent, good, neutral, bad]
 
-  abandoned_pr_rate:
-    key: weighted_score
+  unblock_time:
+    key: median_hours
     direction: lower_is_better
-    excellent: 10
-    good: 30
-    neutral: 60
-    scores: [[0, 100], [10, 75], [30, 50], [60, 25], [100, 0]]
+    excellent: 8
+    good: 18
+    neutral: 36
+    scores: [[0, 100], [8, 75], [18, 50], [36, 25], [72, 0]]
     allowed_ratings: [excellent, good, neutral, bad]
 
-  # ── Scope & Collaboration ──────────────────────────────────────────────────
-
-  module_area_breadth:
-    key: areas_per_pr
-    direction: higher_is_better
-    excellent: 2.0
-    good: 1.0
-    neutral: 0.5
-    scores: [[0, 0], [0.5, 25], [1.0, 50], [2.0, 75], [4.0, 100]]
-    allowed_ratings: [excellent, good, neutral, bad]
-
-  co_author_contribution_rate:
-    key: collab_per_week
-    direction: higher_is_better
-    excellent: 2.0
-    good: 1.0
-    neutral: 0.5
-    scores: [[0, 0], [0.5, 25], [1.0, 50], [2.0, 75], [4.0, 100]]
-    allowed_ratings: [excellent, good, neutral, bad]
-
-  pr_category_diversity:
-    key: distinct_categories
-    direction: higher_is_better
-    excellent: 5
-    good: 3
-    neutral: 2
-    scores: [[1, 20], [2, 40], [3, 60], [4, 80], [5, 100]]
-    allowed_ratings: [excellent, good, neutral, bad]
-
-  dependency_change_rate:
-    key: dep_per_month
-    direction: higher_is_better
-    good: 0.5
-    neutral: 0
-    scores: [[0, 50], [0.5, 75], [2.0, 100]]
-    allowed_ratings: [neutral, good, bad]
-
-  documentation_touch_rate:
-    key: doc_per_month
-    direction: higher_is_better
-    good: 0.5
-    neutral: 0
-    scores: [[0, 50], [0.5, 75], [2.0, 100]]
-    allowed_ratings: [neutral, good, bad]
-
-  # ── Risk & Sustainability ──────────────────────────────────────────────────
-
-  bug_fix_focus_rate:
-    key: overall_rate
-    direction: band
-    excellent: [20, 40]
-    good: [10, 60]
-    neutral: [5, 75]
-    scores: [[0, 0], [5, 25], [10, 50], [20, 75], [30, 100], [40, 75], [60, 50], [75, 25], [100, 0]]
-    allowed_ratings: [excellent, good, neutral, bad]
-
-  revert_introduction_rate:
-    key: rate
-    direction: lower_is_better
-    excellent: 2
-    good: 8
-    neutral: 20
-    scores: [[0, 100], [2, 75], [8, 50], [20, 25], [40, 0]]
-    allowed_ratings: [excellent, good, neutral, bad]
-
-  off_hours_activity_rate:
-    key: off_hours_rate
-    direction: lower_is_better
-    excellent: 10
-    good: 20
-    neutral: 35
-    scores: [[0, 100], [10, 75], [20, 50], [35, 25], [60, 0]]
-    allowed_ratings: [excellent, good, neutral, bad]
-
-  # ── Influence & Review ─────────────────────────────────────────────────────
+  # ── Review Impact & Mentorship ─────────────────────────────────────────────
 
   reviews_given:
     key: reviews_per_week
@@ -309,23 +273,70 @@ metrics:
     scores: [[0, 0], [2.0, 25], [4.0, 50], [7.0, 75], [12.0, 100]]
     allowed_ratings: [excellent, good, neutral, bad]
 
-  review_turnaround_time:
-    key: median_hours
-    direction: lower_is_better
-    excellent: 2
+  review_breadth:
+    key: unique_authors
+    direction: higher_is_better
+    excellent: 10
     good: 6
-    neutral: 12
-    scores: [[0, 100], [2, 75], [6, 50], [12, 25], [24, 0]]
+    neutral: 3
+    scores: [[0, 0], [3, 25], [6, 50], [10, 75], [15, 100]]
     allowed_ratings: [excellent, good, neutral, bad]
 
+  review_comment_substance:
+    key: avg_substance_score
+    direction: higher_is_better
+    excellent: 60
+    good: 40
+    neutral: 20
+    scores: [[0, 0], [20, 25], [40, 50], [60, 75], [80, 100]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  inline_comment_density:
+    key: avg_inline_per_pr
+    direction: higher_is_better
+    excellent: 5
+    good: 2
+    neutral: 0.5
+    scores: [[0, 0], [0.5, 25], [2, 50], [5, 75], [8, 100]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  mentorship_signal:
+    key: mentorship_rate
+    direction: higher_is_better
+    excellent: 50
+    good: 30
+    neutral: 15
+    scores: [[0, 0], [15, 25], [30, 50], [50, 75], [70, 100]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  first_reviewer_rate:
+    key: rate
+    direction: higher_is_better
+    excellent: 0.5
+    good: 0.35
+    neutral: 0.2
+    scores: [[0, 0], [0.2, 25], [0.35, 50], [0.5, 75], [1.0, 100]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  review_demand:
+    key: demand_per_week
+    direction: higher_is_better
+    excellent: 10.0
+    good: 5.0
+    neutral: 2.0
+    scores: [[0, 0], [2.0, 25], [5.0, 50], [10.0, 75], [20.0, 100]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  # ORG-DEPENDENT: Depends on org formally using "changes_requested" reviews.
+  # Orgs with informal review culture (comments only) produce unreliable data.
+  # Override with no_rating: false if your org uses formal change requests.
   review_leverage:
     key: effectiveness_rate
     direction: higher_is_better
-    excellent: 0.85
-    good: 0.65
-    neutral: 0.35
-    scores: [[0, 0], [0.35, 25], [0.65, 50], [0.85, 75], [1.0, 100]]
-    allowed_ratings: [excellent, good, neutral, bad]
+    no_rating: true
+    allowed_ratings: [descriptive]
+
+  # ── Review Effectiveness ───────────────────────────────────────────────────
 
   pr_merge_rate:
     key: merge_rate
@@ -354,65 +365,70 @@ metrics:
     scores: [[0, 0], [0.4, 25], [0.6, 50], [0.8, 75], [1.0, 100]]
     allowed_ratings: [excellent, good, neutral, bad]
 
+  # ORG-DEPENDENT: The "right" blocking rate varies wildly by review culture.
+  # Strict orgs expect high blocking; collaborative orgs expect low.
+  # Override with no_rating: false and custom band thresholds for your org.
   blocking_comment_rate:
     key: blocking_per_day
     direction: band
-    excellent: [0.8, 2.5]
-    good: [0.3, 3.5]
-    neutral: [0.1, 5.0]
-    scores: [[0, 0], [0.1, 25], [0.3, 50], [0.8, 75], [1.6, 100], [2.5, 75], [3.5, 50], [5.0, 25], [10.0, 0]]
-    allowed_ratings: [excellent, good, neutral, bad]
+    no_rating: true
+    allowed_ratings: [descriptive]
 
-  unblock_time:
-    key: median_hours
+  # ── Contextual Signals (unscored) ──────────────────────────────────────────
+
+  burstiness:
+    key: burst_ratio
     direction: lower_is_better
-    excellent: 8
-    good: 18
-    neutral: 36
-    scores: [[0, 100], [8, 75], [18, 50], [36, 25], [72, 0]]
+    excellent: 1.5
+    good: 2.5
+    neutral: 4.0
+    scores: [[0, 100], [1.5, 75], [2.5, 50], [4.0, 25], [8.0, 0]]
     allowed_ratings: [excellent, good, neutral, bad]
 
-  review_breadth:
-    key: unique_authors
+  net_code_contribution:
+    key: add_to_del_ratio
     direction: higher_is_better
+    no_rating: true
+    allowed_ratings: [descriptive]
+
+  bug_fix_focus_rate:
+    key: overall_rate
+    direction: band
+    excellent: [20, 40]
+    good: [10, 60]
+    neutral: [5, 75]
+    scores: [[0, 0], [5, 25], [10, 50], [20, 75], [30, 100], [40, 75], [60, 50], [75, 25], [100, 0]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  off_hours_activity_rate:
+    key: off_hours_rate
+    direction: lower_is_better
     excellent: 10
-    good: 6
-    neutral: 3
-    scores: [[0, 0], [3, 25], [6, 50], [10, 75], [15, 100]]
+    good: 20
+    neutral: 35
+    scores: [[0, 100], [10, 75], [20, 50], [35, 25], [60, 0]]
     allowed_ratings: [excellent, good, neutral, bad]
 
-  review_comment_substance:
-    key: avg_substance_score
+  # ORG-DEPENDENT: Not all orgs use Co-authored-by trailers.
+  # Override with no_rating: false if your org uses co-authoring conventions.
+  co_author_contribution_rate:
+    key: collab_per_week
     direction: higher_is_better
-    excellent: 60
-    good: 40
-    neutral: 20
-    scores: [[0, 0], [20, 25], [40, 50], [60, 75], [80, 100]]
-    allowed_ratings: [excellent, good, neutral, bad]
+    no_rating: true
+    allowed_ratings: [descriptive]
 
-  mentorship_signal:
-    key: mentorship_rate
+  dependency_change_rate:
+    key: dep_per_month
     direction: higher_is_better
-    excellent: 50
-    good: 30
-    neutral: 15
-    scores: [[0, 0], [15, 25], [30, 50], [50, 75], [70, 100]]
-    allowed_ratings: [excellent, good, neutral, bad]
+    good: 0.5
+    neutral: 0
+    scores: [[0, 50], [0.5, 75], [2.0, 100]]
+    allowed_ratings: [neutral, good, bad]
 
-  review_demand:
-    key: demand_per_week
+  documentation_touch_rate:
+    key: doc_per_month
     direction: higher_is_better
-    excellent: 10.0
-    good: 5.0
-    neutral: 2.0
-    scores: [[0, 0], [2.0, 25], [5.0, 50], [10.0, 75], [20.0, 100]]
-    allowed_ratings: [excellent, good, neutral, bad]
-
-  first_reviewer_rate:
-    key: rate
-    direction: higher_is_better
-    excellent: 0.5
-    good: 0.35
-    neutral: 0.2
-    scores: [[0, 0], [0.2, 25], [0.35, 50], [0.5, 75], [1.0, 100]]
-    allowed_ratings: [excellent, good, neutral, bad]
+    good: 0.5
+    neutral: 0
+    scores: [[0, 50], [0.5, 75], [2.0, 100]]
+    allowed_ratings: [neutral, good, bad]

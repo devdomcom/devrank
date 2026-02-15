@@ -18,7 +18,7 @@ class SelfMergeRate(Metric):
 
     @property
     def category(self) -> str:
-        return "pr_hygiene_process"
+        return "process_discipline"
 
     def run(self, context: MetricContext) -> MetricResult:
         details = compute_self_merge_rate(context.ledger, context.user_login)
@@ -31,7 +31,7 @@ class SelfMergeRate(Metric):
             period_days = 30.0
         details["period_days"] = round(period_days, 1)
 
-        if details["engineer_merged_count"] == 0 or (period_days < 21 and details["engineer_merged_count"] < 3):
+        if period_days < 21 and details["engineer_merged_count"] < 3:
             details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,

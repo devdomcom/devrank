@@ -2,12 +2,12 @@
   "provider": "github",
   "api_version": "2022-11-28",
   "user": "msyavuz",
-  "from": "2026-01-19T00:00:00Z",
-  "to": "2026-01-29T00:00:00Z",
+  "from": "2026-01-01T00:00:00Z",
+  "to": "2026-01-31T23:59:59Z",
   "repositories": [
     "apache/superset"
   ],
-  "generated_at": "2026-01-29T18:07:01.905872Z",
+  "generated_at": "2026-02-14T08:13:32.652433Z",
   "notes": "Live fetch dump",
   "user_timezone": "Europe/Istanbul"
 }

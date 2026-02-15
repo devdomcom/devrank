@@ -286,13 +286,14 @@ METRIC_THRESHOLDS = {
         "neutral": lambda x: x < 0.5,
         "scores": [(0, 50), (0.5, 75), (2.0, 100)],
     },
-    # Inline Comment Density: avg per PR (higher=depth; neutral low, no dup iterations)
+    # Inline Comment Density: avg per PR (higher=depth; 0 with 0 PRs is bad signal)
     "inline_comment_density": {
         "key": "avg_inline_per_pr",
         "excellent": lambda x: x >= 5,
         "good": lambda x: 2 <= x < 5,
-        "neutral": lambda x: x < 2,
-        "scores": [(0, 50), (2, 75), (5, 100)],
+        "neutral": lambda x: 0.5 <= x < 2,
+        "bad": lambda x: x < 0.5,
+        "scores": [(0, 0), (0.5, 25), (2, 50), (5, 75), (8, 100)],
     },
     # Conventional Commit Rate: % conventional (industry best practices; higher better)
     "conventional_commit_rate": {

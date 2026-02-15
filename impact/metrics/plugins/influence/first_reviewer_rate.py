@@ -19,7 +19,7 @@ class FirstReviewerRate(Metric):
 
     @property
     def category(self) -> str:
-        return "influence_review"
+        return "review_impact"
 
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
@@ -76,7 +76,7 @@ class FirstReviewerRate(Metric):
             "per_review": per_review,
         }
 
-        if total == 0 or (period_days < 14 and total < 3):
+        if period_days < 14 and total < 3:
             details["no_data"] = True
 
         return MetricResult(

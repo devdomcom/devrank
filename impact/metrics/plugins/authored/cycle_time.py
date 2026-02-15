@@ -32,7 +32,7 @@ class CycleTime(Metric):
 
     @property
     def category(self) -> str:
-        return "productivity_throughput"
+        return "delivery_velocity"
 
     def run(self, context: MetricContext) -> MetricResult:
         merged_prs = context.ledger.get_merged_prs_for_user(

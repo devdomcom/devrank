@@ -51,7 +51,7 @@ class PRSizeDistribution(Metric):
 
     @property
     def category(self) -> str:
-        return "code_quality_size"
+        return "code_quality"
 
     def run(self, context: MetricContext) -> MetricResult:
         # Filter: exclude drafts for quality/size (incomplete); include closed (attempted).

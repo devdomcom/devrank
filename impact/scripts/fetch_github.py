@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import config  # noqa: E402
 from impact.providers.github_live import GitHubLiveFetcher, LiveFetchConfig
 
 
@@ -27,6 +27,11 @@ def parse_args():
     parser.add_argument("--from", dest="since", help="ISO start date (default: 365 days ago)")
     parser.add_argument("--to", dest="until", help="ISO end date (default: now)")
     parser.add_argument("--out", required=True, help="Output folder for dump")
+    parser.add_argument(
+        "--tz", required=True,
+        help="User timezone (IANA, e.g. America/Bogota); required for off-hours metric",
+    )
+    parser.add_argument("--notes", help="Optional notes to include in the dump manifest")
     return parser.parse_args()
 
 
@@ -38,7 +43,7 @@ def parse_date(val: str, default: datetime) -> datetime:
 
 def main():
     args = parse_args()
-    token = args.token or os.environ.get("GITHUB_TOKEN")
+    token = args.token or config.GITHUB_TOKEN
     if not token:
         raise SystemExit("GitHub token required via --token or GITHUB_TOKEN")
 
@@ -57,6 +62,8 @@ def main():
         end=end,
         token=token,
         out_dir=out_dir,
+        user_timezone=args.tz,
+        notes=args.notes,
     )
     fetcher = GitHubLiveFetcher(cfg)
     bundle = fetcher.run()

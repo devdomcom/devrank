@@ -18,7 +18,7 @@ class NetCodeContribution(Metric):
 
     @property
     def category(self) -> str:
-        return "descriptive"
+        return "contextual"
 
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login

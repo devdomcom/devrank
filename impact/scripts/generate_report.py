@@ -10,6 +10,7 @@ from pathlib import Path
 # Add the project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+import config  # noqa: E402 (after sys.path manipulation)
 from celery.exceptions import TimeoutError as CeleryTimeout
 
 from impact.celery_app import app as celery_app
@@ -87,7 +88,7 @@ def main():
     parser.add_argument(
         "--metrics",
         nargs="*",
-        help="Metric slugs to run (e.g., pr_merge_effectiveness review_leverage)",
+        help="Metric slugs to run (omit to run ALL metrics; pass specific slugs to filter)",
     )
     parser.add_argument("--out", help="Output path for the report (not implemented yet)")
     # Optional: trigger live fetch via Celery before running report
@@ -98,6 +99,14 @@ def main():
         "--fetch-from", dest="fetch_from", help="ISO start date (default: 365 days ago)"
     )
     parser.add_argument("--fetch-to", dest="fetch_to", help="ISO end date (default: now)")
+    parser.add_argument(
+        "--fetch-tz", dest="fetch_tz",
+        help="User timezone (IANA, e.g. Europe/Istanbul); required for off-hours metric",
+    )
+    parser.add_argument(
+        "--fetch-notes", dest="fetch_notes",
+        help="Optional notes to include in the dump manifest",
+    )
     parser.add_argument(
         "--broker", help="Celery broker URL override (default env CELERY_BROKER_URL)"
     )
@@ -127,13 +136,27 @@ def main():
         raise SystemExit(
             "Provide --existing-dump to reuse a dump, or --dump-path plus fetch flags to create one."
         )
+    # Validate fetch-mode requires user + repos + timezone
+    if args.dump_path and not args.existing_dump:
+        missing = []
+        if not args.fetch_user:
+            missing.append("--fetch-user")
+        if not args.fetch_repos:
+            missing.append("--fetch-repos")
+        if not args.fetch_tz:
+            missing.append("--fetch-tz")
+        if missing:
+            raise SystemExit(
+                f"Fetch mode requires {', '.join(missing)}. "
+                "Use --existing-dump to skip fetching."
+            )
 
     # Decide dump directory (existing vs new fetch target)
     dump_dir = Path(args.existing_dump or args.dump_path)
 
     # Optional: live fetch via Celery (required if fetch flags provided and not reusing)
     if args.fetch_repos and args.fetch_user and not args.existing_dump:
-        token = args.fetch_token or os.environ.get("GITHUB_TOKEN")
+        token = args.fetch_token or config.GITHUB_TOKEN
         if not token:
             raise SystemExit(
                 "fetch requested but no GitHub token provided (--fetch-token or GITHUB_TOKEN)"
@@ -145,9 +168,7 @@ def main():
 
         if args.broker:
             celery_app.conf.broker_url = args.broker
-            celery_app.conf.result_backend = os.environ.get(
-                "CELERY_BACKEND_URL", "redis://localhost:6379/1"
-            )
+            celery_app.conf.result_backend = config.CELERY_BACKEND_URL
 
         insp = celery_app.control.inspect(timeout=5)
         ping = insp.ping() if insp else None
@@ -165,6 +186,8 @@ def main():
                 "out_dir": str(dump_dir),
                 "start_iso": start_iso,
                 "end_iso": end_iso,
+                "user_timezone": getattr(args, "fetch_tz", None),
+                "notes": getattr(args, "fetch_notes", None),
             },
         )
         print(f"Queued fetch task {task.id}, waiting for completion...")
@@ -229,7 +252,14 @@ def main():
     role_config = get_role_config(role, getattr(args, "role_config", None))
 
     metrics_results = []  # Collect for export (always init)
-    if args.metrics:
+
+    # Resolve which metrics to run: explicit list, or ALL when omitted
+    available_metrics = get_metrics()
+    metric_slugs_to_run: list[str] = (
+        args.metrics if args.metrics else list(available_metrics.keys())
+    )
+
+    if metric_slugs_to_run:
         # Create ledger
         ledger = Ledger(bundle)
 
@@ -238,10 +268,7 @@ def main():
             ledger=ledger, user_login=user_login, start_date=start_date, end_date=end_date
         )
 
-        # Get available metrics
-        available_metrics = get_metrics()
-
-        for metric_slug in args.metrics:
+        for metric_slug in metric_slugs_to_run:
             if metric_slug not in available_metrics:
                 print(
                     f"Metric '{metric_slug}' not found. Available: {list(available_metrics.keys())}"
@@ -279,6 +306,7 @@ def main():
                 "name": metric.name,
                 "slug": metric.slug,
                 "description": metric.description,
+                "signal_type": metric.signal_type,
                 "category": metric.category,
                 "rating": rating,
                 "score": continuous_score,

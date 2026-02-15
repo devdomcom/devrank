@@ -62,7 +62,7 @@ class ReviewCommentSubstance(Metric):
 
     @property
     def category(self) -> str:
-        return "influence_review"
+        return "review_impact"
 
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
@@ -122,6 +122,6 @@ class ReviewCommentSubstance(Metric):
             "period_days": round(period_days, 1),
             "per_comment": per_comment[:50],  # cap output size
         }
-        if not scores or (period_days < 14 and len(scores) < 3):
+        if period_days < 14 and len(scores) < 3:
             details["no_data"] = True
         return MetricResult(metric_slug=self.slug, summary=summary, details=details)

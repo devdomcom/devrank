@@ -17,7 +17,7 @@ class InlineCommentDensity(Metric):
 
     @property
     def category(self) -> str:
-        return "code_quality_size"
+        return "review_impact"
 
     def run(self, context: MetricContext) -> MetricResult:
         # Get reviews given by the user in the time window
@@ -64,7 +64,7 @@ class InlineCommentDensity(Metric):
         }
         period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
         details["period_days"] = period_days
-        if not unique_prs or (period_days < 14 and len(unique_prs) < 3):
+        if period_days < 14 and len(unique_prs) < 3:
             details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,

@@ -19,7 +19,7 @@ import httpx
 def _in_process_client() -> httpx.Client:
     from starlette.testclient import TestClient
 
-    from impact.api.app import app
+    from api.app import app
 
     return TestClient(app)  # type: ignore[return-value]
 
@@ -52,9 +52,9 @@ def run_tests(client: httpx.Client) -> bool:
 
     _check(
         "GET",
-        "/api/v1/health",
+        "/health",
         200,
-        {"status": "healthy", "service": "devrank-impact"},
+        {"status": "healthy", "service": "devrank"},
     )
 
     _check("GET", "/api/v1/metrics", 200)

@@ -21,7 +21,7 @@ class ReviewsGiven(Metric):
 
     @property
     def category(self) -> str:
-        return "influence_review"
+        return "review_impact"
 
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
@@ -55,7 +55,7 @@ class ReviewsGiven(Metric):
             "review_pr_numbers": list({r.pull_request_number for r in reviews}),
         }
 
-        if review_count == 0 or (period_days < 14 and review_count < 3):
+        if period_days < 14 and review_count < 3:
             details["no_data"] = True
 
         return MetricResult(

@@ -19,9 +19,7 @@ from impact.metrics.plugins.authored.review_quality import (
 from impact.metrics.plugins.authored.test_file_ratio import TestFileRatio
 from impact.metrics.plugins.authored.trivial_contribution_rate import TrivialContributionRate
 from impact.metrics.plugins.authored.pr_body_quality import PRBodyQualityScore
-from impact.metrics.plugins.authored.co_author_contribution_rate import CoAuthorContributionRate
 from impact.metrics.plugins.authored.dependency_change_rate import DependencyChangeRate
-from impact.metrics.plugins.authored.inline_comment_density import InlineCommentDensity
 from impact.metrics.plugins.authored.commit_message_clarity import ConventionalCommitRate
 from impact.metrics.plugins.authored.code_churn_rate import CodeChurnRate
 from impact.metrics.plugins.authored.rework_rate import ReworkRate
@@ -50,6 +48,10 @@ from impact.metrics.plugins.influence.review_comment_substance import ReviewComm
 from impact.metrics.plugins.influence.mentorship_signal import MentorshipSignal
 from impact.metrics.plugins.influence.review_demand import ReviewDemand
 from impact.metrics.plugins.influence.first_reviewer_rate import FirstReviewerRate
+from impact.metrics.plugins.influence.inline_comment_density import InlineCommentDensity
+
+# Mixed metrics (both authored and influence signals)
+from impact.metrics.plugins.mixed.co_author_contribution_rate import CoAuthorContributionRate
 
 
 def validate_metrics() -> None:

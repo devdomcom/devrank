@@ -22,7 +22,7 @@ class PRMergeRate(Metric):
 
     @property
     def category(self) -> str:
-        return "influence_review"
+        return "review_effectiveness"
 
     def run(self, context: MetricContext) -> MetricResult:
         # User's reviews (influence on others' PRs)
@@ -70,7 +70,7 @@ class PRMergeRate(Metric):
             "per_review": per_review,
         }
 
-        if total_reviews == 0 or (period_days < 14 and total_reviews < 3):
+        if period_days < 14 and total_reviews < 3:
             details["no_data"] = True
 
         return MetricResult(

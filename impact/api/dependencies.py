@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException, Query, status
 
+from config import ALLOWED_DUMP_DIRS
 from impact.domain.models import CanonicalBundle, MetricContext
 from impact.ledger.ledger import Ledger
 
 # Allowed base directories for dump paths (prevents path traversal).
 # Override via DEVRANK_ALLOWED_DUMP_DIRS env var (colon-separated).
 _DEFAULT_ALLOWED_BASES = [Path("/tmp"), Path.home() / ".devrank", Path.cwd()]
-_ENV_BASES = os.environ.get("DEVRANK_ALLOWED_DUMP_DIRS", "")
 ALLOWED_DUMP_BASES: list[Path] = (
-    [Path(p) for p in _ENV_BASES.split(":") if p.strip()]
-    if _ENV_BASES
+    [Path(p) for p in ALLOWED_DUMP_DIRS.split(":") if p.strip()]
+    if ALLOWED_DUMP_DIRS
     else _DEFAULT_ALLOWED_BASES
 )
 

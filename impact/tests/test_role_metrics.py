@@ -49,9 +49,9 @@ def test_allowed_ratings_filtering():
     # dependency_change_rate restricts to [neutral, good, bad] — no excellent
     dep_cfg = config["metrics"]["dependency_change_rate"]
     assert "excellent" not in dep_cfg["allowed_ratings"]
-    # inline_comment_density allows [excellent, good, neutral] — no bad
+    # inline_comment_density allows [excellent, good, neutral, bad] — full range
     inline_cfg = config["metrics"]["inline_comment_density"]
-    assert "bad" not in inline_cfg["allowed_ratings"]
+    assert "bad" in inline_cfg["allowed_ratings"]
 
 
 def test_get_metric_rating_yaml_thresholds():

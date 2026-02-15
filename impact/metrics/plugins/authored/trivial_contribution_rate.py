@@ -34,7 +34,7 @@ class TrivialContributionRate(Metric):
 
     @property
     def category(self) -> str:
-        return "pr_hygiene_process"
+        return "process_discipline"
 
     def run(self, context: MetricContext) -> MetricResult:
         # Filter: exclude drafts for quality/trivial rate (incomplete); include closed.

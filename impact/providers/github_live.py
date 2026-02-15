@@ -22,6 +22,8 @@ class LiveFetchConfig:
     end: datetime
     token: str
     out_dir: Path
+    user_timezone: str | None = None
+    notes: str | None = None
 
 
 class GitHubLiveFetcher:
@@ -64,8 +66,10 @@ class GitHubLiveFetcher:
             "to": self.cfg.end.isoformat().replace("+00:00", "Z"),
             "repositories": self.cfg.repos,
             "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-            "notes": "Live fetch dump",
+            "notes": self.cfg.notes or "Live fetch dump",
         }
+        if self.cfg.user_timezone:
+            manifest["user_timezone"] = self.cfg.user_timezone
         writer.write_manifest(manifest)
 
         pr_numbers = []

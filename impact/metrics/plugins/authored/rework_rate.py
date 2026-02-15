@@ -20,7 +20,7 @@ class ReworkRate(Metric):
 
     @property
     def category(self) -> str:
-        return "descriptive"
+        return "code_quality"
 
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(
@@ -30,7 +30,8 @@ class ReworkRate(Metric):
         filtered_prs = filter_prs_for_contribution(prs, exclude_drafts=True, only_merged=False)
 
         details = compute_rework_rate(
-            context.ledger, context.user_login, filtered_prs, window_days=21
+            context.ledger, context.user_login, filtered_prs, window_days=21,
+            start_date=context.start_date, end_date=context.end_date,
         )
 
         rate = details["rework_rate"]

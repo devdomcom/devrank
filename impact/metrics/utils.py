@@ -619,7 +619,7 @@ def _parse_hunk_lines(patch: str | None, side: str = "-") -> set[int]:
     return lines
 
 
-def compute_rework_rate(ledger, user_login: str, prs: list, window_days: int = 21) -> dict:
+def compute_rework_rate(ledger, user_login: str, prs: list, window_days: int = 21, *, start_date=None, end_date=None) -> dict:
     """% lines changed that overlap author's prior 21d changes (self-rework on recent code).
     Uses patch hunks for line ranges; falls back if period short/no patches.
     """
@@ -677,20 +677,21 @@ def compute_rework_rate(ledger, user_login: str, prs: list, window_days: int = 2
             "rework_rate": rate,
         })
     rate = (reworked_lines / total_changed * 100) if total_changed else 0.0
-    # Non-computable if window too short for 21d lookback
-    period_days = 0
-    if prs:
+    # Use actual analysis period if available, else fall back to PR span
+    if start_date and end_date:
+        period_days = (end_date - start_date).total_seconds() / 86400
+    elif prs:
         dates = [p.created_at for p in prs if p.created_at]
-        if dates:
-            period_days = (max(dates) - min(dates)).days or 1
-    short_period = period_days < window_days
+        period_days = (max(dates) - min(dates)).days or 1 if dates else 0
+    else:
+        period_days = 0
     no_patches = total_changed == 0
-    no_data = short_period or no_patches
+    no_data = (period_days < window_days and len(prs) < 3) or no_patches
     no_data_reason = None
-    if short_period:
-        no_data_reason = f"period ({period_days}d) shorter than lookback window ({window_days}d)"
-    elif no_patches:
+    if no_patches:
         no_data_reason = "no patch data available for line-level analysis"
+    elif period_days < window_days and len(prs) < 3:
+        no_data_reason = f"period ({period_days:.0f}d) shorter than lookback window ({window_days}d)"
     return {
         "rework_rate": rate,
         "reworked_lines": reworked_lines,

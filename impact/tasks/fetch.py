@@ -23,6 +23,8 @@ def run_fetch(
     out_dir: str,
     start_iso: str | None = None,
     end_iso: str | None = None,
+    user_timezone: str | None = None,
+    notes: str | None = None,
 ):
     now = datetime.now(UTC)
     start = _parse_iso(start_iso, now - timedelta(days=365))
@@ -34,6 +36,8 @@ def run_fetch(
         end=end,
         token=token,
         out_dir=Path(out_dir),
+        user_timezone=user_timezone,
+        notes=notes,
     )
     fetcher = GitHubLiveFetcher(cfg)
     bundle = fetcher.run()

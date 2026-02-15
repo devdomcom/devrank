@@ -22,7 +22,7 @@ class ChangeInducingReviewRate(Metric):
 
     @property
     def category(self) -> str:
-        return "influence_review"
+        return "review_effectiveness"
 
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
@@ -67,7 +67,7 @@ class ChangeInducingReviewRate(Metric):
             "per_review": per_review,
         }
 
-        if total_reviews == 0 or (period_days < 14 and total_reviews < 3):
+        if period_days < 14 and total_reviews < 3:
             details["no_data"] = True
 
         return MetricResult(

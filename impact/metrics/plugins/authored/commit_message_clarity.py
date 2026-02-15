@@ -18,7 +18,7 @@ class ConventionalCommitRate(Metric):
 
     @property
     def category(self) -> str:
-        return "code_quality_size"
+        return "process_discipline"
 
     def run(self, context: MetricContext) -> MetricResult:
         all_commits = context.ledger.get_commits_for_user(

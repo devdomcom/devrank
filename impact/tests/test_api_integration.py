@@ -6,7 +6,7 @@ Sample dump at impact/samples/github_live_dump provides real data.
 import pytest
 from starlette.testclient import TestClient
 
-from impact.api.app import app
+from api.app import app
 
 DUMP_PATH = "impact/samples/github_live_dump"
 VALID_ROLE = "senior_dev"
@@ -23,9 +23,9 @@ def client():
 
 class TestHealth:
     def test_health_ok(self, client):
-        resp = client.get("/api/v1/health")
+        resp = client.get("/health")
         assert resp.status_code == 200
-        assert resp.json() == {"status": "healthy", "service": "devrank-impact"}
+        assert resp.json() == {"status": "healthy", "service": "devrank"}
 
 
 # ---------------------------------------------------------------------------

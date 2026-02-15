@@ -28,6 +28,16 @@ class Metric(ABC):
         """Category slug from impact.config.categories.CATEGORY_SLUGS."""
         pass
 
+    @property
+    def signal_type(self) -> str:
+        """Derived from plugin directory: 'authored', 'influence', or 'mixed'."""
+        module = type(self).__module__
+        if ".mixed." in module:
+            return "mixed"
+        if ".influence." in module:
+            return "influence"
+        return "authored"
+
     @abstractmethod
     def run(self, context: MetricContext) -> MetricResult:
         """Run the metric and return the result."""

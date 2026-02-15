@@ -40,3 +40,6 @@ htmlcov/
 
 # Logs
 *.log
+
+# Docker volumes (local dev)
+pgdata/

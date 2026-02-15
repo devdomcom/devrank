@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from impact.metrics.plugins.authored.co_author_contribution_rate import CoAuthorContributionRate
+from impact.metrics.plugins.mixed.co_author_contribution_rate import CoAuthorContributionRate
 from impact.tests.conftest import (
     DEFAULT_START,
     make_bundle,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -9,6 +8,7 @@ from impact.api.dependencies import build_context, get_metric_context_query
 from impact.api.schemas import (
     CompareMetricsRequest,
     ComputeMetricsRequest,
+    GroupScore,
     MetricComparison,
     MetricListItem,
     MetricResponse,
@@ -17,6 +17,7 @@ from impact.api.schemas import (
     Rating,
     TimeWindow,
 )
+from impact.config.categories import compute_group_scores, get_category_name
 from impact.config.role_metrics import get_available_roles, get_role_config
 from impact.domain.models import MetricContext
 from impact.metrics import get_metrics
@@ -33,7 +34,7 @@ def _get_metric_list() -> list[MetricListItem]:
     global _METRIC_LIST_CACHE
     if _METRIC_LIST_CACHE is None:
         _METRIC_LIST_CACHE = [
-            MetricListItem(slug=slug, name=metric().name, description=metric().description, category=metric().category)
+            MetricListItem(slug=slug, name=metric().name, description=metric().description, category=metric().category, signal_type=metric().signal_type)
             for slug, metric in get_metrics().items()
         ]
     return _METRIC_LIST_CACHE
@@ -93,17 +94,38 @@ def compute_metrics(req: ComputeMetricsRequest) -> MetricsReport:
                 name=metric.name,
                 description=metric.description,
                 category=metric.category,
+                signal_type=metric.signal_type,
                 rating=rating,
                 summary=result.summary,
                 details=result.details,
                 continuous_score=score,
             )
         )
+    # Compute group-averaged scores (shared logic)
+    pairs = [
+        (mr.continuous_score, mr.category)
+        for mr in metrics_results
+        if mr.continuous_score is not None
+    ]
+    overall_raw, group_map = compute_group_scores(pairs)
+    overall = round(overall_raw, 1) if overall_raw is not None else None
+    gs_list = [
+        GroupScore(
+            category=cat,
+            name=get_category_name(cat),
+            score=round(score, 1),
+            metric_count=sum(1 for mr in metrics_results if mr.category == cat and mr.continuous_score is not None),
+        )
+        for cat, score in group_map.items()
+    ]
+
     return MetricsReport(
         user_login=context.user_login,
         start_date=context.start_date,
         end_date=context.end_date,
         metrics=metrics_results,
+        group_scores=gs_list or None,
+        overall_score=overall,
         data_summary={"metrics_run": len(metrics_results)},
     )
 
@@ -126,6 +148,7 @@ def resolve_single_metric(
         name=metric.name,
         description=metric.description,
         category=metric.category,
+        signal_type=metric.signal_type,
         rating=rating,
         summary=result.summary,
         details=result.details,
@@ -187,7 +210,8 @@ def compare_metrics(req: CompareMetricsRequest) -> MetricsComparisonReport:
 
 
 # Test-only endpoint — only registered when DEVRANK_DEBUG is set.
-if os.environ.get("DEVRANK_DEBUG", "").lower() in ("1", "true", "yes"):
+from config import DEBUG as _DEBUG
+if _DEBUG:
 
     @router.get("/_test_error")
     def _test_error(error_type: str):

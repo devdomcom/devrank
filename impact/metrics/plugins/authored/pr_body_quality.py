@@ -18,7 +18,7 @@ class PRBodyQualityScore(Metric):
 
     @property
     def category(self) -> str:
-        return "code_quality_size"
+        return "process_discipline"
 
     def run(self, context: MetricContext) -> MetricResult:
         all_prs = context.ledger.get_prs_for_user(

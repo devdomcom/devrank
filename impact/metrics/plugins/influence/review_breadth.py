@@ -17,7 +17,7 @@ class ReviewBreadth(Metric):
 
     @property
     def category(self) -> str:
-        return "influence_review"
+        return "review_impact"
 
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
@@ -61,6 +61,6 @@ class ReviewBreadth(Metric):
             "total_prs_reviewed": sum(len(v) for v in author_pr_counts.values()),
             "period_days": round(period_days, 1),
         }
-        if not reviews or (period_days < 21 and len(reviews) < 3):
+        if period_days < 21 and len(reviews) < 3:
             details["no_data"] = True
         return MetricResult(metric_slug=self.slug, summary=summary, details=details)

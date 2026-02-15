@@ -22,7 +22,7 @@ class CoAuthorContributionRate(Metric):
 
     @property
     def category(self) -> str:
-        return "scope_collaboration"
+        return "contextual"
 
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login
@@ -81,7 +81,7 @@ class CoAuthorContributionRate(Metric):
             "per_pr_co": per_pr_co,
             "analyzed_pr_numbers": [p.number for p in all_prs],
         }
-        if total_co_events == 0 or (period_days < 14 and total_co_events < 2):
+        if period_days < 14 and total_co_events < 2:
             details["no_data"] = True
         summary = f"Combined collab rate: {inbound_rate:.1f}% in/{outbound_rate:.1f}% out; {collab_per_week:.1f} events/week (period: {period_days}d)."
         return MetricResult(

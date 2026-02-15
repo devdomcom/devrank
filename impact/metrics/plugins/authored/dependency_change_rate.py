@@ -18,7 +18,7 @@ class DependencyChangeRate(Metric):
 
     @property
     def category(self) -> str:
-        return "scope_collaboration"
+        return "contextual"
 
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login

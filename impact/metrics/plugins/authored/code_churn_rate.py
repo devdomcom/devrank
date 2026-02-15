@@ -18,7 +18,7 @@ class CodeChurnRate(Metric):
 
     @property
     def category(self) -> str:
-        return "code_quality_size"
+        return "code_quality"
 
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login

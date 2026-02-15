@@ -19,7 +19,7 @@ class ReviewDemand(Metric):
 
     @property
     def category(self) -> str:
-        return "influence_review"
+        return "review_impact"
 
     def run(self, context: MetricContext) -> MetricResult:
         # Aggregate review_requested targeting the user (accurate demand via requested_reviewer)
@@ -51,10 +51,9 @@ class ReviewDemand(Metric):
         demand_per_week = demand_per_day * 7
 
         # no_data: no timeline events at all means data may be incomplete,
-        # OR zero demand requests, OR small sample in short period
+        # OR small sample in short period.  Zero demand in a long period IS the signal.
         no_data = (
             total_timeline_events == 0
-            or demand_count == 0
             or (period_days < 14 and demand_count < 2)
         )
 

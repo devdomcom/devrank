@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from impact.metrics.plugins.authored.inline_comment_density import InlineCommentDensity
+from impact.metrics.plugins.influence.inline_comment_density import InlineCommentDensity
 from impact.tests.conftest import (
     DEFAULT_START,
     make_bundle,

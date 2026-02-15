@@ -1,28 +1,65 @@
-version: "3.9"
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: devrank
+      POSTGRES_PASSWORD: devrank
+      POSTGRES_DB: devrank
+    ports:
+      - "${DEVRANK_PG_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devrank"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - devrank
+
   redis:
     image: redis:7-alpine
     ports:
-      - "16379:6379"
+      - "${DEVRANK_REDIS_PORT:-6379}:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - devrank
 
   worker:
     build: .
     command: ["/usr/local/bin/uv", "run", "celery", "-A", "impact.celery_app", "worker", "-l", "info", "-c", "1"]
+    env_file:
+      - path: .env
+        required: false
     environment:
-      # Use the docker network hostname for Redis so the worker can connect inside the compose network.
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_BACKEND_URL=redis://redis:6379/1
+      - DEVRANK_DATABASE_URL=postgresql+asyncpg://devrank:devrank@postgres:5432/devrank
+      - DEVRANK_DATABASE_URL_SYNC=postgresql://devrank:devrank@postgres:5432/devrank
       - PYTHONPATH=/app
     depends_on:
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - .:/app
-      - /tmp:/tmp  # share host /tmp so fetched dumps are visible on host
-      # Use container venv (Linux) to avoid host macOS .venv incompatibility
+      - /tmp:/tmp
       - /app/.venv
+    networks:
+      - devrank
+
+networks:
+  devrank:
+    name: devrank
 
 volumes:
+  pgdata:
   redis-data:

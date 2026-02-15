@@ -18,32 +18,105 @@ The impact assessment tool analyzes GitHub activity to compute metrics that quan
 ## Prerequisites
 
 - Python 3.11+
-- Docker and Docker Compose (for Celery-based fetching)
+- Docker and Docker Compose
 - GitHub token (for live fetching)
 
-## Installation
+## Quick Start
 
-1. Clone the repository:
-   ```bash
-   git clone <repo-url>
-   cd devdom_eng_metrics
-   ```
+```bash
+git clone <repo-url>
+cd devdom_eng_metrics
+uv sync
+bash scripts/dev-infra.sh start
+uv run uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
+```
 
-2. Install dependencies:
-   ```bash
-   uv sync
-   ```
+No `.env` file needed — `config.py` ships sensible localhost defaults for every setting. The app works out of the box.
 
-3. For live fetching, start the Celery worker:
-   ```bash
-   docker compose up -d
-   ```
+## Setup
+
+### 1. Install Dependencies
+
+```bash
+uv sync
+```
+
+### 2. Start Infrastructure (PostgreSQL + Redis)
+
+```bash
+bash scripts/dev-infra.sh start
+```
+
+The script auto-detects which environment you're in:
+
+| Environment | How services are reached | What the script does |
+|---|---|---|
+| **Native Docker** (macOS / Linux host) | `localhost:5432` / `localhost:6379` | Starts containers, done |
+| **Docker-in-Docker** (Dev Containers, Codespaces, Gitpod) | `postgres:5432` / `redis:6379` | Starts containers, connects your dev container to the `devrank` Docker network so service names resolve |
+
+DinD is detected via `/.dockerenv`, cgroup markers, `/proc/self/mountinfo`, or environment variables set by Codespaces / Gitpod / VS Code Dev Containers.
+
+On first run the script generates a `.env` from `.env.example` with the correct hostnames substituted. This is optional — `config.py` already has working defaults for native Docker. The `.env` is mainly useful in DinD where hostnames differ.
+
+Other commands:
+
+```bash
+bash scripts/dev-infra.sh stop    # stop containers (keep data)
+bash scripts/dev-infra.sh reset   # stop + delete volumes (fresh start)
+bash scripts/dev-infra.sh status  # show container status
+```
+
+### 3. Start the API Server
+
+```bash
+uv run uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
+```
+
+`--host 0.0.0.0` binds to all interfaces. This is required in DinD environments so the host machine can reach the server via port forwarding. In native setups it works identically to `localhost`.
+
+### 4. Verify
+
+**Liveness probe** (instant, no external dependencies):
+
+```bash
+curl http://localhost:8000/health
+# {"status":"healthy","service":"devrank"}
+```
+
+**Infrastructure readiness** (checks Postgres + Redis connectivity, version, latency):
+
+```bash
+curl http://localhost:8000/health/infra
+# {"status":"healthy","postgres":{"status":"healthy","latency_ms":2.1,"version":"PostgreSQL 16..."},"redis":{"status":"healthy","latency_ms":0.5,"version":"7.2.4"}}
+```
+
+If you're in a DinD environment and `localhost` doesn't reach the server, use the container's hostname or IP instead, or verify port forwarding is enabled in your IDE.
+
+**Swagger UI**: http://localhost:8000/docs
+**ReDoc**: http://localhost:8000/redoc
+
+## Configuration
+
+All configuration lives in `config.py` at the project root. Every setting has a hardcoded default that works for local development. Environment variables override any default:
+
+| Setting | Env var | Default |
+|---|---|---|
+| Async database URL | `DEVRANK_DATABASE_URL` | `postgresql+asyncpg://devrank:devrank@localhost:5432/devrank` |
+| Sync database URL | `DEVRANK_DATABASE_URL_SYNC` | `postgresql://devrank:devrank@localhost:5432/devrank` |
+| Redis URL | `DEVRANK_REDIS_URL` | `redis://localhost:6379/0` |
+| Celery broker | `CELERY_BROKER_URL` | `redis://localhost:6379/0` |
+| Celery backend | `CELERY_BACKEND_URL` | `redis://localhost:6379/1` |
+| CORS origins | `DEVRANK_CORS_ORIGINS` | `*` |
+| Allowed dump dirs | `DEVRANK_ALLOWED_DUMP_DIRS` | `/tmp`, `~/.devrank`, cwd |
+| Debug mode | `DEVRANK_DEBUG` | `false` |
+| Secret key | `DEVRANK_SECRET_KEY` | `local-dev-secret-change-in-production` |
+| GitHub token | `GITHUB_TOKEN` | (none) |
+
+To override, either set environment variables directly or create a `.env` file (loaded by Docker Compose and `dev-infra.sh`, not by Python directly).
 
 ## Usage
 
-### CLI — Generating a Report from an Existing Data Dump
-
-If you already have a data dump (e.g., from a previous fetch), you can generate a report directly:
+### CLI — Report from an Existing Data Dump
 
 ```bash
 uv run python impact/scripts/generate_report.py \
@@ -51,18 +124,16 @@ uv run python impact/scripts/generate_report.py \
   --metrics pr_throughput cycle_time review_leverage
 ```
 
-Replace `/path/to/dump/directory` with the path to your dump (which should contain `dump_manifest.json` and a `canonical/` subdirectory with JSONL files).
+The dump directory should contain `dump_manifest.json` and a `canonical/` subdirectory with JSONL files.
 
-### CLI — Generating a Report with Fresh Data
-
-To fetch new data from GitHub and generate a report:
+### CLI — Report with Fresh GitHub Data
 
 1. Ensure the Celery worker is running:
    ```bash
    docker compose up -d
    ```
 
-2. Run the report generation script with fetch parameters:
+2. Run the report:
    ```bash
    uv run python impact/scripts/generate_report.py \
      --dump-path /path/to/new/dump \
@@ -72,33 +143,29 @@ To fetch new data from GitHub and generate a report:
      --metrics pr_throughput cycle_time review_leverage
    ```
 
-   - `--fetch-user`: The GitHub username of the user to assess.
-   - `--fetch-repos`: Comma-separated list of repositories (format: owner/repo).
-   - `--fetch-token`: GitHub personal access token. Can also be set via `GITHUB_TOKEN` environment variable.
-   - `--fetch-from` and `--fetch-to`: Optional ISO date strings to limit the fetch window (default: last 365 days).
-   - `--role`: Role name for rating config (default: `default`). See `impact/config/roles/`.
-   - `--role-config`: Path to a custom role YAML file (overrides `--role`).
-   - `--export candidate.pdf`: Export results as a PDF report.
-
-### API — Starting the Server
-
-Start the FastAPI server:
-
-```bash
-uv run uvicorn impact.api.app:app --reload --port 8000
-```
-
-Interactive API documentation is available at:
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+   | Flag | Description |
+   |---|---|
+   | `--fetch-user` | GitHub username to assess |
+   | `--fetch-repos` | Comma-separated repos (owner/repo) |
+   | `--fetch-token` | GitHub PAT (or set `GITHUB_TOKEN`) |
+   | `--fetch-from` / `--fetch-to` | ISO date window (default: last 365 days) |
+   | `--role` | Role config name (default: `default`) |
+   | `--role-config` | Path to a custom role YAML |
+   | `--export candidate.pdf` | Export as PDF |
 
 ### API Endpoints
 
-All endpoints are prefixed with `/api/v1`.
+**Platform (root-level)**
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
+| GET | `/health` | Liveness probe (instant, no external calls) |
+| GET | `/health/infra` | Readiness check (Postgres + Redis connectivity, version, latency) |
+
+**Impact metrics (`/api/v1`)**
+
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/metrics/` | List all available metrics (slug, name, description) |
 | GET | `/metrics/{slug}` | Compute a single metric (query params: `dump_path`, `user_login`, `start_date`, `end_date`, `role`) |
 | POST | `/metrics/compute` | Compute a full metrics report from a dump |
@@ -199,8 +266,6 @@ Metrics computed from the engineer's reviews and impact on others' work.
 Dumps are stored in a directory with:
 - `dump_manifest.json`: Metadata including user, date range, and provider.
 - `canonical/`: Subdirectory with JSONL files (pull_requests.jsonl, commits.jsonl, etc.).
-
-## Configuration
 
 ### Thresholds
 

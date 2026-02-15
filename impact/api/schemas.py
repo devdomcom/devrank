@@ -26,6 +26,7 @@ class MetricListItem(BaseModel):
     name: str
     description: str
     category: str
+    signal_type: str = "authored"
 
 
 class MetricResponse(BaseModel):
@@ -34,10 +35,19 @@ class MetricResponse(BaseModel):
     name: str
     description: str
     category: str
+    signal_type: str = "authored"
     rating: Rating
     summary: str
     details: dict[str, Any]
     continuous_score: float | None = None
+
+
+class GroupScore(BaseModel):
+    """Per-category group score (group-averaged scoring)."""
+    category: str
+    name: str
+    score: float
+    metric_count: int
 
 
 class MetricsReport(BaseModel):
@@ -46,6 +56,8 @@ class MetricsReport(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     metrics: list[MetricResponse]
+    group_scores: list[GroupScore] | None = None
+    overall_score: float | None = None
     data_summary: dict[str, Any] | None = None
 
 
@@ -58,15 +70,15 @@ class ComputeMetricsRequest(BaseModel):
     dump_path: str = Field(examples=["impact/samples/github_live_dump"])
     role: str = Field(examples=["senior_dev"])
     user_login: str | None = Field(None, examples=["msyavuz"])
-    start_date: datetime | None = Field(None, examples=["2026-01-19T00:00:00Z"])
-    end_date: datetime | None = Field(None, examples=["2026-01-29T00:00:00Z"])
+    start_date: datetime | None = Field(None, examples=["2026-01-01T00:00:00Z"])
+    end_date: datetime | None = Field(None, examples=["2026-01-31T23:59:59Z"])
     metric_slugs: list[str] | None = None  # optional filter
 
 
 class TimeWindow(BaseModel):
     """Time window spec for comparisons (start/end inferred from manifest if omitted)."""
-    start_date: datetime | None = Field(None, examples=["2026-01-19T00:00:00Z"])
-    end_date: datetime | None = Field(None, examples=["2026-01-29T00:00:00Z"])
+    start_date: datetime | None = Field(None, examples=["2026-01-01T00:00:00Z"])
+    end_date: datetime | None = Field(None, examples=["2026-01-31T23:59:59Z"])
 
 
 class CompareMetricsRequest(BaseModel):
@@ -80,12 +92,6 @@ class CompareMetricsRequest(BaseModel):
     window2: TimeWindow
     role: str = Field(examples=["senior_dev"])
     user_login: str | None = Field(None, examples=["msyavuz"])
-
-
-class HealthResponse(BaseModel):
-    """DRY response model for health (and future root-level status endpoints)."""
-    status: str
-    service: str
 
 
 class RoleListItem(BaseModel):
@@ -133,11 +139,11 @@ class MetricsComparisonReport(BaseModel):
 # Pipeline objects already Pydantic in domain; re-export for API atomicity
 __all__ = [
     "Rating",
+    "GroupScore",
     "MetricListItem",
     "MetricResponse",
     "MetricsReport",
     "ComputeMetricsRequest",
-    "HealthResponse",
     "RoleListItem",
     "RoleResponse",
     "TimeWindow",

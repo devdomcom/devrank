@@ -22,7 +22,7 @@ class ReviewTurnaroundTime(Metric):
 
     @property
     def category(self) -> str:
-        return "influence_review"
+        return "responsiveness"
 
     def run(self, context: MetricContext) -> MetricResult:
         # PRs reviewed by user (influence)
@@ -84,8 +84,12 @@ class ReviewTurnaroundTime(Metric):
             durations.append(hours)
             per_pr.append(entry)
 
-        median = percentile(durations, 0.5) if durations else 0.0
-        p75 = percentile(durations, 0.75) if durations else 0.0
+        if durations:
+            median = percentile(durations, 0.5)
+            p75 = percentile(durations, 0.75)
+        else:
+            median = 0.0
+            p75 = 0.0
 
         # Balance by period length
         if context.start_date and context.end_date:
@@ -102,9 +106,14 @@ class ReviewTurnaroundTime(Metric):
             "per_pr": per_pr,
         }
 
-        if not durations or (period_days < 14 and len(per_pr) < 3):
+        if not durations and period_days >= 14:
+            # Long period with zero reviews: use entire period as turnaround → rates "bad"
+            median = period_days * 24
+            p75 = median
+            details["median_hours"] = median
+            details["p75_hours"] = p75
+        elif period_days < 14 and len(per_pr) < 3:
             details["no_data"] = True
-            # Also add note when no timeline data was available for any PR
             details["note"] = "Measured from PR creation; may overcount if reviewer was assigned late"
 
         return MetricResult(

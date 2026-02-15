@@ -22,7 +22,7 @@ class UnblockTime(Metric):
 
     @property
     def category(self) -> str:
-        return "influence_review"
+        return "responsiveness"
 
     def run(self, context: MetricContext) -> MetricResult:
         # User's CR reviews

@@ -20,7 +20,7 @@ class OffHoursActivityRate(Metric):
 
     @property
     def category(self) -> str:
-        return "risk_sustainability"
+        return "contextual"
 
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login

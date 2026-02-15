@@ -171,14 +171,14 @@ class TestReviewLeverageScale:
         assert thresh["bad"](0.3) is False
 
     def test_rating_integration(self):
+        # review_leverage is org-dependent → descriptive in default role config
         details = {"effectiveness_rate": 0.85}
         rating = get_metric_rating("review_leverage", details, _ROLE_CONFIG)
-        assert rating == "excellent"
+        assert rating == "descriptive"
 
     def test_old_scale_values_dont_match_excellent(self):
-        """80 on the 0-1 scale is way above 1.0, so should still be excellent.
-        But the old key effectiveness_percentage should not be recognized."""
+        """Old key effectiveness_percentage should not be recognized."""
         details = {"effectiveness_percentage": 80}
         rating = get_metric_rating("review_leverage", details, _ROLE_CONFIG)
-        # The key doesn't match effectiveness_rate, so it should be unknown
-        assert rating == "unknown"
+        # no_rating: true in role config → descriptive regardless of key
+        assert rating == "descriptive"

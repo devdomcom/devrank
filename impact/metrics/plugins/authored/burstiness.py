@@ -22,7 +22,7 @@ class Burstiness(Metric):
 
     @property
     def category(self) -> str:
-        return "productivity_throughput"
+        return "contextual"
 
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(

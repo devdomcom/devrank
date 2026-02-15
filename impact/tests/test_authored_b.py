@@ -21,7 +21,7 @@ from impact.domain.models import CommentType, ReviewState
 from impact.metrics.plugins.authored.bug_fix_focus_rate import BugFixFocusRate
 from impact.metrics.plugins.authored.commit_message_clarity import ConventionalCommitRate
 from impact.metrics.plugins.authored.follow_up_commit_rate import FollowUpCommitRate
-from impact.metrics.plugins.authored.inline_comment_density import InlineCommentDensity
+from impact.metrics.plugins.influence.inline_comment_density import InlineCommentDensity
 from impact.metrics.plugins.authored.off_hours_activity_rate import OffHoursActivityRate
 from impact.metrics.plugins.authored.pr_throughput import PRThroughput
 from impact.metrics.plugins.authored.revert_introduction_rate import RevertIntroductionRate
