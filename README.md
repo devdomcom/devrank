@@ -1,6 +1,6 @@
-# DevDom
+# DevRank
 
-DevDom is a Scenario-Driven Evaluation Framework for Engineering Excellence and Impact that vets candidates using real-world metrics.
+DevRank is a Scenario-Driven Evaluation Framework for Engineering Excellence and Impact that vets candidates using real-world metrics.
 
 ## Overview
 
