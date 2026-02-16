@@ -755,31 +755,59 @@ def is_conventional_commit(message: str) -> bool:
 
 
 def compute_code_churn(
-    ledger, user_login: str, prs: list, window_days: int = 30
+    ledger, user_login: str, prs: list, window_days: int = 30,
+    *, start_date=None, end_date=None,
 ) -> dict:
-    """Code churn %: lines modifying own prior code (<=30d; file-level; weekly for spikes/period)."""
-    file_history = defaultdict(list)
+    """Code churn %: lines modifying own prior code (<=30d; line-level; weekly for spikes/period).
+
+    Uses line-level overlap (like rework_rate) instead of file-level to avoid
+    inflating churn for frequently-modified files. Excludes generated files.
+    """
+    # Build file history: file -> list of (date, changed_line_numbers) for author's prior PRs
+    file_history: dict[str, list[tuple]] = defaultdict(list)
     for upr in ledger.get_prs_for_user(user_login):
         for f in ledger.get_files_for_pr(upr.number):
-            file_history[f.filename].append(upr.created_at)
+            if is_generated_file(f.filename, f.patch):
+                continue
+            if f.patch:
+                changed = _parse_hunk_lines(f.patch, "+")
+                file_history[f.filename].append((upr.created_at, changed))
+            else:
+                # No patch data — record empty set (file was touched but no line info)
+                file_history[f.filename].append((upr.created_at, set()))
+
     churned_lines = 0
     total_lines = 0
     per_pr = []
     # Weekly bins for period-aware spikes/freq (short: spike bad; long: steady high bad)
-    weekly_churn = defaultdict(lambda: {"churn_lines": 0, "total_lines": 0})
+    weekly_churn: dict[tuple, dict] = defaultdict(lambda: {"churn_lines": 0, "total_lines": 0})
     for pr in prs:
         pr_date = pr.created_at
         pr_churn = 0
         pr_total = 0
         for f in ledger.get_files_for_pr(pr.number):
-            lines = f.changes
-            pr_total += lines
-            prev = [
-                t for t in file_history.get(f.filename, [])
+            if is_generated_file(f.filename, f.patch):
+                continue
+            # Parse current PR's changed lines
+            this_changed = _parse_hunk_lines(f.patch, "+") if f.patch else set()
+            line_count = len(this_changed) or f.changes  # fallback when no patch
+            pr_total += line_count
+            # Find prior author changes in the same file within window
+            prior = [
+                (t, ch) for t, ch in file_history.get(f.filename, [])
                 if t < pr_date and (pr_date - t).days <= window_days
             ]
-            if prev:
-                pr_churn += lines
+            if prior:
+                if this_changed:
+                    # Line-level: count overlapping line numbers
+                    prior_lines: set[int] = set()
+                    for _, prev_ch in prior:
+                        prior_lines |= prev_ch
+                    overlap = len(this_changed & prior_lines)
+                    pr_churn += overlap
+                else:
+                    # No patch data — fall back to file-level (all lines count)
+                    pr_churn += f.changes
         total_lines += pr_total
         churned_lines += pr_churn
         rate = (pr_churn / pr_total * 100) if pr_total else 0.0
@@ -798,12 +826,14 @@ def compute_code_churn(
         w_rate = (data["churn_lines"] / data["total_lines"] * 100) if data["total_lines"] else 0.0
         weekly_rates.append(w_rate)
     max_weekly = max(weekly_rates) if weekly_rates else 0.0
-    # Normalize churn/week (period length aware)
-    period_days = 30  # fallback
-    if prs:
+    # Use actual analysis period if available, else fall back to PR span
+    if start_date and end_date:
+        period_days = (end_date - start_date).total_seconds() / 86400
+    elif prs:
         dates = [p.created_at for p in prs if p.created_at]
-        if dates:
-            period_days = (max(dates) - min(dates)).days or 1
+        period_days = (max(dates) - min(dates)).days or 1 if dates else 30
+    else:
+        period_days = 30
     churn_per_week = (churned_lines / max(1, period_days / 7.0))
     result = {
         "churn_rate": rate,
@@ -848,6 +878,8 @@ def _parse_hunk_lines(patch: str | None, side: str = "-") -> set[int]:
                 new_line = int(match.group("new_start"))
         elif raw_line.startswith("+++") or raw_line.startswith("---"):
             continue  # file header lines
+        elif raw_line.startswith("\\"):
+            continue  # "\ No newline at end of file" marker — not a content line
         elif raw_line.startswith("+"):
             if side == "+":
                 lines.add(new_line)
@@ -955,7 +987,7 @@ def get_function_churn_map(ledger, prs: list) -> dict[str, dict]:
 _STRUCT_PATTERNS: dict[str, list[re.Pattern]] = {
     # Order matters — more specific patterns must come before general ones.
     "test_code": [
-        re.compile(r"^\s*(?:def\s+test_|it\s*\(|describe\s*\(|@Test\b|#\[test\]|func\s+Test\w+)"),
+        re.compile(r"^\s*(?:def\s+test_|(?:it|test|describe)(?:\.each)?\s*\(|@Test\b|#\[test\]|func\s+Test\w+)"),
     ],
     "new_class": [
         re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+\w+"),
@@ -1366,7 +1398,7 @@ def detect_module_boundary(filepath: str) -> str:
         return "root"
 
     if len(parts) == 1:
-        return parts[0]  # root-level file
+        return "root"  # root-level file (not its own module)
 
     # Check if the file IS a manifest (its directory is a module root)
     if parts[-1].lower() in _MANIFEST_FILENAMES:
@@ -1559,9 +1591,18 @@ def _is_trivial_body(node: Any, stmt_count: int) -> bool:
 
     Trivial means: empty body (pass/noop), single return,
     single assignment, or single expression (getter/setter/delegation).
+
+    Exception: expression-bodied arrow functions (no statement block) with
+    substantial content (>3 lines) are NOT trivial — common in React components.
     """
     if stmt_count == 0:
-        return True  # empty body
+        # Check for expression-bodied arrow functions with substantial content
+        if node is not None and node.type not in ("block", "statement_block", "statement_list"):
+            # Expression body (e.g., arrow function returning JSX) — check line span
+            line_span = node.end_point[0] - node.start_point[0] + 1
+            if line_span > 3:
+                return False  # multi-line expression body is non-trivial
+        return True  # genuinely empty body
     if stmt_count == 1:
         return True  # single-statement function
     return False

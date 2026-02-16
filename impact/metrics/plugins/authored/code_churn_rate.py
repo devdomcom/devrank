@@ -26,7 +26,10 @@ class CodeChurnRate(Metric):
             user, context.start_date, context.end_date
         )
         prs = filter_prs_for_contribution(all_prs, exclude_drafts=True, only_merged=False)
-        details = compute_code_churn(context.ledger, user, prs)
+        details = compute_code_churn(
+            context.ledger, user, prs,
+            start_date=context.start_date, end_date=context.end_date,
+        )
         # Period/freq aware: overall + max_weekly (spikes) + per_week
         rate = details["churn_rate"]
         summary = f"Code churn: {rate:.1f}% overall (max weekly {details.get('max_weekly_churn', 0):.1f}%; {details['churn_per_week']:.1f} lines/wk; {len(prs)} PRs)."

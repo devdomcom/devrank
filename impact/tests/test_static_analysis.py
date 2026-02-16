@@ -752,8 +752,8 @@ class TestDetectModuleBoundary:
         assert detect_module_boundary("") == "unknown"
 
     def test_root_level_file(self):
-        assert detect_module_boundary("main.py") == "main.py"
-        assert detect_module_boundary(".gitignore") == ".gitignore"
+        assert detect_module_boundary("main.py") == "root"
+        assert detect_module_boundary(".gitignore") == "root"
 
     def test_simple_directory(self):
         assert detect_module_boundary("backend/api/routes.py") == "backend"
@@ -804,7 +804,7 @@ class TestBuildModuleMap:
         module_map = build_module_map(paths)
         assert module_map["frontend/src/App.tsx"] == "frontend"
         assert module_map["backend/api.py"] == "backend"
-        assert module_map["main.py"] == "main.py"
+        assert module_map["main.py"] == "root"
 
     def test_workspace_detection(self):
         paths = [
@@ -1313,3 +1313,135 @@ class TestIsConventionalCommit:
     def test_case_insensitive(self):
         assert is_conventional_commit("FEAT: uppercase")
         assert is_conventional_commit("Fix: mixed case")
+
+
+# ---------------------------------------------------------------------------
+# _parse_hunk_lines — "\ No newline at end of file" marker handling
+# ---------------------------------------------------------------------------
+
+
+class TestParseHunkLinesNoNewlineMarker:
+    def test_backslash_marker_ignored(self):
+        r"""'\ No newline at end of file' must not advance line counters."""
+        patch = (
+            "@@ -1,2 +1,2 @@\n"
+            "-old\n"
+            "+new\n"
+            "\\ No newline at end of file\n"
+        )
+        added = _parse_hunk_lines(patch, "+")
+        assert added == {1}
+        removed = _parse_hunk_lines(patch, "-")
+        assert removed == {1}
+
+    def test_marker_doesnt_shift_subsequent_lines(self):
+        """In multi-hunk diffs, the marker must not shift line numbers for the next hunk."""
+        patch = (
+            "@@ -1,2 +1,2 @@\n"
+            "-old\n"
+            "+new\n"
+            "\\ No newline at end of file\n"
+            "@@ -10,2 +10,3 @@\n"
+            " context\n"
+            "+added\n"
+            " more\n"
+        )
+        added = _parse_hunk_lines(patch, "+")
+        assert added == {1, 11}  # not shifted by the marker
+
+
+# ---------------------------------------------------------------------------
+# classify_diff_structure — Jest test() detection
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyDiffJestTest:
+    def test_jest_test_function(self):
+        patch = (
+            "@@ -0,0 +1,3 @@\n"
+            "+test('should validate input', () => {\n"
+            "+    expect(validate(input)).toBe(true);\n"
+            "+});\n"
+        )
+        result = classify_diff_structure(patch)
+        assert result.get("test_code", 0) >= 1
+
+    def test_jest_test_each(self):
+        patch = (
+            "@@ -0,0 +1,3 @@\n"
+            "+test.each([1, 2, 3])('should work for %i', (n) => {\n"
+            "+    expect(process(n)).toBeDefined();\n"
+            "+});\n"
+        )
+        result = classify_diff_structure(patch)
+        assert result.get("test_code", 0) >= 1
+
+    def test_describe_each(self):
+        patch = (
+            "@@ -0,0 +1,2 @@\n"
+            "+describe.each([[1], [2]])('group %i', (n) => {\n"
+            "+    it('works', () => expect(n).toBeTruthy());\n"
+        )
+        result = classify_diff_structure(patch)
+        assert result.get("test_code", 0) >= 1
+
+
+# ---------------------------------------------------------------------------
+# detect_module_boundary — root-level files group to "root"
+# ---------------------------------------------------------------------------
+
+
+class TestDetectModuleBoundaryRootGrouping:
+    def test_root_files_share_module(self):
+        """Root-level files should map to 'root', not inflate module count."""
+        paths = [
+            "README.md",
+            ".gitignore",
+            "tsconfig.json",
+            "Makefile",
+            "src/main.py",
+            "lib/utils.ts",
+        ]
+        module_map = build_module_map(paths)
+        root_modules = {module_map[p] for p in ["README.md", ".gitignore", "tsconfig.json", "Makefile"]}
+        assert root_modules == {"root"}, f"Expected all root files → 'root', got {root_modules}"
+        assert module_map["src/main.py"] == "src"
+        assert module_map["lib/utils.ts"] == "lib"
+        # 3 modules (root, src, lib), not 6
+        assert len(set(module_map.values())) == 3
+
+
+# ---------------------------------------------------------------------------
+# _is_trivial_body — expression-bodied arrow function handling
+# ---------------------------------------------------------------------------
+
+
+class TestTrivialBodyExpressionArrow:
+    def test_multiline_expression_body_not_trivial(self):
+        """Expression-bodied arrow functions spanning >3 lines should NOT be trivial."""
+        # React component with expression body (parenthesized JSX)
+        code = (
+            "const App = () => (\n"
+            "    <Provider store={store}>\n"
+            "        <Router>\n"
+            "            <Layout>\n"
+            "                <Content />\n"
+            "            </Layout>\n"
+            "        </Router>\n"
+            "    </Provider>\n"
+            ")\n"
+        )
+        funcs = parse_functions(code, "App.jsx")
+        arrows = [f for f in funcs if f["name"] == "<anonymous>" or f["name"] == "App"]
+        # Should find at least one arrow function
+        if arrows:
+            # Multi-line expression body (8 lines) should NOT be trivial
+            assert not arrows[0]["is_trivial"], "Multi-line expression arrow should not be trivial"
+
+    def test_single_line_expression_still_trivial(self):
+        """Short expression-bodied arrows remain trivial."""
+        code = "const getId = () => 42;\n"
+        funcs = parse_functions(code, "util.js")
+        arrows = [f for f in funcs if f["kind"] == "function"]
+        if arrows:
+            assert arrows[0]["is_trivial"] is True

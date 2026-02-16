@@ -92,3 +92,105 @@ def test_code_churn_rate_no_churn():
     assert res.details["churn_rate"] == 0.0
     assert res.details["max_weekly_churn"] == 0.0
     assert res.details["churn_per_week"] == 0.0
+
+
+def test_code_churn_rate_line_level_with_patches():
+    """Line-level churn: only overlapping lines count, not entire file."""
+    user = make_user(id=1, login="alice")
+    owner = make_user(id=2, login="org")
+    repo = make_repo(id=1, name="repo", owner=owner)
+    start = DEFAULT_START
+
+    # PR1: adds lines 1-5 in fileA
+    pr1_patch = "@@ -0,0 +1,5 @@\n+line1\n+line2\n+line3\n+line4\n+line5\n"
+    pr1 = make_pr(1, user, repo, base_time=start, created_delta_hours=0)
+    f1 = make_file("sha1", "src/fileA.py", additions=5, deletions=0, changes=5,
+                    pr_number=1, patch=pr1_patch)
+
+    # PR2: adds lines 3-7 in same file (overlap on lines 3,4,5)
+    pr2_patch = "@@ -0,0 +3,5 @@\n+line3\n+line4\n+line5\n+line6\n+line7\n"
+    pr2 = make_pr(2, user, repo, base_time=start, created_delta_hours=168)  # +1wk
+    f2 = make_file("sha2", "src/fileA.py", additions=5, deletions=0, changes=5,
+                    pr_number=2, patch=pr2_patch)
+
+    bundle = make_bundle(
+        users=[user, owner],
+        repositories=[repo],
+        pull_requests=[pr1, pr2],
+        files=[f1, f2],
+    )
+    end = start + timedelta(days=30)
+    context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+    metric = CodeChurnRate()
+    res = metric.run(context)
+
+    # PR1: no prior → churn=0, total=5
+    # PR2: lines 3,4,5 overlap with PR1's lines 1,2,3,4,5 → overlap = lines {3,4,5} = 3
+    # Total: churn=3, total=10
+    assert res.details["churned_lines"] == 3
+    assert res.details["total_lines"] == 10
+    assert res.details["churn_rate"] == 30.0  # 3/10*100
+
+
+def test_code_churn_rate_excludes_generated_files():
+    """Generated files (lockfiles etc.) should not inflate churn."""
+    user = make_user(id=1, login="alice")
+    owner = make_user(id=2, login="org")
+    repo = make_repo(id=1, name="repo", owner=owner)
+    start = DEFAULT_START
+
+    # PR1: real file + lockfile
+    pr1 = make_pr(1, user, repo, base_time=start, created_delta_hours=0)
+    f1 = make_file("sha1", "src/main.py", changes=10, pr_number=1)
+    f2 = make_file("sha2", "package-lock.json", changes=5000, pr_number=1)
+
+    # PR2: same files modified
+    pr2 = make_pr(2, user, repo, base_time=start, created_delta_hours=168)
+    f3 = make_file("sha3", "src/main.py", changes=10, pr_number=2)
+    f4 = make_file("sha4", "package-lock.json", changes=5000, pr_number=2)
+
+    bundle = make_bundle(
+        users=[user, owner],
+        repositories=[repo],
+        pull_requests=[pr1, pr2],
+        files=[f1, f2, f3, f4],
+    )
+    end = start + timedelta(days=30)
+    context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+    metric = CodeChurnRate()
+    res = metric.run(context)
+
+    # Only real files counted: total_lines should be 20 (10+10), not 10020
+    assert res.details["total_lines"] == 20
+    # Churn from PR2's main.py (all lines file-level since no patches): 10
+    assert res.details["churned_lines"] == 10
+
+
+def test_code_churn_rate_uses_context_period():
+    """Period should be from context dates, not PR dates."""
+    user = make_user(id=1, login="alice")
+    owner = make_user(id=2, login="org")
+    repo = make_repo(id=1, name="repo", owner=owner)
+    start = DEFAULT_START
+
+    # All PRs in the same day
+    pr1 = make_pr(1, user, repo, base_time=start, created_delta_hours=0)
+    f1 = make_file("sha1", "a.py", changes=10, pr_number=1)
+
+    bundle = make_bundle(
+        users=[user, owner],
+        repositories=[repo],
+        pull_requests=[pr1],
+        files=[f1],
+    )
+    # Context: 90-day window
+    end = start + timedelta(days=90)
+    context = make_context(bundle, user_login="alice", start_date=start, end_date=end)
+
+    metric = CodeChurnRate()
+    res = metric.run(context)
+
+    # Should use 90 days, not 1 day (from PR dates)
+    assert res.details["period_days"] == 90.0
