@@ -24,6 +24,7 @@ class LiveFetchConfig:
     out_dir: Path
     user_timezone: str | None = None
     notes: str | None = None
+    fetch_contents: bool = False
 
 
 class GitHubLiveFetcher:
@@ -98,7 +99,10 @@ class GitHubLiveFetcher:
         # Parallelize lightly to avoid hammering the API; also we rely on client backoff.
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future_to_pr = {
-                executor.submit(fetcher.fetch_pr_bundle, repo, number): (repo, number)
+                executor.submit(
+                    fetcher.fetch_pr_bundle, repo, number,
+                    fetch_contents=self.cfg.fetch_contents,
+                ): (repo, number)
                 for repo, number in pr_numbers
             }
             for future in concurrent.futures.as_completed(future_to_pr):

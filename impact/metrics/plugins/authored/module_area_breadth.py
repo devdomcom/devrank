@@ -1,29 +1,6 @@
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import filter_prs_for_contribution
-
-
-def normalize_path_to_area(filename: str, levels: int = 1) -> str:
-    """
-    Normalize a file path to an area by truncating to N directory levels.
-
-    Args:
-        filename: The file path (e.g., "frontend/components/Button.js")
-        levels: Number of directory levels to keep (default 1)
-
-    Returns:
-        Normalized area string (e.g., "frontend" for levels=1, "root" for files in root)
-    """
-    if not filename:
-        return "unknown"
-    parts = filename.split("/")
-    # Filter out empty parts
-    parts = [p for p in parts if p]
-    if not parts:
-        return "root"
-    # Take up to levels parts
-    area_parts = parts[:levels]
-    return "/".join(area_parts)
+from impact.metrics.utils import detect_module_boundary, filter_prs_for_contribution
 
 
 class ModuleAreaBreadth(Metric):
@@ -69,7 +46,6 @@ class ModuleAreaBreadth(Metric):
         )
         prs = filter_prs_for_contribution(all_prs, exclude_drafts=True, only_merged=False)
 
-        truncation_levels = 1  # Configurable, but hardcoded for now
         all_areas: set[str] = set()
         total_files = 0
         sum_pr_areas = 0
@@ -78,7 +54,7 @@ class ModuleAreaBreadth(Metric):
             pr_areas: set[str] = set()
             files = context.ledger.get_files_for_pr(pr.number)
             for file in files:
-                area = normalize_path_to_area(file.filename, truncation_levels)
+                area = detect_module_boundary(file.filename)
                 pr_areas.add(area)
             all_areas.update(pr_areas)
             sum_pr_areas += len(pr_areas)
@@ -88,14 +64,14 @@ class ModuleAreaBreadth(Metric):
         total_pr_count = len(prs)
         areas_per_pr = sum_pr_areas / total_pr_count if total_pr_count > 0 else 0.0
 
-        summary = f"Touched {distinct_areas_count} distinct areas"
+        summary = f"Touched {distinct_areas_count} distinct modules"
         details: dict[str, object] = {
             "total_pr_count": total_pr_count,
             "total_files_touched": total_files,
             "distinct_areas_count": distinct_areas_count,
             "distinct_areas": sorted(list(all_areas)),
             "areas_per_pr": areas_per_pr,
-            "truncation_levels": truncation_levels,
+            "detection_method": "manifest_aware",
         }
         period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
         details["period_days"] = period_days

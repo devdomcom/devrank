@@ -1,6 +1,6 @@
 from impact.domain.models import MetricContext, MetricResult, PullRequest
 from impact.metrics.base import Metric
-from impact.metrics.utils import filter_prs_for_contribution, get_pr_size_category
+from impact.metrics.utils import filter_prs_for_contribution, get_pr_effective_changes, get_pr_size_category
 
 
 class TrivialContributionRate(Metric):
@@ -44,8 +44,12 @@ class TrivialContributionRate(Metric):
         prs = filter_prs_for_contribution(all_prs, exclude_drafts=True, only_merged=False)
 
         trivial_prs: list[PullRequest] = []
+        total_generated_lines = 0
         for pr in prs:
-            changes = pr.additions + pr.deletions
+            # Use effective (non-generated) changes for accurate trivial detection
+            eff_add, eff_del, gen_lines = get_pr_effective_changes(context.ledger, pr)
+            total_generated_lines += gen_lines
+            changes = eff_add + eff_del
             if get_pr_size_category(changes) == "trivial":
                 trivial_prs.append(pr)
 
@@ -71,6 +75,7 @@ class TrivialContributionRate(Metric):
             "period_days": days,
             "trivial_prs_per_day": trivial_prs_per_day,
             "trivial_pr_numbers": [pr.number for pr in trivial_prs],
+            "generated_lines_excluded": total_generated_lines,
         }
         # Mark as no_data when there are no PRs to evaluate or the sample is
         # too small (short period with few PRs), so the threshold system does

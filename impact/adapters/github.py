@@ -374,6 +374,8 @@ class GitHubAdapter(ProviderAdapter):
                                 pull_request_number=pr_number,
                                 # Patch loaded for rework (hunk-based line overlap)
                                 patch=file_dict.get("patch"),
+                                # Full file content for AST analysis (tree-sitter)
+                                content=file_dict.get("content"),
                             )
                         )
 

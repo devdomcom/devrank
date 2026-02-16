@@ -118,6 +118,8 @@ class FileRecord(BaseModel):
     pull_request_number: int
     # Patch for rework detection (unified diff hunks; loaded from files.jsonl)
     patch: str | None = None
+    # Full file content for AST analysis (tree-sitter); fetched via Git Blobs API
+    content: str | None = None
 
 
 class TimelineEvent(BaseModel):

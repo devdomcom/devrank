@@ -32,13 +32,20 @@ def parse_args():
         help="User timezone (IANA, e.g. America/Bogota); required for off-hours metric",
     )
     parser.add_argument("--notes", help="Optional notes to include in the dump manifest")
+    parser.add_argument(
+        "--fetch-contents", action="store_true",
+        help="Fetch full file contents via Git Blobs API (for tree-sitter AST analysis)",
+    )
     return parser.parse_args()
 
 
 def parse_date(val: str, default: datetime) -> datetime:
     if not val:
         return default
-    return datetime.fromisoformat(val.replace("Z", "+00:00"))
+    dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
 
 
 def main():
@@ -64,6 +71,7 @@ def main():
         out_dir=out_dir,
         user_timezone=args.tz,
         notes=args.notes,
+        fetch_contents=args.fetch_contents,
     )
     fetcher = GitHubLiveFetcher(cfg)
     bundle = fetcher.run()

@@ -2,6 +2,7 @@ import re
 
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
+from impact.metrics.utils import score_comment_code_quality
 
 
 def _score_comment(body: str) -> int:
@@ -22,11 +23,8 @@ def _score_comment(body: str) -> int:
     elif length >= 20:
         score += 10
 
-    # Code suggestions / code blocks (up to 25 points)
-    if "```" in body:
-        score += 25
-    elif "`" in body:
-        score += 10
+    # Code suggestions / code blocks (up to 25 points) — Pygments-aware
+    score += score_comment_code_quality(body)
 
     # Questions (shows engagement; up to 15 points)
     if "?" in body:

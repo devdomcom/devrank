@@ -1,9 +1,6 @@
 from datetime import timedelta
 
-from impact.metrics.plugins.authored.module_area_breadth import (
-    ModuleAreaBreadth,
-    normalize_path_to_area,
-)
+from impact.metrics.plugins.authored.module_area_breadth import ModuleAreaBreadth
 from impact.tests.conftest import (
     DEFAULT_START,
     make_bundle,
@@ -13,15 +10,6 @@ from impact.tests.conftest import (
     make_repo,
     make_user,
 )
-
-
-def test_normalize_path_to_area():
-    assert normalize_path_to_area("frontend/components/Button.js") == "frontend"
-    assert normalize_path_to_area("src/backend/api.py") == "src"
-    assert normalize_path_to_area("main.py") == "main.py"
-    assert normalize_path_to_area(".gitignore") == ".gitignore"
-    assert normalize_path_to_area("") == "unknown"
-    assert normalize_path_to_area("a/b/c", levels=2) == "a/b"
 
 
 def test_module_area_breadth_with_various_areas():
@@ -61,8 +49,8 @@ def test_module_area_breadth_with_various_areas():
     assert res.details["distinct_areas_count"] == 4  # frontend, backend, infra, docs
     assert set(res.details["distinct_areas"]) == {"docs", "frontend", "backend", "infra"}
     assert res.details["areas_per_pr"] == 4 / 3  # 1.333...
-    assert res.details["truncation_levels"] == 1
-    assert res.summary == "Touched 4 distinct areas"
+    assert res.details["detection_method"] == "manifest_aware"
+    assert res.summary == "Touched 4 distinct modules"
 
 
 def test_module_area_breadth_no_prs():
@@ -78,7 +66,7 @@ def test_module_area_breadth_no_prs():
     assert res.details["distinct_areas_count"] == 0
     assert res.details["distinct_areas"] == []
     assert res.details["areas_per_pr"] == 0.0
-    assert res.summary == "Touched 0 distinct areas"
+    assert res.summary == "Touched 0 distinct modules"
 
 
 def test_module_area_breadth_single_pr_multiple_areas():
@@ -109,7 +97,7 @@ def test_module_area_breadth_single_pr_multiple_areas():
     assert res.details["distinct_areas_count"] == 2  # frontend, backend
     assert set(res.details["distinct_areas"]) == {"frontend", "backend"}
     assert res.details["areas_per_pr"] == 2.0
-    assert res.summary == "Touched 2 distinct areas"
+    assert res.summary == "Touched 2 distinct modules"
 
 
 def test_module_area_breadth_overlapping_areas():

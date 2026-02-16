@@ -29,7 +29,7 @@ def test_pr_size_distribution_with_various_sizes():
     )  # medium
     pr4 = make_pr(
         4, user, repo, base_time=start, created_delta_hours=72, additions=500, deletions=600
-    )  # medium (500 + 600*0.5 = 800 weighted changes)
+    )  # large (500 + 600 = 1100 raw; categorization uses raw add+del)
     pr5 = make_pr(
         5, user, repo, base_time=start, created_delta_hours=96, additions=0, deletions=0
     )  # trivial
@@ -57,16 +57,16 @@ def test_pr_size_distribution_with_various_sizes():
     assert res.details["deletions_p75"] == 100.0
     # Changes p75: sorted 0,12.5,60,250,800 -> k=3, 250
     assert res.details["changes_p75"] == 250.0
-    assert res.details["small_pr_count"] == 2  # pr1(12.5), pr2(60)
-    assert res.details["medium_pr_count"] == 2  # pr3(250), pr4(800)
-    assert res.details["large_pr_count"] == 0  # pr4 was large but now medium with weighted deletions
+    assert res.details["small_pr_count"] == 2  # pr1(15 raw), pr2(70 raw)
+    assert res.details["medium_pr_count"] == 1  # pr3(300 raw)
+    assert res.details["large_pr_count"] == 1  # pr4(1100 raw)
     assert res.details["small_pr_percent"] == 40.0
-    assert res.details["medium_pr_percent"] == 40.0
-    assert res.details["large_pr_percent"] == 0.0
+    assert res.details["medium_pr_percent"] == 20.0
+    assert res.details["large_pr_percent"] == 20.0
     assert res.details["small_pr_numbers"] == [1, 2]
-    assert res.details["medium_pr_numbers"] == [3, 4]
-    assert res.details["large_pr_numbers"] == []
-    assert res.details["trivial_pr_numbers"] == [5]  # <10 weighted changes
+    assert res.details["medium_pr_numbers"] == [3]
+    assert res.details["large_pr_numbers"] == [4]
+    assert res.details["trivial_pr_numbers"] == [5]  # <10 raw changes
 
 
 def test_pr_size_distribution_no_prs():

@@ -1,6 +1,6 @@
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import filter_prs_for_contribution, is_test_file
+from impact.metrics.utils import filter_prs_for_contribution, is_test_file_or_content
 
 
 class TestFileRatio(Metric):
@@ -46,7 +46,7 @@ class TestFileRatio(Metric):
             for f in files:
                 ch = f.additions + f.deletions
                 pr_total += ch
-                if is_test_file(f.filename):
+                if is_test_file_or_content(f.filename, f.patch):
                     pr_test += ch
             total_changes += pr_total
             test_changes += pr_test

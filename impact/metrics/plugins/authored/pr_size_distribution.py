@@ -1,6 +1,6 @@
 from impact.domain.models import MetricContext, MetricResult, PullRequest
 from impact.metrics.base import Metric
-from impact.metrics.utils import filter_prs_for_contribution, get_pr_size_category, percentile
+from impact.metrics.utils import filter_prs_for_contribution, get_pr_effective_changes, get_pr_size_category, percentile
 
 
 class PRSizeDistribution(Metric):
@@ -68,16 +68,21 @@ class PRSizeDistribution(Metric):
         medium_prs: list[PullRequest] = []
         large_prs: list[PullRequest] = []
         trivial_prs: list[PullRequest] = []
+        total_generated_lines = 0
 
         for pr in prs:
-            add = pr.additions
-            del_ = pr.deletions
+            # Use effective (non-generated) changes for accurate sizing
+            eff_add, eff_del, gen_lines = get_pr_effective_changes(context.ledger, pr)
+            total_generated_lines += gen_lines
+            add = eff_add
+            del_ = eff_del
             ch = add + del_ * 0.5  # Deletions carry half the risk weight of additions
+            raw_ch = add + del_  # Raw total for categorical bucketing (consistent with trivial_contribution_rate)
             additions.append(add)
             deletions.append(del_)
             changes.append(ch)
 
-            category = get_pr_size_category(ch)
+            category = get_pr_size_category(raw_ch)
             if category == "trivial":
                 trivial_prs.append(pr)
             elif category == "small":
@@ -110,6 +115,7 @@ class PRSizeDistribution(Metric):
                 "medium_pr_numbers": [],
                 "large_pr_numbers": [],
                 "trivial_pr_numbers": [],
+                "generated_lines_excluded": 0,
                 "no_data": True,
             }
         else:
@@ -149,6 +155,7 @@ class PRSizeDistribution(Metric):
                 "medium_pr_numbers": [pr.number for pr in medium_prs],
                 "large_pr_numbers": [pr.number for pr in large_prs],
                 "trivial_pr_numbers": [pr.number for pr in trivial_prs],
+                "generated_lines_excluded": total_generated_lines,
             }
             if period_days < 14 and pr_count < 3:
                 details["no_data"] = True

@@ -1,3 +1,5 @@
+import math
+import zlib
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from typing import Any, TypedDict
@@ -149,6 +151,29 @@ def is_change_request(review, ledger) -> bool:
         return False
     comments = ledger.get_review_comments_for_review(review.id)
     return any(comments)
+
+
+def get_pr_effective_changes(ledger, pr) -> tuple[int, int, int]:
+    """Compute non-generated additions, deletions, and generated lines for a PR.
+
+    Returns (effective_additions, effective_deletions, generated_lines).
+    Generated files (lockfiles, vendored, minified, etc.) are excluded.
+    Falls back to pr.additions/pr.deletions when no file records exist.
+    """
+    files = ledger.get_files_for_pr(pr.number)
+    if not files:
+        # No file-level data; fall back to PR-level counts (no filtering possible)
+        return pr.additions, pr.deletions, 0
+    eff_add = 0
+    eff_del = 0
+    gen_lines = 0
+    for f in files:
+        if is_generated_file(f.filename, f.patch):
+            gen_lines += f.additions + f.deletions
+        else:
+            eff_add += f.additions
+            eff_del += f.deletions
+    return eff_add, eff_del, gen_lines
 
 
 def get_pr_size_category(changes: int) -> str:
@@ -440,6 +465,60 @@ def is_test_file(filename: str) -> bool:
     return False
 
 
+# Language-aware test patterns in patch content (added lines only)
+_TEST_CONTENT_PATTERNS: tuple[re.Pattern, ...] = (
+    # Python
+    re.compile(r"import\s+(?:unittest|pytest)"),
+    re.compile(r"from\s+(?:unittest|pytest)\s+import"),
+    re.compile(r"class\s+\w*Test\w*\(.*TestCase"),
+    re.compile(r"def\s+test_\w+"),
+    # JavaScript/TypeScript
+    re.compile(r"(?:describe|it|test)\s*\("),
+    re.compile(r"import\s+.*(?:from\s+['\"](?:jest|mocha|vitest|@testing-library))"),
+    re.compile(r"require\s*\(\s*['\"](?:jest|mocha|chai|sinon)"),
+    re.compile(r"expect\s*\(.*\)\.to(?:Be|Equal|Have|Match|Throw)"),
+    # Java/Kotlin
+    re.compile(r"@(?:Test|ParameterizedTest|RepeatedTest|BeforeEach|AfterEach)\b"),
+    re.compile(r"import\s+(?:org\.junit|org\.testng)"),
+    # Rust
+    re.compile(r"#\[(?:test|cfg\(test\))\]"),
+    re.compile(r"mod\s+tests\s*\{"),
+    # Go
+    re.compile(r"func\s+Test\w+\(t\s+\*testing\.T\)"),
+    re.compile(r"import\s+\"testing\""),
+    # Ruby
+    re.compile(r"require\s+['\"](?:rspec|minitest|test/unit)"),
+    re.compile(r"RSpec\.describe"),
+    # C#
+    re.compile(r"\[(?:Test|TestMethod|Fact|Theory)\]"),
+)
+
+
+def is_test_content(patch: str | None) -> bool:
+    """Detect test code by analyzing added lines in a patch for test framework patterns.
+
+    Complements is_test_file (path-based) with content-based detection.
+    Only checks added lines (+) to avoid false positives from removed code.
+    """
+    if not patch:
+        return False
+    added_lines = [
+        line[1:] for line in patch.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    ]
+    if not added_lines:
+        return False
+    text = "\n".join(added_lines)
+    return any(p.search(text) for p in _TEST_CONTENT_PATTERNS)
+
+
+def is_test_file_or_content(filename: str, patch: str | None = None) -> bool:
+    """Combined test detection: path heuristics + patch content analysis."""
+    if is_test_file(filename):
+        return True
+    return is_test_content(patch)
+
+
 def filter_prs_for_contribution(
     prs: list, exclude_drafts: bool = True, only_merged: bool = False
 ) -> list:
@@ -488,39 +567,181 @@ def compute_pr_body_quality(body: str | None) -> int:
 
 
 # DRY dep file detector (for dep change rate; common across langs)
+_DEP_BASENAMES: frozenset[str] = frozenset({
+    "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "requirements.txt", "requirements-dev.txt", "requirements-test.txt",
+    "pipfile", "pipfile.lock", "poetry.lock", "pyproject.toml",
+    "gemfile", "gemfile.lock",
+    "cargo.toml", "cargo.lock",
+    "pom.xml", "build.gradle", "build.gradle.kts",
+    "go.mod", "go.sum",
+    "composer.json", "composer.lock",
+    "pubspec.yaml", "pubspec.lock",
+})
+
+
 def is_dependency_file(filename: str) -> bool:
     if not filename:
         return False
-    f_lower = filename.lower()
-    dep_patterns = [
-        "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-        "requirements.txt", "requirements-dev.txt", "requirements-test.txt", "pipfile", "pipfile.lock",
-        "poetry.lock", "pyproject.toml",
-        "gemfile", "gemfile.lock",
-        "cargo.toml", "cargo.lock",
-        "pom.xml", "build.gradle", "build.gradle.kts",
-        "go.mod", "go.sum",
-        "composer.json", "composer.lock",
-        "pubspec.yaml", "pubspec.lock",
-    ]
-    return any(p in f_lower for p in dep_patterns)
+    basename = filename.lower().rsplit("/", 1)[-1]
+    return basename in _DEP_BASENAMES
 
 
 # DRY doc file detector (broad patterns for .md/.rst/docs/README etc across languages/repos)
+_DOC_EXTENSIONS: frozenset[str] = frozenset({".md", ".rst", ".adoc"})
+_DOC_BASENAMES: frozenset[str] = frozenset({
+    "readme", "changelog", "contributing", "license", "notice",
+    "authors", "faq", "glossary", "mkdocs.yml",
+})
+_DOC_DIRS: tuple[str, ...] = ("docs/", "doc/", "documentation/", "wiki/", "guides/", "manual/")
+
+
 def is_documentation_file(filename: str) -> bool:
     if not filename:
         return False
     f_lower = filename.lower()
-    doc_patterns = [
-        # Common doc files
-        ".md", ".rst", ".adoc", ".txt", "readme", "changelog", "contributing",
-        "docs/", "doc/", "documentation/", "wiki/", "guides/", "manual/",
-        # Project-specific
-        "license", "notice", "authors", "faq", "glossary",
-        # Web/docsite
-        "index.html", "mkdocs.yml", "sphinx", "docusaurus",
-    ]
-    return any(p in f_lower for p in doc_patterns)
+    basename = f_lower.rsplit("/", 1)[-1]
+    # Extension-based
+    dot_idx = basename.rfind(".")
+    if dot_idx >= 0 and basename[dot_idx:] in _DOC_EXTENSIONS:
+        return True
+    # Basename-based (strip extension for comparison)
+    name_no_ext = basename[:dot_idx] if dot_idx >= 0 else basename
+    if name_no_ext in _DOC_BASENAMES or basename in _DOC_BASENAMES:
+        return True
+    # Path segment: file lives under a docs directory
+    for d in _DOC_DIRS:
+        if f_lower.startswith(d) or ("/" + d) in f_lower:
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Generated-file detection (lockfiles, minified, auto-generated, vendor, etc.)
+# ---------------------------------------------------------------------------
+
+# Exact basenames that are always generated/machine-managed
+_GENERATED_BASENAMES: frozenset[str] = frozenset({
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "pipfile.lock", "poetry.lock", "cargo.lock",
+    "gemfile.lock", "composer.lock", "pubspec.lock",
+    "go.sum", "flake.lock",
+    "shrinkwrap.yaml",
+})
+
+# Suffix patterns for generated/vendored/minified files
+_GENERATED_SUFFIXES: tuple[str, ...] = (
+    ".min.js", ".min.css", ".min.map",
+    ".bundle.js", ".chunk.js",
+    ".generated.ts", ".generated.go", ".generated.rs",
+    ".pb.go", ".pb.cc", ".pb.h", ".pb.py",   # protobuf
+    ".g.dart",                                 # Dart codegen
+    "_generated.go",
+    ".snap",                                   # Jest snapshots
+    ".svg",                                    # typically exported from tools
+)
+
+# Directory segments that indicate vendored/generated trees
+_GENERATED_DIRS: tuple[str, ...] = (
+    "vendor/", "node_modules/", "dist/", "build/",
+    "__generated__/", "generated/", ".gen/",
+    "__snapshots__/",
+    "migrations/",
+)
+
+# Header markers in patch content that signal auto-generated files
+_GENERATED_MARKERS: tuple[str, ...] = (
+    "@generated",
+    "auto-generated",
+    "automatically generated",
+    "do not edit",
+    "do not modify",
+    "this file is generated",
+    "code generated by",
+    "generated by",
+)
+
+
+def _shannon_entropy(data: bytes) -> float:
+    """Shannon entropy in bits per byte (0-8). High entropy = random/minified."""
+    if not data:
+        return 0.0
+    freq: dict[int, int] = {}
+    for b in data:
+        freq[b] = freq.get(b, 0) + 1
+    length = len(data)
+    entropy = 0.0
+    for count in freq.values():
+        p = count / length
+        if p > 0:
+            entropy -= p * math.log2(p)
+    return entropy
+
+
+def _compression_ratio(data: bytes) -> float:
+    """Ratio of compressed/original size. Low ratio = highly repetitive/generated."""
+    if not data:
+        return 1.0
+    compressed = zlib.compress(data, level=6)
+    return len(compressed) / len(data)
+
+
+def is_generated_file(filename: str, patch: str | None = None) -> bool:
+    """Detect generated/vendored/minified files by name patterns and patch content.
+
+    Uses a layered approach:
+    1. Exact basename match (lockfiles)
+    2. Suffix patterns (minified, protobuf, snapshots)
+    3. Directory segments (vendor, node_modules, dist)
+    4. Patch header markers (@generated, DO NOT EDIT)
+    5. Entropy + compression ratio on patch content (minified/machine output)
+    """
+    if not filename:
+        return False
+    f_lower = filename.lower()
+    basename = f_lower.rsplit("/", 1)[-1]
+
+    # 1. Exact basename
+    if basename in _GENERATED_BASENAMES:
+        return True
+
+    # 2. Suffix patterns
+    if any(f_lower.endswith(s) for s in _GENERATED_SUFFIXES):
+        return True
+
+    # 3. Directory segments
+    if any(d in f_lower for d in _GENERATED_DIRS):
+        return True
+
+    # 4-5. Patch-content analysis (only if patch provided)
+    if patch:
+        # Extract added lines (content lines starting with +, not hunk headers)
+        added_lines = [
+            line[1:] for line in patch.splitlines()
+            if line.startswith("+") and not line.startswith("+++")
+        ]
+        if added_lines:
+            header_text = "\n".join(added_lines[:10]).lower()
+
+            # 4. Header markers in first 10 added lines
+            if any(marker in header_text for marker in _GENERATED_MARKERS):
+                return True
+
+            # 5. Entropy + compression (only on substantial patches)
+            content = "\n".join(added_lines)
+            if len(content) >= 500:
+                data = content.encode("utf-8", errors="replace")
+                entropy = _shannon_entropy(data)
+                ratio = _compression_ratio(data)
+                # Minified JS/CSS: high entropy (>6.0) + poor compressibility
+                # Normal code: entropy 3.5-5.5; minified/obfuscated: 6.0+
+                # Machine-generated: moderate entropy + very low compression (<0.15)
+                if entropy > 6.0 and ratio > 0.7:
+                    return True  # minified (high entropy, hard to compress)
+                if ratio < 0.15:
+                    return True  # extremely repetitive generated code
+
+    return False
 
 
 # DRY conventional commit checker (industry best practices: type(scope)!: desc; types from conventionalcommits.org)
@@ -601,22 +822,229 @@ def compute_code_churn(
     return result
 
 
+_HUNK_RE = re.compile(
+    r"@@\s+-(?P<old_start>\d+)(?:,(?P<old_count>\d+))?"
+    r"\s+\+(?P<new_start>\d+)(?:,(?P<new_count>\d+))?\s+@@"
+    r"(?:\s+(?P<context>.+))?"
+)
+
+
 def _parse_hunk_lines(patch: str | None, side: str = "-") -> set[int]:
-    """Parse unified diff hunks for changed line numbers (side='-' for old, '+' for new)."""
+    """Parse unified diff for actually changed line numbers (side='-' for old, '+' for new).
+
+    Walks diff lines individually to count only real additions/removals,
+    NOT context lines (which the hunk header counts include).
+    """
     if not patch:
         return set()
-    lines = set()
+    lines: set[int] = set()
+    old_line = 0
+    new_line = 0
+    for raw_line in patch.splitlines():
+        if raw_line.startswith("@@"):
+            match = _HUNK_RE.search(raw_line)
+            if match:
+                old_line = int(match.group("old_start"))
+                new_line = int(match.group("new_start"))
+        elif raw_line.startswith("+++") or raw_line.startswith("---"):
+            continue  # file header lines
+        elif raw_line.startswith("+"):
+            if side == "+":
+                lines.add(new_line)
+            new_line += 1
+        elif raw_line.startswith("-"):
+            if side == "-":
+                lines.add(old_line)
+            old_line += 1
+        else:
+            # Context line — advances both counters
+            old_line += 1
+            new_line += 1
+    return lines
+
+
+class HunkInfo(TypedDict):
+    old_start: int
+    old_count: int
+    new_start: int
+    new_count: int
+    function_context: str | None
+    added_lines: int
+    removed_lines: int
+
+
+def parse_hunks(patch: str | None) -> list[HunkInfo]:
+    """Parse unified diff into structured hunk information including function context.
+
+    The function_context field extracts the text after the closing @@, which
+    git/GitHub populate with the enclosing function/class name (when available).
+    This enables function-level churn and rework tracking without full AST parsing.
+    """
+    if not patch:
+        return []
+    hunks: list[HunkInfo] = []
+    current_added = 0
+    current_removed = 0
+
     for line in patch.splitlines():
         if line.startswith("@@"):
-            # @@ -old_start,old_count +new_start,new_count @@
-            match = re.search(r"@@\s+-(?P<old_start>\d+)(?:,(?P<old_count>\d+))?\s+\+(?P<new_start>\d+)(?:,(?P<new_count>\d+))?\s+@@", line)
+            # Flush previous hunk's line counts
+            if hunks:
+                hunks[-1]["added_lines"] = current_added
+                hunks[-1]["removed_lines"] = current_removed
+                current_added = 0
+                current_removed = 0
+
+            match = _HUNK_RE.search(line)
             if match:
-                g = "old" if side == "-" else "new"
-                start = int(match.group(f"{g}_start"))
-                count = int(match.group(f"{g}_count") or 1)
-                for i in range(count):
-                    lines.add(start + i)
-    return lines
+                ctx = match.group("context")
+                hunks.append(HunkInfo(
+                    old_start=int(match.group("old_start")),
+                    old_count=int(match.group("old_count") or 1),
+                    new_start=int(match.group("new_start")),
+                    new_count=int(match.group("new_count") or 1),
+                    function_context=ctx.strip() if ctx else None,
+                    added_lines=0,
+                    removed_lines=0,
+                ))
+        elif hunks:
+            if line.startswith("+") and not line.startswith("+++"):
+                current_added += 1
+            elif line.startswith("-") and not line.startswith("---"):
+                current_removed += 1
+
+    # Flush last hunk
+    if hunks:
+        hunks[-1]["added_lines"] = current_added
+        hunks[-1]["removed_lines"] = current_removed
+
+    return hunks
+
+
+def get_function_churn_map(ledger, prs: list) -> dict[str, dict]:
+    """Build a function-level churn map: {file::function -> {churn_count, total_lines, prs}}.
+
+    Uses hunk context from diffs to track how often the same function is modified.
+    High churn on a single function signals instability or rework.
+    """
+    func_map: dict[str, dict] = defaultdict(lambda: {"churn_count": 0, "total_lines": 0, "prs": []})
+
+    for pr in prs:
+        for f in ledger.get_files_for_pr(pr.number):
+            if not f.patch:
+                continue
+            hunks = parse_hunks(f.patch)
+            for h in hunks:
+                ctx = h["function_context"]
+                if not ctx:
+                    continue
+                key = f"{f.filename}::{ctx}"
+                func_map[key]["churn_count"] += 1
+                func_map[key]["total_lines"] += h["added_lines"] + h["removed_lines"]
+                if pr.number not in func_map[key]["prs"]:
+                    func_map[key]["prs"].append(pr.number)
+
+    return dict(func_map)
+
+
+# ---------------------------------------------------------------------------
+# Structural diff classification (Phase 1e)
+# ---------------------------------------------------------------------------
+
+# Patterns matched against added lines to classify what a diff structurally does
+_STRUCT_PATTERNS: dict[str, list[re.Pattern]] = {
+    # Order matters — more specific patterns must come before general ones.
+    "test_code": [
+        re.compile(r"^\s*(?:def\s+test_|it\s*\(|describe\s*\(|@Test\b|#\[test\]|func\s+Test\w+)"),
+    ],
+    "new_class": [
+        re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+\w+"),
+        re.compile(r"^\s*(?:interface|struct|enum|type)\s+\w+"),
+    ],
+    "new_function": [
+        re.compile(r"^\s*(?:def|function|func|fn|pub\s+fn|static|async\s+function)\s+\w+"),
+        re.compile(r"^\s*(?:export\s+)?(?:default\s+)?function\s+\w+"),
+        re.compile(r"^\s*const\s+\w+\s*=\s*(?:\(|async)"),
+    ],
+    "conditional_change": [
+        re.compile(r"^\s*(?:if|else|elif|else\s+if|switch|case|guard|when|match)\b"),
+    ],
+    "import_change": [
+        re.compile(r"^\s*(?:import|from\s+\S+\s+import|require\s*\(|use\s+)"),
+        re.compile(r"^\s*(?:export\s+\{|module\.exports)"),
+    ],
+    "error_handling": [
+        re.compile(r"^\s*(?:try|catch|except|finally|rescue|throw|raise|panic)\b"),
+    ],
+}
+
+
+def classify_diff_structure(patch: str | None) -> dict[str, int]:
+    """Classify what a diff structurally does by analyzing added lines.
+
+    Returns a dict of {category: line_count} for each structural category detected.
+    Categories: new_function, new_class, conditional_change, import_change,
+    error_handling, test_code, whitespace_only, other.
+    """
+    result: dict[str, int] = defaultdict(int)
+    if not patch:
+        return dict(result)
+
+    added_lines = [
+        line[1:] for line in patch.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    ]
+    removed_lines = [
+        line[1:] for line in patch.splitlines()
+        if line.startswith("-") and not line.startswith("---")
+    ]
+
+    if not added_lines and not removed_lines:
+        return dict(result)
+
+    # Check for whitespace-only changes
+    non_ws_added = [l for l in added_lines if l.strip()]
+    non_ws_removed = [l for l in removed_lines if l.strip()]
+    if not non_ws_added and not non_ws_removed:
+        result["whitespace_only"] = len(added_lines) + len(removed_lines)
+        return dict(result)
+
+    # Classify each added line
+    for line in added_lines:
+        stripped = line.rstrip()
+        if not stripped.strip():
+            continue
+        classified = False
+        for category, patterns in _STRUCT_PATTERNS.items():
+            if any(p.match(stripped) for p in patterns):
+                result[category] += 1
+                classified = True
+                break
+        if not classified:
+            result["other"] += 1
+
+    return dict(result)
+
+
+def classify_pr_by_diff(ledger, pr) -> str:
+    """Classify a PR's primary intent by analyzing all file diffs structurally.
+
+    Returns the dominant structural category. Falls back to "other" if
+    no clear pattern emerges.
+    """
+    combined: dict[str, int] = defaultdict(int)
+    for f in ledger.get_files_for_pr(pr.number):
+        if is_generated_file(f.filename, f.patch):
+            continue
+        struct = classify_diff_structure(f.patch)
+        for cat, count in struct.items():
+            combined[cat] += count
+
+    if not combined:
+        return "other"
+
+    # Return dominant category
+    return max(combined, key=combined.get)  # type: ignore[arg-type]
 
 
 def compute_rework_rate(ledger, user_login: str, prs: list, window_days: int = 21, *, start_date=None, end_date=None) -> dict:
@@ -751,3 +1179,479 @@ def compute_self_merge_rate(ledger, user_login: str) -> dict:
 def is_no_data(details: dict[str, Any]) -> bool:
     """Central no-data artifact (guards zero-activity; covers no_data/no_cr_activity)."""
     return bool(details.get("no_data") or details.get("no_cr_activity"))
+
+
+# ---------------------------------------------------------------------------
+# Pygments-based code block analysis for review comment scoring
+# ---------------------------------------------------------------------------
+
+_FENCED_CODE_RE = re.compile(
+    r"```(\w+)?\s*\n(.*?)^```",
+    re.DOTALL | re.MULTILINE,
+)
+
+# Map common markdown fence language tags to Pygments lexer names
+_LANG_ALIASES: dict[str, str] = {
+    "py": "python", "python3": "python", "python2": "python",
+    "js": "javascript", "jsx": "javascript",
+    "ts": "typescript", "tsx": "typescript",
+    "rb": "ruby", "rs": "rust", "kt": "kotlin",
+    "cs": "csharp", "c#": "csharp",
+    "cpp": "cpp", "c++": "cpp", "cc": "cpp",
+    "sh": "bash", "shell": "bash", "zsh": "bash",
+    "yml": "yaml", "dockerfile": "docker",
+    "tf": "terraform", "hcl": "terraform",
+}
+
+
+def extract_code_blocks(text: str) -> list[tuple[str | None, str]]:
+    """Extract fenced code blocks from markdown text.
+
+    Returns list of (language_hint, code_content) tuples.
+    """
+    if not text:
+        return []
+    return [
+        (m.group(1) if m.group(1) else None, m.group(2).strip())
+        for m in _FENCED_CODE_RE.finditer(text)
+        if m.group(2).strip()
+    ]
+
+
+def score_code_block_quality(code: str, language_hint: str | None = None) -> float:
+    """Score a code block 0.0-1.0 based on Pygments lexer analysis.
+
+    Uses token type distribution to assess code sophistication:
+    - Real code has keywords, names, operators, literals
+    - Plain text or trivial content scores low
+    - Returns 0.0 for empty/unparseable content
+    """
+    from pygments import token as T
+    from pygments.lexers import get_lexer_by_name, guess_lexer
+    from pygments.util import ClassNotFound
+
+    if not code or not code.strip():
+        return 0.0
+
+    # Resolve lexer
+    lexer = None
+    if language_hint:
+        canonical = _LANG_ALIASES.get(language_hint.lower(), language_hint.lower())
+        try:
+            lexer = get_lexer_by_name(canonical)
+        except ClassNotFound:
+            pass
+
+    if lexer is None:
+        try:
+            lexer = guess_lexer(code)
+        except ClassNotFound:
+            return 0.1  # can't even guess — minimal credit
+
+    # Lex and classify tokens
+    tokens = list(lexer.get_tokens(code))
+    if not tokens:
+        return 0.1
+
+    meaningful = 0  # keywords, names, operators, literals
+    structural = 0  # function/class defs, return, imports
+    total = 0
+
+    for tok_type, tok_value in tokens:
+        stripped = tok_value.strip()
+        if not stripped:
+            continue
+        total += 1
+
+        if tok_type in T.Keyword or tok_type in T.Keyword.Declaration:
+            meaningful += 1
+            if stripped in ("def", "function", "func", "fn", "class", "import", "return",
+                            "async", "await", "export", "interface", "struct"):
+                structural += 1
+        elif tok_type in T.Name or tok_type in T.Name.Function or tok_type in T.Name.Class:
+            meaningful += 1
+        elif tok_type in T.Operator or tok_type in T.Punctuation:
+            meaningful += 1
+        elif tok_type in T.Literal or tok_type in T.String or tok_type in T.Number:
+            meaningful += 1
+
+    if total == 0:
+        return 0.1
+
+    meaningful_ratio = meaningful / total
+    lines = [l for l in code.splitlines() if l.strip()]
+    line_count = len(lines)
+
+    # Graduated scoring:
+    # - base: 0.2 (has code block at all)
+    # - +0.2 if meaningful tokens > 40% of total (real code, not plain text)
+    # - +0.2 if multi-line (>= 3 lines — shows effort)
+    # - +0.2 if has structural tokens (function/class/import definitions)
+    # - +0.2 if token count > 10 (non-trivial length)
+    score = 0.2
+    if meaningful_ratio > 0.4:
+        score += 0.2
+    if line_count >= 3:
+        score += 0.2
+    if structural > 0:
+        score += 0.2
+    if total > 10:
+        score += 0.2
+
+    return score
+
+
+def score_comment_code_quality(body: str) -> int:
+    """Score the code quality aspect of a review comment (0-25).
+
+    Replaces the flat 25-point "has code block" heuristic with
+    graduated Pygments-based analysis.
+    """
+    if not body:
+        return 0
+
+    blocks = extract_code_blocks(body)
+    if not blocks:
+        # Inline backticks only
+        if "`" in body:
+            return 10
+        return 0
+
+    # Score each block, take the best one
+    best = max(score_code_block_quality(code, lang) for lang, code in blocks)
+
+    # Map 0.0-1.0 quality to 10-25 point range
+    # Floor of 10 (having any code block is worth at least as much as inline backticks)
+    return round(10 + best * 15)
+
+
+# ---------------------------------------------------------------------------
+# Manifest-aware module detection for breadth analysis
+# ---------------------------------------------------------------------------
+
+# Directories that typically contain independent sub-packages in monorepos
+_WORKSPACE_DIRS: frozenset[str] = frozenset({
+    "packages", "plugins", "apps", "services", "modules", "libs",
+    "crates", "workspaces", "projects",
+})
+
+# Files that indicate a package/module root when present in a directory
+_MANIFEST_FILENAMES: frozenset[str] = frozenset({
+    "package.json", "pyproject.toml", "setup.py", "setup.cfg",
+    "cargo.toml", "go.mod", "pom.xml", "build.gradle", "build.gradle.kts",
+    "gemfile", "composer.json", "pubspec.yaml", "mix.exs",
+    "build.sbt", "project.clj", "dune-project",
+})
+
+
+def detect_module_boundary(filepath: str) -> str:
+    """Detect the logical module boundary for a file path.
+
+    Uses workspace directory patterns (packages/, plugins/, services/, etc.)
+    to identify real package boundaries in monorepo structures, instead of
+    naively truncating to the first directory level.
+
+    Args:
+        filepath: Relative file path (e.g., "frontend/packages/core/src/utils.ts")
+
+    Returns:
+        Module path (e.g., "frontend/packages/core" instead of just "frontend")
+    """
+    if not filepath:
+        return "unknown"
+
+    parts = filepath.split("/")
+    parts = [p for p in parts if p]
+    if not parts:
+        return "root"
+
+    if len(parts) == 1:
+        return parts[0]  # root-level file
+
+    # Check if the file IS a manifest (its directory is a module root)
+    if parts[-1].lower() in _MANIFEST_FILENAMES:
+        if len(parts) >= 2:
+            return "/".join(parts[:-1])
+        return parts[0]
+
+    # Walk path segments looking for workspace directory boundaries
+    for i, part in enumerate(parts[:-1]):
+        if part.lower() in _WORKSPACE_DIRS and i + 1 < len(parts) - 1:
+            # This is a workspace dir — the module is parent + workspace + child
+            return "/".join(parts[: i + 2])
+
+    # Fallback: top-level directory
+    return parts[0]
+
+
+def build_module_map(filepaths: list[str]) -> dict[str, str]:
+    """Build a mapping of file paths to their detected modules.
+
+    Also enriches detection by recognizing manifest files that confirm
+    module boundaries in the file set.
+
+    Args:
+        filepaths: List of all file paths in the changeset.
+
+    Returns:
+        Dict mapping each filepath to its module name.
+    """
+    # Phase 1: detect manifest-confirmed module roots from the file set
+    confirmed_roots: set[str] = set()
+    for fp in filepaths:
+        parts = fp.split("/")
+        if parts and parts[-1].lower() in _MANIFEST_FILENAMES and len(parts) >= 2:
+            confirmed_roots.add("/".join(parts[:-1]))
+
+    # Phase 2: map each file to its module
+    result: dict[str, str] = {}
+    for fp in filepaths:
+        # First check if file falls under a confirmed manifest root
+        module = None
+        for root in sorted(confirmed_roots, key=len, reverse=True):
+            if fp.startswith(root + "/") or fp == root:
+                module = root
+                break
+
+        if module is None:
+            module = detect_module_boundary(fp)
+
+        result[fp] = module
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# tree-sitter AST analysis for function identity + trivial detection
+# ---------------------------------------------------------------------------
+
+class FunctionInfo(TypedDict):
+    name: str
+    kind: str  # "function", "method", "constructor"
+    start_line: int
+    end_line: int
+    parameter_count: int
+    body_statement_count: int
+    is_trivial: bool
+
+
+# Extension → (module_import, language_factory) for lazy loading
+_LANGUAGE_REGISTRY: dict[str, tuple[str, str]] = {
+    ".py": ("tree_sitter_python", "language"),
+    ".js": ("tree_sitter_javascript", "language"),
+    ".jsx": ("tree_sitter_javascript", "language"),
+    ".ts": ("tree_sitter_typescript", "language_typescript"),
+    ".tsx": ("tree_sitter_typescript", "language_tsx"),
+    ".go": ("tree_sitter_go", "language"),
+    ".rs": ("tree_sitter_rust", "language"),
+    ".java": ("tree_sitter_java", "language"),
+}
+
+# Node types that represent function/method definitions per language
+_FUNCTION_NODE_TYPES: frozenset[str] = frozenset({
+    # Python
+    "function_definition",
+    # JavaScript/TypeScript
+    "function_declaration", "method_definition", "arrow_function",
+    # Go
+    "function_declaration", "method_declaration",
+    # Rust
+    "function_item",
+    # Java
+    "method_declaration", "constructor_declaration",
+})
+
+# Node types that count as body statements
+_STATEMENT_TYPES: frozenset[str] = frozenset({
+    "expression_statement", "return_statement", "if_statement",
+    "for_statement", "while_statement", "try_statement",
+    "with_statement", "assert_statement", "raise_statement",
+    "delete_statement", "assignment", "augmented_assignment",
+    # JS/TS
+    "variable_declaration", "lexical_declaration", "throw_statement",
+    "switch_statement",
+    # Go
+    "short_var_declaration", "assignment_statement", "go_statement",
+    "defer_statement", "select_statement", "var_declaration",
+    # Rust
+    "let_declaration", "macro_invocation",
+    # Java
+    "local_variable_declaration", "enhanced_for_statement",
+})
+
+# Cache parsed languages to avoid repeated imports
+_language_cache: dict[str, Any] = {}
+
+
+def _get_language(ext: str) -> Any:
+    """Get a tree-sitter Language object for a file extension."""
+    from importlib import import_module
+
+    from tree_sitter import Language
+
+    if ext in _language_cache:
+        return _language_cache[ext]
+
+    entry = _LANGUAGE_REGISTRY.get(ext)
+    if not entry:
+        return None
+
+    mod_name, factory_name = entry
+    try:
+        mod = import_module(mod_name)
+        factory = getattr(mod, factory_name)
+        lang = Language(factory())
+        _language_cache[ext] = lang
+        return lang
+    except (ImportError, AttributeError):
+        return None
+
+
+def _count_body_statements(node: Any) -> int:
+    """Count meaningful statements in a function body node."""
+    count = 0
+    for child in node.children:
+        if child.type in _STATEMENT_TYPES:
+            count += 1
+        elif child.type in ("block", "statement_block", "statement_list"):
+            count += _count_body_statements(child)
+    return count
+
+
+def _get_parameter_count(node: Any) -> int:
+    """Extract parameter count from a function definition node."""
+    params = node.child_by_field_name("parameters")
+    if not params:
+        # Try "parameter_list" (Go)
+        params = node.child_by_field_name("parameter_list")
+    if not params:
+        return 0
+    # Count actual parameter nodes (skip punctuation like commas/parens)
+    return sum(
+        1 for c in params.children
+        if c.type not in ("(", ")", ",", "comment", "&", "*")
+        and not c.type.startswith("//")
+    )
+
+
+def _classify_function_kind(node: Any) -> str:
+    """Classify a function node as function, method, or constructor."""
+    if node.type in ("method_definition", "method_declaration"):
+        name_node = node.child_by_field_name("name")
+        if name_node and name_node.text:
+            name = name_node.text.decode("utf-8", errors="replace")
+            if name in ("__init__", "constructor", "init"):
+                return "constructor"
+        return "method"
+    if node.type == "constructor_declaration":
+        return "constructor"
+    # Python: check if inside a class
+    parent = node.parent
+    while parent:
+        if parent.type in ("class_definition", "class_declaration", "class_body"):
+            return "method"
+        parent = parent.parent
+    return "function"
+
+
+def _is_trivial_body(node: Any, stmt_count: int) -> bool:
+    """Determine if a function body is trivial.
+
+    Trivial means: empty body (pass/noop), single return,
+    single assignment, or single expression (getter/setter/delegation).
+    """
+    if stmt_count == 0:
+        return True  # empty body
+    if stmt_count == 1:
+        return True  # single-statement function
+    return False
+
+
+def parse_functions(content: str, filename: str) -> list[FunctionInfo]:
+    """Parse source code and extract function/method definitions with metadata.
+
+    Uses tree-sitter for accurate, language-aware AST parsing.
+    Returns empty list if language is unsupported or content is unparseable.
+
+    Args:
+        content: Full source file content.
+        filename: File name/path (used to determine language from extension).
+
+    Returns:
+        List of FunctionInfo dicts with name, kind, line range, parameters,
+        body statement count, and triviality classification.
+    """
+    from tree_sitter import Parser
+
+    # Determine language from file extension
+    ext = ""
+    dot_idx = filename.rfind(".")
+    if dot_idx >= 0:
+        ext = filename[dot_idx:]
+
+    lang = _get_language(ext)
+    if not lang:
+        return []
+
+    parser = Parser(lang)
+    try:
+        tree = parser.parse(content.encode("utf-8"))
+    except Exception:  # noqa: BLE001
+        return []
+
+    functions: list[FunctionInfo] = []
+
+    def _walk(node: Any) -> None:
+        if node.type in _FUNCTION_NODE_TYPES:
+            name_node = node.child_by_field_name("name")
+            name = name_node.text.decode("utf-8", errors="replace") if name_node else "<anonymous>"
+
+            body = node.child_by_field_name("body")
+            stmt_count = _count_body_statements(body) if body else 0
+            param_count = _get_parameter_count(node)
+            kind = _classify_function_kind(node)
+
+            functions.append(FunctionInfo(
+                name=name,
+                kind=kind,
+                start_line=node.start_point[0] + 1,  # 1-indexed
+                end_line=node.end_point[0] + 1,
+                parameter_count=param_count,
+                body_statement_count=stmt_count,
+                is_trivial=_is_trivial_body(body, stmt_count),
+            ))
+
+        for child in node.children:
+            _walk(child)
+
+    _walk(tree.root_node)
+    return functions
+
+
+def compute_trivial_ratio(functions: list[FunctionInfo]) -> float:
+    """Compute the ratio of trivial functions to total functions.
+
+    Returns 0.0 if no functions are found.
+    """
+    if not functions:
+        return 0.0
+    trivial = sum(1 for f in functions if f["is_trivial"])
+    return trivial / len(functions)
+
+
+def analyze_file_complexity(content: str, filename: str) -> dict[str, Any]:
+    """Analyze a file's function-level complexity using tree-sitter.
+
+    Returns a summary dict with function count, trivial ratio,
+    and per-function details. Returns empty dict if language is unsupported.
+    """
+    functions = parse_functions(content, filename)
+    if not functions:
+        return {}
+
+    return {
+        "function_count": len(functions),
+        "trivial_count": sum(1 for f in functions if f["is_trivial"]),
+        "trivial_ratio": compute_trivial_ratio(functions),
+        "functions": functions,
+    }
