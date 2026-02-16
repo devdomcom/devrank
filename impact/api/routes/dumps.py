@@ -47,6 +47,11 @@ async def upload_dump(
         extract_dir = Path(tempfile.mkdtemp(dir="/tmp", prefix="devrank_dump_"))
 
         with zipfile.ZipFile(zip_path) as zf:
+            # Reject ZIP entries with path traversal (e.g. ../../etc/passwd)
+            for member in zf.namelist():
+                target = (extract_dir / member).resolve()
+                if not str(target).startswith(str(extract_dir.resolve())):
+                    raise ValueError(f"ZIP entry escapes target directory: {member}")
             zf.extractall(extract_dir)
 
         # Verify structure: find manifest recursively (handles __MACOSX etc + nested zips)

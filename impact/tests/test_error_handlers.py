@@ -87,4 +87,3 @@ def test_metrics_run_error_cases():
         metric = metric_class()
         with pytest.raises((AttributeError, ValueError, ImpactError)):
             metric.run(context)
-        break

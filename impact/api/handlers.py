@@ -31,15 +31,15 @@ async def base_impact_error_handler(request: Request, exc: ImpactError) -> JSONR
 
 
 async def validation_error_handler(request: Request, exc: DataValidationError) -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        content={
-            "error": "data_validation_error",
-            "detail": str(exc),
-            "field": exc.field,
-            "value": exc.value,
-        },
-    )
+    body: dict[str, object] = {
+        "error": "data_validation_error",
+        "detail": str(exc),
+    }
+    if exc.field is not None:
+        body["field"] = exc.field
+    if exc.value is not None:
+        body["value"] = str(exc.value)
+    return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=body)
 
 
 async def manifest_not_found_handler(request: Request, exc: ManifestNotFoundError) -> JSONResponse:

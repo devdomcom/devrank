@@ -104,14 +104,32 @@ class TestComputeMetrics:
         resp = client.post("/api/v1/metrics/compute")
         assert resp.status_code == 422
 
-    def test_compute_unknown_slug_ignored(self, client):
+    def test_compute_unknown_slug_returns_400(self, client):
         resp = client.post("/api/v1/metrics/compute", json={
             "dump_path": DUMP_PATH,
             "role": VALID_ROLE,
             "metric_slugs": ["nonexistent_metric"],
         })
-        assert resp.status_code == 200
-        assert len(resp.json()["metrics"]) == 0
+        assert resp.status_code == 400
+        assert "unknown metric slug" in resp.json()["detail"].lower()
+
+    def test_compute_mixed_valid_and_invalid_slugs_returns_400(self, client):
+        resp = client.post("/api/v1/metrics/compute", json={
+            "dump_path": DUMP_PATH,
+            "role": VALID_ROLE,
+            "metric_slugs": ["cycle_time", "not_a_real_metric"],
+        })
+        assert resp.status_code == 400
+        assert "not_a_real_metric" in resp.json()["detail"]
+
+    def test_compute_category_slug_returns_400(self, client):
+        """Category names are not metric slugs — must be rejected, not silently ignored."""
+        resp = client.post("/api/v1/metrics/compute", json={
+            "dump_path": DUMP_PATH,
+            "role": VALID_ROLE,
+            "metric_slugs": ["review_impact"],
+        })
+        assert resp.status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +204,17 @@ class TestCompareMetrics:
             "role": VALID_ROLE,
         })
         assert resp.status_code == 422
+
+    def test_compare_unknown_slug_returns_400(self, client):
+        resp = client.post("/api/v1/metrics/compare", json={
+            "dump_path": DUMP_PATH,
+            "role": VALID_ROLE,
+            "window1": {"start_date": "2026-01-01T00:00:00Z", "end_date": "2026-01-15T00:00:00Z"},
+            "window2": {"start_date": "2026-01-15T00:00:00Z", "end_date": "2026-01-29T00:00:00Z"},
+            "metrics": ["fake_metric"],
+        })
+        assert resp.status_code == 400
+        assert "unknown metric slug" in resp.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------

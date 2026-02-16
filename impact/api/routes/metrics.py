@@ -81,10 +81,15 @@ def compute_metrics(req: ComputeMetricsRequest) -> MetricsReport:
 
     available = get_metrics()
     slugs = req.metric_slugs or list(available.keys())
+    if req.metric_slugs:
+        unknown = [s for s in req.metric_slugs if s not in available]
+        if unknown:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown metric slug(s): {unknown}. Use GET /metrics/ to list valid slugs.",
+            )
     metrics_results = []
     for slug in slugs:
-        if slug not in available:
-            continue
         metric = available[slug]()
         result = metric.run(context)
         rating, score = _resolve_rating_and_score(slug, result.details, req.role)
@@ -170,10 +175,15 @@ def compare_metrics(req: CompareMetricsRequest) -> MetricsComparisonReport:
 
     available = get_metrics()
     slugs = req.metrics or list(available.keys())
+    if req.metrics:
+        unknown = [s for s in req.metrics if s not in available]
+        if unknown:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown metric slug(s): {unknown}. Use GET /metrics/ to list valid slugs.",
+            )
     comparisons = []
     for slug in slugs:
-        if slug not in available:
-            continue
         metric = available[slug]()
         # Run independently for each window
         res1 = metric.run(context1)

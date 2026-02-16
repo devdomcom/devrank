@@ -30,8 +30,7 @@ def validate_dump_path(dump_path: str) -> Path:
             continue
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
-        detail="dump_path must be within an allowed directory. "
-        f"Allowed bases: {[str(b) for b in ALLOWED_DUMP_BASES]}",
+        detail="dump_path is outside allowed directories.",
     )
 
 
@@ -58,7 +57,7 @@ def load_manifest(dump_path: str) -> dict:
     if not manifest_path.exists():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Manifest not found at {manifest_path}",
+            detail="dump_manifest.json not found in the provided dump directory.",
         )
     try:
         return json.loads(manifest_path.read_text())
@@ -79,7 +78,7 @@ def load_bundle(dump_path: str) -> CanonicalBundle:
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to load bundle from {dump_path}: {e}",
+            detail=f"Failed to load dump bundle: {type(e).__name__}: {e}",
         ) from e
 
 
