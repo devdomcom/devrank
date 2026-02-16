@@ -11,22 +11,40 @@ DevRank is built as a modular Python application that fetches, processes, and an
 1. **Data Fetching Agent** (`impact/providers/`)
    - **GitHub Live Fetcher**: Asynchronously fetches data from GitHub API using Celery tasks.
    - **Configuration**: Supports token-based authentication, repository filtering, and date windows.
+   - **Rate Limiting**: HTTP 429/403 handling with exponential backoff (8 retries, max 60s), proactive `_check_rate_limit()` when remaining < 50, 100ms blob throttle.
 
 2. **Ingestion Agent** (`impact/ingestion/`)
    - **Dump Ingestion**: Parses pre-fetched JSONL dumps into canonical data structures.
-   - **Adapters**: Provider-specific parsers (currently GitHub) that validate and transform raw data.
+   - **Adapters** (`impact/adapters/`): Provider-specific parsers (currently GitHub) that validate and transform raw data.
 
 3. **Data Ledger Agent** (`impact/ledger/`)
    - **Ledger**: In-memory indexed store for efficient querying of canonical data.
    - **Indexing**: Builds time-ordered indexes for users, PRs, reviews, commits, etc.
 
 4. **Metrics Computation Agent** (`impact/metrics/`)
-   - **Metric Plugins**: Modular metric calculators (e.g., PR throughput, cycle time).
-   - **Base Framework**: Abstract metric class for consistent implementation.
+   - **45 metric plugins** in `plugins/authored/` (29), `plugins/influence/` (15), and `plugins/mixed/` (1).
+   - **Base Framework**: Abstract metric class with `slug`, `name`, `category`, `run()`.
+   - **Static Analysis** (`utils.py`): Three-phase deterministic analysis:
+     - Phase 1: Generated-file detection, hunk context parsing, patch-content test detection, structural diff classification.
+     - Phase 2: Pygments-based review comment code scoring, manifest-aware module detection.
+     - Phase 3: tree-sitter function identity + trivial detection (Python, JS/TS, Go, Rust, Java).
+   - **Thresholds** (`impact/thresholds.py`): Discrete lambdas for ratings (excellent/good/neutral/bad) + continuous `score_metric()` for 0-100 scoring.
 
-5. **Report Generation Agent** (`impact/scripts/`)
-   - **Report Generator**: Orchestrates the pipeline from ingestion to metric computation and output.
-   - **Rating System**: Applies thresholds to metric results for qualitative assessment.
+5. **Configuration Agent** (`impact/config/`)
+   - **Categories** (`categories.py`): Central `Category(slug, name)` registry. Every metric plugin declares a `category` property validated at startup via `validate_metrics()`.
+   - **Role Configs** (`role_metrics.py` + `roles/*.yaml`): Per-role metric weighting and threshold overrides.
+
+6. **Report Generation Agent** (`impact/scripts/` + `impact/templates/`)
+   - **Report Generator** (`generate_report.py`): Orchestrates pipeline from ingestion to metric computation, rating, and output.
+   - **PDF Template** (`pdf_report.py`): ReportLab-based PDF report with category grouping, top/low metrics, executive summary.
+
+7. **Database & Persistence Agent** (`db/`)
+   - **Base** (`db/base.py`): SQLAlchemy `DeclarativeBase` — all ORM models inherit from this.
+   - **Engine** (`db/engine.py`): Dual-driver setup — async (asyncpg for FastAPI) + sync (psycopg2 for Alembic/Celery).
+   - **Models** (`db/models.py`): ORM model definitions (sample table for now; real schemas to follow).
+   - **Migrations** (`db/migrations/`): Alembic migration pipeline. Config in `alembic.ini`; env.py reads `DATABASE_URL_SYNC` from `config.py`.
+   - **Filesystem** (`impact/persistence/filesystem.py`): `FileSystemDumpWriter` for JSONL dump output.
+   - **DinD Compatible**: `scripts/dev-infra.sh` auto-detects Docker-in-Docker, substitutes `postgres`/`redis` hostnames. Alembic works both from host and inside worker container.
 
 ### Data Flow
 
@@ -44,13 +62,13 @@ DevRank is built as a modular Python application that fetches, processes, and an
 ### Extensibility
 
 - New providers: Add adapters in `impact/adapters/`.
-- New metrics: Implement Metric subclasses in `impact/metrics/plugins/` (use `authored/` or `influence/` subdirs).
+- New metrics: Implement Metric subclasses in `impact/metrics/plugins/` (use `authored/`, `influence/`, or `mixed/` subdirs). Each metric must declare a `category` property matching a slug in `impact/config/categories.py`.
 - Custom ingestion: Extend `Ingestion` base class.
 
 ### Best Practices
 
 - **Modularity**: Each agent has a single responsibility.
-- **Testing**: Comprehensive unit tests for all components.
+- **Testing**: 452 tests across `impact/tests/` (446) and `db/tests/` (6).
 - **Logging**: Structured logging throughout.
 - **Error Handling**: Graceful failure with informative messages.
 - **Performance**: In-memory processing for speed; async fetching for scale.
@@ -90,6 +108,9 @@ DevRank is built as a modular Python application that fetches, processes, and an
 
 ### Metrics Design
 
-- **Guard zero-activity from positive ratings**: Metrics with no data must set a `no_data` flag to prevent rating zero activity as "excellent." Every metric should handle the empty-input case explicitly.
+- **Guard zero-activity from positive ratings**: Metrics with no data must set `details["no_data"] = True` to prevent rating zero activity as "excellent." Every metric should handle the empty-input case explicitly.
+- **Combined period+count guards**: Use `if period_days < MIN and count < MIN: details["no_data"] = True`. This preserves genuine low-activity signals in long periods while suppressing noise in short periods. Applied to 9 metrics.
 - **Wire real rating logic end-to-end**: Never leave placeholder ratings (e.g., hardcoded "neutral") in API responses. If the rating system exists, use it in every endpoint that returns ratings.
 - **Threshold keys must match metric detail keys**: When renaming metrics or their output keys, update the corresponding threshold configuration to match. A mismatch silently produces "unknown" ratings.
+- **Influence metrics must filter self-reviews**: Always check `pr.user.login != context.user_login` to avoid crediting a developer for reviewing their own PRs.
+- **Period fallback**: Standardized to 30 days across all metrics when `start_date`/`end_date` are not available.

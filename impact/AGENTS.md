@@ -45,20 +45,11 @@ The metrics pipeline processes GitHub data through ingestion, indexing, metric c
 
 **Purpose**: Compute quantitative metrics from ledger data.
 
-- **Base Metric Class**: Abstract interface with `slug`, `name`, `run()`.
-- **Metric Plugins** (`plugins/`): Organized in `authored/` (own contributions) and `influence/` (impact on others); cleaned of duplicates.
-  - **PRThroughput**: Opened/merged counts and ratio (handles backlog merges).
-  - **CycleTime**: Median time from PR creation to merge.
-  - **PRMergeEffectiveness**: Back-and-forth review rounds.
-  - **ReviewLeverage**: Review impact (approvals, rejections; improved attribution).
-  - **ReviewIterations**: Average review rounds per PR.
-  - **TimeToFirstReview**: Median time to initial review.
-  - **SlowReviewResponse**: Median response to review comments.
-  - **ModuleAreaBreadth**: Avg unique areas per PR (true per-PR calc).
-  - **UnblockTime**: Re-review speed after CR (excludes author lag).
-
+- **Base Metric Class**: Abstract interface with `slug`, `name`, `category`, `run()`.
+- **45 Metric Plugins** (`plugins/`): Organized in `authored/` (29 — own contributions), `influence/` (15 — impact on others), and `mixed/` (1 — collaborative).
 - **Context**: `MetricContext` bundles ledger, user, dates for each run.
-- **Results**: `MetricResult` with summary, details dict.
+- **Results**: `MetricResult(metric_slug, summary, details)` with details dict.
+- **Categories**: Every metric declares a `category` property validated against `impact/config/categories.py` at startup.
 
 **Computation Patterns**:
 - Aggregate over user's PRs/reviews/commits.
@@ -86,11 +77,29 @@ The metrics pipeline processes GitHub data through ingestion, indexing, metric c
 - **Models**: Pydantic classes for type safety and validation.
 - **Enums**: Standardized states (e.g., ReviewState.APPROVED).
 
+## Configuration (`config/`)
+
+- **Categories** (`categories.py`): Central `Category(slug, name)` dataclass registry. `validate_metrics()` ensures every plugin has a valid category slug.
+- **Role Configs** (`role_metrics.py` + `roles/*.yaml`): Per-role metric weighting and threshold overrides. `get_role_config(role_slug)` returns the active config.
+
+## Thresholds (`thresholds.py`)
+
+- **Discrete ratings**: Lambda functions mapping metric values → excellent/good/neutral/bad.
+- **Continuous scoring**: `score_metric(slug, value)` → 0-100 via piecewise linear interpolation.
+- **`get_continuous_score(slug, details, role_config)`**: Main entry point used by report generator and API.
+
 ## Utilities (`utils.py`)
 
-Helper functions for metrics:
-- `percentile()`: Robust percentile calculation.
-- `calculate_merge_time_hours()`: Duration from PR creation to merge.
+Core helper functions and static analysis pipeline:
+
+**Basic helpers**: `percentile()`, `calculate_merge_time_hours()`, `get_pr_size_category()`.
+
+**Static Analysis (3 phases, deterministic)**:
+- Phase 1: `is_generated_file()` (layered detection: basename, suffix, directory, markers, entropy), `_parse_hunk_lines()` (unified diff → line sets, handles `\ No newline` marker), `classify_diff_structure()` (test_code, new_class, new_function, conditional, import, error_handling).
+- Phase 2: `score_comment_code_quality()` (Pygments-based code block scoring 0-25), `detect_module_boundary()` (manifest-aware, root-level → `"root"`).
+- Phase 3: `parse_functions()` / `compute_trivial_ratio()` / `analyze_file_complexity()` (tree-sitter AST for Python, JS/TS, Go, Rust, Java). `_is_trivial_body()` handles expression-bodied arrow functions.
+
+**Code churn & rework**: `compute_code_churn()` (line-level overlap detection, generated-file filtering, context-date period), `compute_rework_rate()` (self-rework within 21d window).
 
 ## Exceptions (`exceptions.py`)
 
@@ -100,9 +109,13 @@ Custom exceptions for data validation, parsing, and manifest errors.
 
 Celery task definitions for async operations (e.g., fetching).
 
+## Templates (`templates/`)
+
+- **PDF Report** (`pdf_report.py`): ReportLab-based PDF generation with category grouping, top/low metrics, executive summary. ~1200 lines.
+
 ## Testing (`tests/`)
 
-Unit tests for each agent, ensuring correctness of ingestion, indexing, and metric calculations.
+446 unit tests covering ingestion, indexing, metric calculations, API endpoints, static analysis, and categories. Run with: `uv run python -m pytest impact/tests/ -q`. Additional 6 migration tests in `db/tests/`.
 
 ## Best Practices in Pipeline
 
@@ -145,6 +158,17 @@ Unit tests for each agent, ensuring correctness of ingestion, indexing, and metr
 
 ### Metrics
 
-- **Guard zero-activity cases**: Every metric must handle empty input and set `no_data = True` to prevent rating zero activity as "excellent."
+- **Guard zero-activity cases**: Every metric must handle empty input and set `details["no_data"] = True` to prevent rating zero activity as "excellent."
+- **Combined period+count guards**: Use `if period_days < MIN and count < MIN: details["no_data"] = True`. Preserves genuine low-activity signals in long periods; suppresses noise in short periods.
 - **Wire real ratings end-to-end**: Never leave placeholder ratings in API responses. If the rating system exists, use it everywhere.
 - **Keep threshold keys in sync**: When renaming metrics or output keys, update threshold configuration to match. Mismatches silently produce "unknown" ratings.
+- **Filter self-reviews in influence metrics**: Always check `pr.user.login != context.user_login`.
+- **Period fallback**: Standardized to 30 days across all metrics when dates are not available.
+- **Category required**: Every new metric must declare a `category` property matching a slug in `impact/config/categories.py`.
+
+### Database & Migrations
+
+- **Alembic for all schema changes**: Never modify the database schema by hand. Always create migrations via `alembic revision --autogenerate -m "description"`.
+- **Dual-engine pattern**: Async engine (asyncpg) for FastAPI endpoints; sync engine (psycopg2) for Alembic and Celery workers. Both configured in `db/engine.py`.
+- **URL from config, not alembic.ini**: `db/migrations/env.py` reads `DATABASE_URL_SYNC` from `config.py`, which supports env-var overrides for DinD/production.
+- **Import all models in env.py**: New model files must be imported in `db/migrations/env.py` so autogenerate can detect them.
