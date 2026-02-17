@@ -10,9 +10,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, String, UniqueConstraint, func, text
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func, text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -41,7 +41,7 @@ class Department(Base):
     slug: Mapped[str] = mapped_column(
         String(100), nullable=False, index=True  # unique per org (not global)
     )
-    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[DepartmentStatus] = mapped_column(
         SAEnum(
             DepartmentStatus,
@@ -62,21 +62,21 @@ class Department(Base):
         onupdate=func.now(),
         nullable=False,
     )
-    activated_at: Mapped[Optional[datetime]] = mapped_column(
+    activated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deactivated_at: Mapped[Optional[datetime]] = mapped_column(
+    deactivated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+    deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     # Rels
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         "Organization", back_populates="departments"
     )
-    positions: Mapped[list["Position"]] = relationship(
+    positions: Mapped[list[Position]] = relationship(
         "Position", back_populates="department", cascade="all, delete-orphan"
     )
 

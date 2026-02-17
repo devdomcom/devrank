@@ -61,7 +61,10 @@ start() {
         echo "[Native] Services reachable at localhost:5432 and localhost:6379"
     fi
 
-    # Generate .env from template if it doesn't exist
+    # Generate .env from template (.env.example) if it doesn't exist.
+    # Substitutes DB/Redis hosts (localhost vs. postgres/redis for DinD).
+    # Celery vars use DEVRANK_CELERY_* prefix (matches config.Settings; see refactor).
+    # DB validators in config.py catch malformed URLs early.
     if [ ! -f "$PROJECT_ROOT/.env" ]; then
         if [ -f "$PROJECT_ROOT/.env.example" ]; then
             sed "s/DB_HOST/${DEVRANK_DB_HOST}/g; s/REDIS_HOST/${DEVRANK_REDIS_HOST}/g" \

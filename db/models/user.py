@@ -25,9 +25,9 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from enum import Enum
-from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SAEnum, String, func, text
+from sqlalchemy import Boolean, Date, DateTime, String, func, text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -95,10 +95,10 @@ class User(Base):
     surname: Mapped[str] = mapped_column(
         String(100), nullable=False, doc="Last/family name"
     )
-    nickname: Mapped[Optional[str]] = mapped_column(
+    nickname: Mapped[str | None] = mapped_column(
         String(50), nullable=True, doc="Preferred display name / handle"
     )
-    avatar: Mapped[Optional[str]] = mapped_column(
+    avatar: Mapped[str | None] = mapped_column(
         String(500), nullable=True, doc="URL to profile avatar (S3/CDN)"
     )
     email: Mapped[str] = mapped_column(
@@ -114,19 +114,19 @@ class User(Base):
         server_default=text("'prefer_not_to_say'"),
         doc="Gender enum - inclusive defaults",
     )
-    dob: Mapped[Optional[date]] = mapped_column(
+    dob: Mapped[date | None] = mapped_column(
         Date, nullable=True, doc="Date of birth - for age-gated features if needed"
     )
-    country: Mapped[Optional[str]] = mapped_column(
+    country: Mapped[str | None] = mapped_column(
         String(2), nullable=True, doc="ISO-3166-1 alpha-2 country code"
     )
-    address: Mapped[Optional[str]] = mapped_column(
+    address: Mapped[str | None] = mapped_column(
         String(255), nullable=True, doc="Street address (GDPR-sensitive - encrypt at rest if reqd)"
     )
-    zip: Mapped[Optional[str]] = mapped_column(
+    zip: Mapped[str | None] = mapped_column(
         String(20), nullable=True, doc="Postal/ZIP code"
     )
-    phone: Mapped[Optional[str]] = mapped_column(
+    phone: Mapped[str | None] = mapped_column(
         String(30), nullable=True, doc="E.164 formatted phone"
     )
 
@@ -141,7 +141,7 @@ class User(Base):
     # Auth - core credential (password for non-OAuth fallback)
     # OAuth delegated to dedicated OAuthAccount (1:N; see db/models/oauth.py for
     # multi-provider support: GitHub + GitLab + etc. simultaneously)
-    hashed_password: Mapped[Optional[str]] = mapped_column(
+    hashed_password: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
         doc="Bcrypt/Argon2 hash via passlib.CryptContext - None for pure SSO/OAuth",
@@ -166,7 +166,7 @@ class User(Base):
     locale: Mapped[str] = mapped_column(
         String(10), default="en", nullable=False, doc="BCP-47 locale"
     )
-    last_login_at: Mapped[Optional[datetime]] = mapped_column(
+    last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, doc="Last successful auth timestamp"
     )
 
@@ -199,7 +199,7 @@ class User(Base):
 
     # Relationships (string annos for forward refs; lazy='selectin' for perf in API)
     # OAuthAccounts: multi-provider (e.g., GitHub + GitLab) - core for req
-    oauth_accounts: Mapped[list["OAuthAccount"]] = relationship(
+    oauth_accounts: Mapped[list[OAuthAccount]] = relationship(
         "OAuthAccount",
         back_populates="user",
         cascade="all, delete-orphan",
@@ -207,7 +207,7 @@ class User(Base):
     )
     # created_assessments: 1:N to Assessment (replaces is_self_evaluating flag)
     # Users can create multiple (self-eval or org)
-    created_assessments: Mapped[list["Assessment"]] = relationship(
+    created_assessments: Mapped[list[Assessment]] = relationship(
         "Assessment",
         back_populates="creator",
         cascade="all, delete-orphan",
@@ -215,7 +215,7 @@ class User(Base):
     )
     # submissions: 1:N to Submission (assessments taken; self-eval or org role)
     # Joins User to Assessment with extra data (status, timestamps)
-    submissions: Mapped[list["Submission"]] = relationship(
+    submissions: Mapped[list[Submission]] = relationship(
         "Submission",
         back_populates="user",
         cascade="all, delete-orphan",

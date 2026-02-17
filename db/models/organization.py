@@ -13,9 +13,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
-from sqlalchemy import DateTime, Enum as SAEnum, String, func, text
+from sqlalchemy import DateTime, String, func, text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,7 +45,7 @@ class Organization(Base):
     slug: Mapped[str] = mapped_column(
         String(100), unique=True, nullable=False, index=True
     )
-    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[OrganizationStatus] = mapped_column(
         SAEnum(
             OrganizationStatus,
@@ -66,24 +66,24 @@ class Organization(Base):
         onupdate=func.now(),
         nullable=False,
     )
-    activated_at: Mapped[Optional[datetime]] = mapped_column(
+    activated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deactivated_at: Mapped[Optional[datetime]] = mapped_column(
+    deactivated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    banned_at: Mapped[Optional[datetime]] = mapped_column(
+    banned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+    deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     # Rels (depts, positions; users link via direct FKs in positions/submissions per intent - no assoc table)
-    departments: Mapped[list["Department"]] = relationship(
+    departments: Mapped[list[Department]] = relationship(
         "Department", back_populates="organization", cascade="all, delete-orphan"
     )
-    positions: Mapped[list["Position"]] = relationship(
+    positions: Mapped[list[Position]] = relationship(
         "Position", back_populates="organization", cascade="all, delete-orphan"
     )
     # roles: org-specific (global roles have org_id=NULL)

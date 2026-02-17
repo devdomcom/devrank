@@ -10,9 +10,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, String, UniqueConstraint, func, text
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func, text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,7 +38,7 @@ class Position(Base):
     org_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    dept_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    dept_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True
     )
     role_id: Mapped[uuid.UUID] = mapped_column(
@@ -47,7 +47,7 @@ class Position(Base):
     slug: Mapped[str] = mapped_column(
         String(100), unique=True, nullable=False, index=True
     )
-    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[PositionStatus] = mapped_column(
         SAEnum(
             PositionStatus,
@@ -68,19 +68,19 @@ class Position(Base):
         onupdate=func.now(),
         nullable=False,
     )
-    published_at: Mapped[Optional[datetime]] = mapped_column(
+    published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+    deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     # Rels (back to org/dept/role; submissions ref position_id)
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         "Organization", back_populates="positions"
     )
-    department: Mapped[Optional["Department"]] = relationship("Department")
-    role: Mapped["Role"] = relationship("Role")
+    department: Mapped[Department | None] = relationship("Department")
+    role: Mapped[Role] = relationship("Role")
     # submissions: Mapped[list["Submission"]] = ...  # via position_id
 
     __table_args__ = (

@@ -10,15 +10,17 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import pool
 
-from config import DATABASE_URL_SYNC
-from db.base import Base
 import db.models  # noqa: F401 — ensure all models are registered on Base.metadata
+from config import settings
+from db.base import Base
 
 # Alembic Config object — provides access to alembic.ini values.
 config = context.config
 
-# Override the URL from alembic.ini with the one from our config module.
-config.set_main_option("sqlalchemy.url", DATABASE_URL_SYNC)
+# Override the URL from alembic.ini with the one from Pydantic Settings (config.settings).
+# This respects DEVRANK_DATABASE_URL_SYNC env override (e.g. DinD/postgres in docker).
+# See AGENTS.md for dual-engine + migration notes.
+config.set_main_option("sqlalchemy.url", settings.database_url_sync)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

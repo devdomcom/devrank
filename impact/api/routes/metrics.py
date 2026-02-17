@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+# settings imported at top (DRY/FastAPI best practice; avoids E402).
+# Used for module-level debug gating of test endpoint (see AGENTS.md).
+from config import settings
 from impact.api.dependencies import build_context, get_metric_context_query
 from impact.api.schemas import (
     CompareMetricsRequest,
@@ -15,7 +18,6 @@ from impact.api.schemas import (
     MetricsComparisonReport,
     MetricsReport,
     Rating,
-    TimeWindow,
 )
 from impact.config.categories import compute_group_scores, get_category_name
 from impact.config.role_metrics import get_available_roles, get_role_config
@@ -219,9 +221,11 @@ def compare_metrics(req: CompareMetricsRequest) -> MetricsComparisonReport:
     )
 
 
-# Test-only endpoint — only registered when DEVRANK_DEBUG is set.
-from config import DEBUG as _DEBUG
-if _DEBUG:
+# Test-only endpoint — only registered when DEVRANK_DEBUG=true (gated at
+# module-load time per FastAPI/AGENTS.md best practice). Settings imported
+# at top (above) for E402 compliance, DRY, and testability. Pydantic handles
+# coercion/warnings.
+if settings.debug:
 
     @router.get("/_test_error")
     def _test_error(error_type: str):

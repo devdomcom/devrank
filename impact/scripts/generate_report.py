@@ -10,9 +10,11 @@ from pathlib import Path
 # Add the project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-import config  # noqa: E402 (after sys.path manipulation)
+# config.settings provides github_token (legacy+prefixed), celery_backend_url, etc.
+# See config.py for Pydantic migration details.
 from celery.exceptions import TimeoutError as CeleryTimeout
 
+import config  # noqa: E402 (after sys.path manipulation)
 from impact.celery_app import app as celery_app
 from impact.config.role_metrics import get_role_config
 from impact.domain.models import MetricContext
@@ -20,7 +22,12 @@ from impact.ingestion.dump import DumpIngestion
 from impact.ledger.ledger import Ledger
 from impact.metrics import get_metrics
 from impact.templates.pdf_report import generate_candidate_pdf
-from impact.thresholds import METRIC_THRESHOLDS, get_continuous_score, rate_from_yaml, resolve_role_metric_cfg
+from impact.thresholds import (
+    METRIC_THRESHOLDS,
+    get_continuous_score,
+    rate_from_yaml,
+    resolve_role_metric_cfg,
+)
 
 
 def _apply_allowed_ratings(rating: str, metric_slug: str, role_config: dict) -> str:
@@ -94,7 +101,10 @@ def main():
     # Optional: trigger live fetch via Celery before running report
     parser.add_argument("--fetch-user", help="User login to fetch (assessed user)")
     parser.add_argument("--fetch-repos", help="Comma-separated repos to fetch (owner/repo)")
-    parser.add_argument("--fetch-token", help="GitHub token; defaults to GITHUB_TOKEN env")
+    parser.add_argument(
+        "--fetch-token",
+        help="GitHub token; defaults to GITHUB_TOKEN/DEVRANK_GITHUB_TOKEN env",
+    )
     parser.add_argument(
         "--fetch-from", dest="fetch_from", help="ISO start date (default: 365 days ago)"
     )
@@ -108,7 +118,8 @@ def main():
         help="Optional notes to include in the dump manifest",
     )
     parser.add_argument(
-        "--broker", help="Celery broker URL override (default env CELERY_BROKER_URL)"
+        "--broker",
+        help="Celery broker URL override (default: DEVRANK_CELERY_BROKER_URL env)",
     )
     parser.add_argument(
         "--fetch-timeout",
@@ -156,10 +167,13 @@ def main():
 
     # Optional: live fetch via Celery (required if fetch flags provided and not reusing)
     if args.fetch_repos and args.fetch_user and not args.existing_dump:
-        token = args.fetch_token or config.GITHUB_TOKEN
+        # config.settings.github_token supports legacy GITHUB_TOKEN + DEVRANK_GITHUB_TOKEN
+        # (AliasChoices) — central config (DRY) without breaking existing calls.
+        token = args.fetch_token or config.settings.github_token
         if not token:
             raise SystemExit(
-                "fetch requested but no GitHub token provided (--fetch-token or GITHUB_TOKEN)"
+                "fetch requested but no GitHub token provided "
+                "(--fetch-token or GITHUB_TOKEN/DEVRANK_GITHUB_TOKEN)"
             )
         repos = [r.strip() for r in args.fetch_repos.split(",") if r.strip()]
         now = datetime.now(UTC)
@@ -167,8 +181,10 @@ def main():
         end_iso = args.fetch_to or now.isoformat()
 
         if args.broker:
+            # Override broker from CLI; backend always from central Pydantic settings
+            # (DEVRANK_CELERY_BACKEND_URL). Avoids duplication, enables validation.
             celery_app.conf.broker_url = args.broker
-            celery_app.conf.result_backend = config.CELERY_BACKEND_URL
+            celery_app.conf.result_backend = config.settings.celery_backend_url
 
         insp = celery_app.control.inspect(timeout=5)
         ping = insp.ping() if insp else None

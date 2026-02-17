@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String, func
+from sqlalchemy import JSON, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,7 +44,7 @@ class Evaluation(Base):
     )
 
     # Rels (back to assessment; submissions ref eval_id)
-    assessment: Mapped["Assessment"] = relationship(
+    assessment: Mapped[Assessment] = relationship(
         "Assessment", back_populates="evaluations"
     )
     # submissions: ...

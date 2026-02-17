@@ -42,7 +42,7 @@ DevRank is built as a modular Python application that fetches, processes, and an
    - **Base** (`db/base.py`): SQLAlchemy `DeclarativeBase` — all ORM models inherit from this.
    - **Engine** (`db/engine.py`): Dual-driver setup — async (asyncpg for FastAPI) + sync (psycopg2 for Alembic/Celery).
    - **Models** (`db/models.py`): ORM model definitions (sample table for now; real schemas to follow).
-   - **Migrations** (`db/migrations/`): Alembic migration pipeline. Config in `alembic.ini`; env.py reads `DATABASE_URL_SYNC` from `config.py`.
+   - **Migrations** (`db/migrations/`): Alembic migration pipeline. Config in `alembic.ini`; env.py reads `settings.database_url_sync` from refactored `config.py` (now Pydantic Settings for validation/DRY).
    - **Filesystem** (`impact/persistence/filesystem.py`): `FileSystemDumpWriter` for JSONL dump output.
    - **DinD Compatible**: `scripts/dev-infra.sh` auto-detects Docker-in-Docker, substitutes `postgres`/`redis` hostnames. Alembic works both from host and inside worker container.
 

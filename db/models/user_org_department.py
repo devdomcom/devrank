@@ -14,9 +14,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, UniqueConstraint, func, text
+from sqlalchemy import DateTime, ForeignKey, UniqueConstraint, func, text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -48,7 +48,7 @@ class UserOrgDepartment(Base):
     org_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    dept_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    dept_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True
     )
     status: Mapped[UserOrgDeptStatus] = mapped_column(
@@ -65,21 +65,21 @@ class UserOrgDepartment(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+    deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deactivated_at: Mapped[Optional[datetime]] = mapped_column(
+    deactivated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     # Rels (back to user/org/dept)
-    user: Mapped["User"] = relationship(
+    user: Mapped[User] = relationship(
         "User", back_populates="org_dept_memberships"
     )
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         "Organization", back_populates="user_memberships"
     )
-    department: Mapped[Optional["Department"]] = relationship("Department")
+    department: Mapped[Department | None] = relationship("Department")
 
     __table_args__ = (
         # Unique per user/org/dept (allows multi-dept per user-org)
