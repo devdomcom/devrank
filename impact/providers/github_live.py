@@ -73,7 +73,8 @@ class GitHubLiveFetcher:
             manifest["user_timezone"] = self.cfg.user_timezone
         writer.write_manifest(manifest)
 
-        pr_numbers = []
+        pr_numbers: list[tuple[str, int]] = []
+        seen: set[tuple[str, int]] = set()
         for repo in self.cfg.repos:
             prs = fetcher.list_prs(repo, since=self.cfg.start, until=self.cfg.end)
             for pr in prs:
@@ -86,14 +87,48 @@ class GitHubLiveFetcher:
                     requested = [r.get("login") for r in pr.get("requested_reviewers", [])]
                     assignees = [a.get("login") for a in pr.get("assignees", [])]
                     if self.cfg.user_login in requested or self.cfg.user_login in assignees:
-                        # fetch minimal timeline to see if the user did anything
-                        # NOTE: we avoid extra requests here; we will re-check after bundle fetch.
                         include = True
 
                 if include:
-                    pr_numbers.append((repo, pr["number"]))
+                    key = (repo, pr["number"])
+                    if key not in seen:
+                        seen.add(key)
+                        pr_numbers.append(key)
+
+            # Stage 3: Search for PRs the user reviewed but was NOT the
+            # author/assignee/requested-reviewer of.  The /pulls list only
+            # exposes *current* requested_reviewers — once a review is
+            # submitted the user disappears from that field.  The Search API
+            # ``reviewed-by:`` qualifier captures historical reviews.
+            start_iso = self.cfg.start.strftime("%Y-%m-%d")
+            end_iso = self.cfg.end.strftime("%Y-%m-%d")
+            query = (
+                f"is:pr reviewed-by:{self.cfg.user_login} "
+                f"repo:{repo} updated:{start_iso}..{end_iso}"
+            )
+            try:
+                reviewed_prs = client.search_issues(query)
+                for item in reviewed_prs:
+                    number = item.get("number")
+                    if number:
+                        key = (repo, number)
+                        if key not in seen:
+                            seen.add(key)
+                            pr_numbers.append(key)
+                log.info(
+                    "Search reviewed-by:%s in %s found %s PRs (%s new)",
+                    self.cfg.user_login, repo, len(reviewed_prs),
+                    len(reviewed_prs) - sum(1 for i in reviewed_prs if (repo, i.get("number")) in seen and i.get("number")),
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "Search for reviewed-by:%s in %s failed (non-fatal): %s",
+                    self.cfg.user_login, repo, exc,
+                )
+
         log.info(
-            "Queued %s pull requests for fetch after author/activity prefilter", len(pr_numbers)
+            "Queued %s pull requests for fetch after author/activity/review prefilter",
+            len(pr_numbers),
         )
 
         # Parallelize lightly to avoid hammering the API; also we rely on client backoff.

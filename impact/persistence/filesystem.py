@@ -4,6 +4,17 @@ import json
 from pathlib import Path
 
 
+_CANONICAL_FILES = (
+    "pull_requests.jsonl",
+    "reviews.jsonl",
+    "review_comments.jsonl",
+    "issue_comments.jsonl",
+    "commits.jsonl",
+    "files.jsonl",
+    "timeline.jsonl",
+)
+
+
 class FileSystemDumpWriter:
     """
     Writes canonical GitHub dump files to a target directory.
@@ -13,6 +24,11 @@ class FileSystemDumpWriter:
         self.base_dir = Path(base_dir)
         self.canonical_dir = self.base_dir / "canonical"
         self.canonical_dir.mkdir(parents=True, exist_ok=True)
+        # Remove stale JSONL from a prior run so re-fetches don't duplicate.
+        for fname in _CANONICAL_FILES:
+            p = self.canonical_dir / fname
+            if p.exists():
+                p.unlink()
 
     def write_manifest(self, manifest: dict):
         (self.base_dir / "dump_manifest.json").write_text(json.dumps(manifest, indent=2))

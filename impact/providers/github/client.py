@@ -154,5 +154,33 @@ class GitHubClient:
             next_path = next_link.replace(self.base_url, "")
             params = None
 
+    def search_issues(self, query: str, per_page: int = 100) -> list[dict[str, Any]]:
+        """Search issues/PRs via ``/search/issues``.
+
+        The Search API wraps results in ``{"items": [...]}``.  This helper
+        paginates through all pages and returns the unwrapped item list.
+        """
+        params: dict[str, Any] = {"q": query, "per_page": per_page}
+        results: list[dict[str, Any]] = []
+        next_path: str | None = "/search/issues"
+        last_url: str | None = None
+        while next_path is not None:
+            resp = self.get(next_path, params=params)
+            data = resp.json()
+            results.extend(data.get("items", []))
+
+            links = resp.headers.get("Link", "")
+            next_link = None
+            for part in links.split(","):
+                if 'rel="next"' in part:
+                    next_link = part[part.find("<") + 1 : part.find(">")]
+                    break
+            if not next_link or next_link == last_url:
+                break
+            last_url = next_link
+            next_path = next_link.replace(self.base_url, "")
+            params = None  # type: ignore[assignment]
+        return results
+
 
 __all__ = ["GitHubClient", "GitHubRateLimitError", "GitHubSecondaryRateLimitError"]

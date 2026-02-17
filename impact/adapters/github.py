@@ -163,8 +163,24 @@ class GitHubAdapter(ProviderAdapter):
                     created_at = datetime.fromisoformat(
                         pr_dict["created_at"].replace("Z", "+00:00")
                     )
-                    if not (start_dt <= created_at <= end_dt):
+                    # Include PRs that were *active* during the window:
+                    #   created before window end  AND  not fully closed before window start.
+                    # A PR "closed before start" means it has a closed_at < start_dt
+                    # and was not updated during the window (no review/comment activity).
+                    if created_at > end_dt:
                         continue
+                    closed_raw = pr_dict.get("closed_at")
+                    if closed_raw:
+                        closed_at = datetime.fromisoformat(closed_raw.replace("Z", "+00:00"))
+                        updated_raw = pr_dict.get("updated_at")
+                        updated_at = (
+                            datetime.fromisoformat(updated_raw.replace("Z", "+00:00"))
+                            if updated_raw else closed_at
+                        )
+                        # Fully resolved before window AND no updates during window → skip
+                        if closed_at < start_dt and updated_at < start_dt:
+                            continue
+
                     pr_raw[pr_dict["number"]] = pr_dict
                     # Author counts as action
                     if pr_dict.get("user", {}).get("login") == user_login:
