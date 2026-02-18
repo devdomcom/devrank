@@ -5,16 +5,19 @@ from pathlib import Path
 
 from fastapi import HTTPException, Query, status
 
-from config import ALLOWED_DUMP_DIRS
+from config import settings
 from impact.domain.models import CanonicalBundle, MetricContext
+from impact.exceptions import ImpactError, ParseError  # For sanitized raising to handlers
 from impact.ledger.ledger import Ledger
 
 # Allowed base directories for dump paths (prevents path traversal).
-# Override via DEVRANK_ALLOWED_DUMP_DIRS env var (colon-separated).
+# Override via DEVRANK_ALLOWED_DUMP_DIRS env var (colon-separated); now sourced
+# from Pydantic Settings for validation/coercion/DRY (see config.py).
 _DEFAULT_ALLOWED_BASES = [Path("/tmp"), Path.home() / ".devrank", Path.cwd()]
 ALLOWED_DUMP_BASES: list[Path] = (
-    [Path(p) for p in ALLOWED_DUMP_DIRS.split(":") if p.strip()]
-    if ALLOWED_DUMP_DIRS
+    # settings.allowed_dump_dirs is str (empty → defaults)
+    [Path(p) for p in settings.allowed_dump_dirs.split(":") if p.strip()]
+    if settings.allowed_dump_dirs
     else _DEFAULT_ALLOWED_BASES
 )
 
@@ -35,26 +38,34 @@ def validate_dump_path(dump_path: str) -> Path:
 
 
 def _parse_iso_date(value: str | None, field_name: str) -> datetime | None:
-    """Parse an ISO date string with a user-friendly error message."""
+    """Parse an ISO date string with a user-friendly error message.
+
+    Raises ParseError (sanitized by handlers) instead of raw HTTPException
+    detail leak.
+    """
     if not value:
         return None
     try:
         return datetime.fromisoformat(value)
     except (ValueError, TypeError) as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid date format for '{field_name}': {value!r}. "
-            "Expected ISO 8601 (e.g. 2025-01-01T00:00:00).",
+        # Safe msg; full exc logged in ParseError handler
+        raise ParseError(
+            f"Invalid date format for '{field_name}': expected ISO 8601",
+            # No {value!r} to avoid injection; logged internally
         ) from e
 
 
 def load_manifest(dump_path: str) -> dict:
-    """Read and return the dump_manifest.json from a validated dump directory."""
+    """Read and return the dump_manifest.json from a validated dump directory.
+
+    Uses safe errors that handlers sanitize (no JSON err details leaked).
+    """
     import json
 
     validated = validate_dump_path(dump_path)
     manifest_path = validated / "dump_manifest.json"
     if not manifest_path.exists():
+        # HTTP kept for simple (safe detail); caught by ValueError handler
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="dump_manifest.json not found in the provided dump directory.",
@@ -62,24 +73,24 @@ def load_manifest(dump_path: str) -> dict:
     try:
         return json.loads(manifest_path.read_text())
     except json.JSONDecodeError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid manifest JSON: {e}",
-        ) from e
+        # Raise ParseError for consistency with handler sanitization/logging
+        raise ParseError("Invalid manifest JSON") from e
 
 
 def load_bundle(dump_path: str) -> CanonicalBundle:
-    """Load a CanonicalBundle from a validated dump directory."""
+    """Load a CanonicalBundle from a validated dump directory.
+
+    Wraps any error in ImpactError (base handler sanitizes; full details logged).
+    """
     from impact.ingestion.dump import DumpIngestion
 
     validated = validate_dump_path(dump_path)
     try:
         return DumpIngestion(str(validated)).ingest()
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to load dump bundle: {type(e).__name__}: {e}",
-        ) from e
+        # Safe msg only; status_code=400 for thin handler (consistent)
+        # type(e) logged in root helper
+        raise ImpactError("Failed to load dump bundle", status_code=400) from e
 
 
 def build_context(

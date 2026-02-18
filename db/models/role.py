@@ -11,9 +11,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, JSON, String, func, text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, func, text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,7 +40,7 @@ class Role(Base):
     slug: Mapped[str] = mapped_column(
         String(100), unique=True, nullable=False, index=True
     )
-    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Config: JSON for role-specific settings (DRY with impact/config/roles.yaml)
     config: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, doc="JSON config (thresholds, metrics etc.)"
@@ -50,7 +51,7 @@ class Role(Base):
     creator: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    org_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=True,  # NULL=global
         index=True,
@@ -78,16 +79,16 @@ class Role(Base):
         onupdate=func.now(),
         nullable=False,
     )
-    published_at: Mapped[Optional[datetime]] = mapped_column(
+    published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+    deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     # Rels
-    creator_user: Mapped["User"] = relationship("User")
-    organization: Mapped[Optional["Organization"]] = relationship("Organization")
+    creator_user: Mapped[User] = relationship("User")
+    organization: Mapped[Organization | None] = relationship("Organization")
     # positions, submissions etc. backrefs
 
     def __repr__(self) -> str:

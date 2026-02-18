@@ -97,22 +97,32 @@ If you're in a DinD environment and `localhost` doesn't reach the server, use th
 
 ## Configuration
 
-All configuration lives in `config.py` at the project root. Every setting has a hardcoded default that works for local development. Environment variables override any default:
+Configuration is now managed via Pydantic Settings in `config.py` (refactored for DRY, validation,
+FastAPI best practices, and security warnings). See `config.py` docstring for details.
+
+Every setting has a hardcoded default for local dev. Environment variables (prefixed
+`DEVRANK_*` except legacy `GITHUB_TOKEN`) override defaults. Pydantic handles type
+coercion, list parsing (CSV for CORS), and emits warnings for risky setups.
 
 | Setting | Env var | Default |
 |---|---|---|
 | Async database URL | `DEVRANK_DATABASE_URL` | `postgresql+asyncpg://devrank:devrank@localhost:5432/devrank` |
 | Sync database URL | `DEVRANK_DATABASE_URL_SYNC` | `postgresql://devrank:devrank@localhost:5432/devrank` |
 | Redis URL | `DEVRANK_REDIS_URL` | `redis://localhost:6379/0` |
-| Celery broker | `CELERY_BROKER_URL` | `redis://localhost:6379/0` |
-| Celery backend | `CELERY_BACKEND_URL` | `redis://localhost:6379/1` |
+| Celery broker | `DEVRANK_CELERY_BROKER_URL` | `redis://localhost:6379/0` |
+| Celery backend | `DEVRANK_CELERY_BACKEND_URL` | `redis://localhost:6379/1` |
 | CORS origins | `DEVRANK_CORS_ORIGINS` | `*` |
 | Allowed dump dirs | `DEVRANK_ALLOWED_DUMP_DIRS` | `/tmp`, `~/.devrank`, cwd |
 | Debug mode | `DEVRANK_DEBUG` | `false` |
 | Secret key | `DEVRANK_SECRET_KEY` | `local-dev-secret-change-in-production` |
-| GitHub token | `GITHUB_TOKEN` | (none) |
+| GitHub token | `DEVRANK_GITHUB_TOKEN` (or legacy `GITHUB_TOKEN`) | (none) |
 
-To override, either set environment variables directly or create a `.env` file (loaded by Docker Compose and `dev-infra.sh`, not by Python directly).
+To override:
+- Set env vars directly
+- Use `.env` file (loaded by Docker Compose/`dev-infra.sh`; Pydantic also reads `.env` directly)
+- Docker Compose now uses DEVRANK_CELERY_* for consistency (see docker-compose.yml)
+
+Warnings logged for `*` CORS or default SECRET_KEY.
 
 ## Usage
 
@@ -147,7 +157,7 @@ The dump directory should contain `dump_manifest.json` and a `canonical/` subdir
    |---|---|
    | `--fetch-user` | GitHub username to assess |
    | `--fetch-repos` | Comma-separated repos (owner/repo) |
-   | `--fetch-token` | GitHub PAT (or set `GITHUB_TOKEN`) |
+   | `--fetch-token` | GitHub PAT (or set `GITHUB_TOKEN` / `DEVRANK_GITHUB_TOKEN`) |
    | `--fetch-from` / `--fetch-to` | ISO date window (default: last 365 days) |
    | `--role` | Role config name (default: `default`) |
    | `--role-config` | Path to a custom role YAML |

@@ -21,9 +21,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, String, UniqueConstraint, func, text
+from sqlalchemy import DateTime, ForeignKey, UniqueConstraint, func, text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -71,14 +71,14 @@ class Submission(Base):
         doc="FK to User who took it (self-eval or org-assigned)",
     )
     # evaluation_id: FK to Evaluation.id (UUID)
-    evaluation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    evaluation_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("evaluations.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
         doc="FK to Evaluation (future table; results/metrics snapshot)",
     )
     # position_id: UUID per fix (was int; nullable per proposal for self-assess vs. org role/position)
-    position_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    position_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("positions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -110,25 +110,25 @@ class Submission(Base):
         onupdate=func.now(),
         nullable=False,
     )
-    started_at: Mapped[Optional[datetime]] = mapped_column(
+    started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, doc="When user began"
     )
-    completed_at: Mapped[Optional[datetime]] = mapped_column(
+    completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, doc="When finished"
     )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+    deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, doc="Soft-delete timestamp"
     )
-    abandoned_at: Mapped[Optional[datetime]] = mapped_column(
+    abandoned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, doc="When abandoned"
     )
 
     # Relationships (string annos; back to User/Assessment)
     # Many submissions per User/Assessment
-    user: Mapped["User"] = relationship(
+    user: Mapped[User] = relationship(
         "User", back_populates="submissions", foreign_keys=[user_id]
     )
-    assessment: Mapped["Assessment"] = relationship(
+    assessment: Mapped[Assessment] = relationship(
         "Assessment", back_populates="submissions"
     )
     # evaluation: Mapped["Evaluation"] = ...  # future

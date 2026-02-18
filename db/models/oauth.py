@@ -22,9 +22,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, String, UniqueConstraint, func, text
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -91,13 +91,13 @@ class OAuthAccount(Base):
 
     # Token storage (minimal; hydrate via Authlib; never plain in logs)
     # TODO: Encrypt at rest (e.g., via SQLAlchemy hooks or Fernet) for prod compliance
-    access_token: Mapped[Optional[str]] = mapped_column(
+    access_token: Mapped[str | None] = mapped_column(
         String(500), nullable=True, doc="OAuth access token (short-lived)"
     )
-    refresh_token: Mapped[Optional[str]] = mapped_column(
+    refresh_token: Mapped[str | None] = mapped_column(
         String(500), nullable=True, doc="Refresh for long-lived sessions"
     )
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
+    expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         doc="Token expiry - for auto-refresh",
@@ -117,7 +117,7 @@ class OAuthAccount(Base):
     )
 
     # Relationship back to User (lazy-loaded; DRY with User side)
-    user: Mapped["User"] = relationship(
+    user: Mapped[User] = relationship(
         "User", back_populates="oauth_accounts"
     )
 

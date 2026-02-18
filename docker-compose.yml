@@ -39,8 +39,12 @@ services:
       - path: .env
         required: false
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_BACKEND_URL=redis://redis:6379/1
+      # Celery URLs under DEVRANK_* prefix to match config.Settings (pydantic-settings
+      # env_prefix). redis://redis:6379 respects Docker service name (DinD-aware).
+      # See config.py refactor for standardization/DRY.
+      - DEVRANK_CELERY_BROKER_URL=redis://redis:6379/0
+      - DEVRANK_CELERY_BACKEND_URL=redis://redis:6379/1
+      # Other DEVRANK_* already present for database etc.
       - DEVRANK_DATABASE_URL=postgresql+asyncpg://devrank:devrank@postgres:5432/devrank
       - DEVRANK_DATABASE_URL_SYNC=postgresql://devrank:devrank@postgres:5432/devrank
       - PYTHONPATH=/app

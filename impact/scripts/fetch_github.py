@@ -12,12 +12,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import config  # noqa: E402
+
+# Settings instance provides github_token (DEVRANK_GITHUB_TOKEN preferred)
 from impact.providers.github_live import GitHubLiveFetcher, LiveFetchConfig
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Fetch live GitHub data and emit canonical dump.")
-    parser.add_argument("--token", required=False, help="GitHub token (or set GITHUB_TOKEN)")
+    parser.add_argument(
+        "--token",
+        required=False,
+        help="GitHub token (or set DEVRANK_GITHUB_TOKEN; falls back for legacy GITHUB_TOKEN)",
+    )
     parser.add_argument("--user", required=True, help="Assessed user login")
     parser.add_argument(
         "--repos",
@@ -50,9 +56,13 @@ def parse_date(val: str, default: datetime) -> datetime:
 
 def main():
     args = parse_args()
-    token = args.token or config.GITHUB_TOKEN
+    # config.settings.github_token pulls from DEVRANK_GITHUB_TOKEN or legacy GITHUB_TOKEN
+    # (see AliasChoices in config.py). This centralizes token logic (DRY).
+    token = args.token or config.settings.github_token
     if not token:
-        raise SystemExit("GitHub token required via --token or GITHUB_TOKEN")
+        raise SystemExit(
+            "GitHub token required via --token or GITHUB_TOKEN/DEVRANK_GITHUB_TOKEN env"
+        )
 
     now = datetime.now(UTC)
     start_default = now - timedelta(days=365)

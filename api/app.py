@@ -9,7 +9,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import infra_health_router
-from config import CORS_ORIGINS
+from config import settings
 from impact.api.handlers import register_exception_handlers
 from impact.api.routes import dumps_router, metrics_router, roles_router
 
@@ -25,7 +25,8 @@ def create_app() -> FastAPI:
 
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=CORS_ORIGINS,
+        # allow_origins from Pydantic Settings (parsed + validated)
+        allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -41,6 +42,9 @@ def create_app() -> FastAPI:
     v1.include_router(dumps_router)
     application.include_router(v1)
 
+    # Register handlers (using ImpactError class pattern + thin root errors.py
+    # helper for logging/sanitization; consistent/reusable per Security best
+    # practices and lean design).
     register_exception_handlers(application)
 
     return application

@@ -21,9 +21,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, String, func, text
+from sqlalchemy import DateTime, ForeignKey, String, func, text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -66,13 +66,13 @@ class Assessment(Base):
         index=True,
         doc="URL-safe unique identifier (e.g., 'senior-eng-q1-2026')",
     )
-    description: Mapped[Optional[str]] = mapped_column(
+    description: Mapped[str | None] = mapped_column(
         String(1000), nullable=True, doc="Purpose/details (markdown OK)"
     )
 
     # FKs (roles table future; User for creator)
     # role_id: FK to Role.id (UUID; was int - fixed for consistency with UUID PKs)
-    role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    role_id: Mapped[uuid.UUID | None] = mapped_column(
         # Matches Role.id; nullable until full Role impl
         ForeignKey("roles.id", ondelete="SET NULL"),  # Graceful if role deleted
         nullable=True,
@@ -116,21 +116,21 @@ class Assessment(Base):
 
     # Relationships (string annos for forward refs/modularity)
     # Creator rel: User.created_assessments (1:N)
-    creator: Mapped["User"] = relationship(
+    creator: Mapped[User] = relationship(
         "User",
         back_populates="created_assessments",
         foreign_keys=[created_by],
     )
     # submissions: 1:N to Submission (users who took this assessment)
     # Enables tracking participants/self-eval/org-assigned (multiple per assess)
-    submissions: Mapped[list["Submission"]] = relationship(
+    submissions: Mapped[list[Submission]] = relationship(
         "Submission",
         back_populates="assessment",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
     # evaluations: 1:N (multiple evals/results per assessment)
-    evaluations: Mapped[list["Evaluation"]] = relationship(
+    evaluations: Mapped[list[Evaluation]] = relationship(
         "Evaluation",
         back_populates="assessment",
         cascade="all, delete-orphan",

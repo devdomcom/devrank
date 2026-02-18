@@ -61,9 +61,13 @@ def _check_redis() -> ServiceHealth:
     try:
         import redis
 
-        from config import REDIS_URL
+        # REDIS_URL now from Pydantic Settings (DRY, validated; was inline import).
+        # Supports DEVRANK_REDIS_URL override.
+        from config import settings
 
-        client = redis.from_url(REDIS_URL, socket_connect_timeout=3, socket_timeout=3)
+        client = redis.from_url(
+            settings.redis_url, socket_connect_timeout=3, socket_timeout=3
+        )
         start = time.monotonic()
         client.ping()
         latency = (time.monotonic() - start) * 1000

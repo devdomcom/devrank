@@ -170,5 +170,5 @@ Celery task definitions for async operations (e.g., fetching).
 
 - **Alembic for all schema changes**: Never modify the database schema by hand. Always create migrations via `alembic revision --autogenerate -m "description"`.
 - **Dual-engine pattern**: Async engine (asyncpg) for FastAPI endpoints; sync engine (psycopg2) for Alembic and Celery workers. Both configured in `db/engine.py`.
-- **URL from config, not alembic.ini**: `db/migrations/env.py` reads `DATABASE_URL_SYNC` from `config.py`, which supports env-var overrides for DinD/production.
+- **URL from config, not alembic.ini**: `db/migrations/env.py` reads `settings.database_url_sync` from refactored `config.py` (Pydantic Settings), which supports env-var overrides (DEVRANK_*) for DinD/production.
 - **Import all models in env.py**: New model files must be imported in `db/migrations/env.py` so autogenerate can detect them.
