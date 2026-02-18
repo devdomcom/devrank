@@ -20,7 +20,7 @@ config = context.config
 # Override the URL from alembic.ini with the one from Pydantic Settings (config.settings).
 # This respects DEVRANK_DATABASE_URL_SYNC env override (e.g. DinD/postgres in docker).
 # See AGENTS.md for dual-engine + migration notes.
-config.set_main_option("sqlalchemy.url", settings.database_url_sync)
+config.set_main_option("sqlalchemy.url", str(settings.database_url_sync))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

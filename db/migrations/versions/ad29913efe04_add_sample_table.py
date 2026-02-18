@@ -390,10 +390,10 @@ def upgrade() -> None:
         sa.Column("slug", sa.String(length=100), nullable=False),
         sa.Column("description", sa.String(length=500), nullable=True),
         sa.Column("config", sa.JSON(), nullable=False),
-        sa.Column("version", sa.Integer(), nullable=False, server_default=text("1")),
+        sa.Column("version", sa.Integer(), nullable=False, server_default=sa.text("1")),
         sa.Column("creator", sa.UUID(), nullable=True),
         sa.Column("org_id", sa.UUID(), nullable=True),  # NULL=global
-        sa.Column("global_role", sa.Boolean(), nullable=False, server_default=text("false")),
+        sa.Column("global_role", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column(
             "status",
             sa.Enum(
@@ -643,6 +643,49 @@ def upgrade() -> None:
     op.create_index("ix_submissions_assessment_id", "submissions", ["assessment_id"])
     op.create_index("ix_submissions_position_id", "submissions", ["position_id"])
 
+    # User-Org-Department membership (multi-tenancy join)
+    op.execute(
+        """
+        CREATE TYPE user_org_dept_status_enum AS ENUM (
+            'ACTIVE', 'DEACTIVATED', 'DELETED'
+        )
+        """
+    )
+    op.create_table(
+        "user_org_departments",
+        sa.Column(
+            "id", sa.UUID(), primary_key=True, nullable=False,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column("user_id", sa.UUID(), nullable=False),
+        sa.Column("org_id", sa.UUID(), nullable=False),
+        sa.Column("dept_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "user_org_dept_status_enum",
+                name="user_org_dept_status_enum",
+                create_type=False,
+            ),
+            nullable=False,
+            server_default="ACTIVE",
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True),
+            server_default=sa.text("now()"), nullable=False,
+        ),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("deactivated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint("id"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["dept_id"], ["departments.id"], ondelete="SET NULL"),
+        sa.UniqueConstraint("user_id", "org_id", "dept_id", name="uq_user_org_dept"),
+    )
+    op.create_index("ix_user_org_departments_user_id", "user_org_departments", ["user_id"])
+    op.create_index("ix_user_org_departments_org_id", "user_org_departments", ["org_id"])
+    op.create_index("ix_user_org_departments_dept_id", "user_org_departments", ["dept_id"])
+
 
 def downgrade() -> None:
     """Downgrade: drop dependent tables first (full chain: submissions/user_orgs/evals/positions/roles/depts/orgs -> assessments/oauth/users), then enums.
@@ -652,8 +695,8 @@ def downgrade() -> None:
     pgcrypto left intact.
     """
     # Drop children first (reverse create order)
+    op.drop_table("user_org_departments")
     op.drop_table("submissions")
-    op.drop_table("user_organizations")
     op.drop_table("evaluations")
     op.drop_table("positions")
     op.drop_table("roles")
@@ -676,4 +719,5 @@ def downgrade() -> None:
     op.execute("DROP TYPE IF EXISTS department_status_enum")
     op.execute("DROP TYPE IF EXISTS role_status_enum")
     op.execute("DROP TYPE IF EXISTS position_status_enum")
+    op.execute("DROP TYPE IF EXISTS user_org_dept_status_enum")
     op.execute("DROP TYPE IF EXISTS org_role_enum")

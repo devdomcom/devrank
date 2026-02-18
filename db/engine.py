@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from config import settings
 
 # Async engine — used by FastAPI request handlers (asyncpg driver).
-# Sourced from Pydantic Settings (config.settings) for validation/typing/DRY.
+# str() needed: settings returns pydantic AnyUrl, SQLAlchemy expects str.
 async_engine = create_async_engine(
-    settings.database_url,
+    str(settings.database_url),
     echo=False,
     pool_pre_ping=True,
     connect_args={"timeout": 5},
@@ -26,7 +26,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 # Sync engine — used by Alembic migrations and Celery workers (psycopg2 driver).
 sync_engine = create_engine(
-    settings.database_url_sync,
+    str(settings.database_url_sync),
     echo=False,
     pool_pre_ping=True,
     connect_args={"connect_timeout": 5},

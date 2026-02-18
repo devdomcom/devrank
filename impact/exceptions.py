@@ -66,7 +66,7 @@ class DataValidationError(ImpactError):
     def __init__(self, message: str, field: str = None, value=None):
         self.field = field
         self.value = value  # Logged only via helper; not in response
-        super().__init__(message)
+        super().__init__(message, status_code=400)
 
     @property
     def safe_detail(self) -> str:
@@ -91,7 +91,7 @@ class ParseError(ImpactError):
     def __init__(self, message: str, source: str = None, line_number: int = None):
         self.source = source
         self.line_number = line_number
-        super().__init__(message)
+        super().__init__(message, status_code=422)
 
     @property
     def safe_detail(self) -> str:
@@ -110,9 +110,9 @@ class ManifestError(ImpactError):
     Hides path in safe_detail (logged only; anti-enumeration).
     """
 
-    def __init__(self, message: str, path: str = None):
+    def __init__(self, message: str, path: str = None, status_code: int | None = None):
         self.path = path
-        super().__init__(message)
+        super().__init__(message, status_code=status_code)
 
     @property
     def safe_detail(self) -> str:
@@ -120,12 +120,11 @@ class ManifestError(ImpactError):
         return f"Manifest error: {self._message}"
 
 
-# Subs inherit ManifestError.safe_detail (or override further)
 class ManifestNotFoundError(ManifestError):
     """Raised specifically when manifest file is missing (404)."""
 
     def __init__(self, message: str, path: str = None):
-        super().__init__(message, path)
+        super().__init__(message, path=path, status_code=404)
 
     @property
     def safe_detail(self) -> str:
@@ -137,17 +136,12 @@ class ManifestNotFoundError(ManifestError):
         """Specific type for API/test consistency."""
         return "manifest_not_found"
 
-    def __init__(self, message: str, path: str = None):
-        # Override init to set status_code=404 (for thin handler)
-        super().__init__(message, status_code=404)
-        # path for logging only (set in super ManifestError if needed)
-
 
 class ManifestInvalidError(ManifestError):
     """Raised when manifest is invalid (JSON/fields; 422)."""
 
     def __init__(self, message: str, path: str = None):
-        super().__init__(message, path)
+        super().__init__(message, path=path, status_code=422)
 
     @property
     def safe_detail(self) -> str:
@@ -166,18 +160,15 @@ class ProviderError(ImpactError):
     Hides provider/status in safe_detail (logged only).
     """
 
-    def __init__(self, message: str, provider: str = None, status_code: int = None):
+    def __init__(self, message: str, provider: str = None, provider_status_code: int = None):
         self.provider = provider
-        self.status_code = status_code
-        super().__init__(message)
+        self.provider_status_code = provider_status_code  # Upstream status (logged only)
+        super().__init__(message, status_code=503)
 
     @property
     def safe_detail(self) -> str:
         """Generic provider msg."""
         return "External provider error (e.g., rate limit or downtime)."
-
-    # error_type from base suffices ("provider_error"); no override needed
-    # status_code handled in thin base handler (getattr; consistent with ResponseError 502/503)
 
 
 class AdapterError(ImpactError):
@@ -205,13 +196,10 @@ class ResponseError(ImpactError):
     """
 
     def __init__(self, message: str, status_code: int = 500, details: dict | None = None):
-        self.status_code = status_code
         self.details = details or {}  # Logged only
-        super().__init__(message)
+        super().__init__(message, status_code=status_code)
 
     @property
     def safe_detail(self) -> str:
         """Generic response msg."""
         return "Error formatting response."
-
-    # error_type from base suffices ("response_error"); no override needed

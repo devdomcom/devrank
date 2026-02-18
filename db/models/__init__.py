@@ -21,6 +21,7 @@ from .position import Position, PositionStatus
 from .role import Role, RoleStatus
 from .submission import Submission, SubmissionStatus
 from .user import Gender, User, UserRole, UserStatus
+from .user_org_department import UserOrgDepartment, UserOrgDeptStatus
 
 __all__ = [
     "Assessment",
@@ -40,6 +41,8 @@ __all__ = [
     "Submission",
     "SubmissionStatus",
     "User",
+    "UserOrgDepartment",
+    "UserOrgDeptStatus",
     "UserRole",
     "UserStatus",
 ]

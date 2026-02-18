@@ -11,15 +11,15 @@ from impact.exceptions import ImpactError, ParseError  # For sanitized raising t
 from impact.ledger.ledger import Ledger
 
 # Allowed base directories for dump paths (prevents path traversal).
-# Override via DEVRANK_ALLOWED_DUMP_DIRS env var (colon-separated); now sourced
-# from Pydantic Settings for validation/coercion/DRY (see config.py).
+# Always-allowed base directories (prevents path traversal while keeping tests
+# and CLI scripts working). Extra dirs can be added via DEVRANK_ALLOWED_DUMP_DIRS.
 _DEFAULT_ALLOWED_BASES = [Path("/tmp"), Path.home() / ".devrank", Path.cwd()]
-ALLOWED_DUMP_BASES: list[Path] = (
-    # settings.allowed_dump_dirs is str (empty → defaults)
+_extra = (
     [Path(p) for p in settings.allowed_dump_dirs.split(":") if p.strip()]
     if settings.allowed_dump_dirs
-    else _DEFAULT_ALLOWED_BASES
+    else []
 )
+ALLOWED_DUMP_BASES: list[Path] = _DEFAULT_ALLOWED_BASES + _extra
 
 
 def validate_dump_path(dump_path: str) -> Path:

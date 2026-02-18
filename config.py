@@ -111,24 +111,19 @@ class Settings(BaseSettings):
     )
 
     # ── API ───────────────────────────────────────────────────────────────
-    # CORS parsed from CSV string in env (e.g. DEVRANK_CORS_ORIGINS=http://localhost:3000,https://app.example.com)
-    cors_origins: list[str] = Field(
-        default=["*"],
-        description="Allowed origins for CORS middleware (comma-separated in env). "
+    # Stored as str to avoid pydantic-settings JSON-decoding CSV .env values.
+    # Use get_cors_origins_list() for the parsed list.
+    cors_origins: str = Field(
+        default="*",
+        description="Allowed origins for CORS middleware (comma-separated). "
         "Wildcard (*) triggers security warning.",
     )
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def _parse_cors_origins(cls, v: str | list[str] | None) -> list[str]:
-        """Coerce CSV string from env var to list; handles '*' default."""
-        if isinstance(v, str):
-            if not v or v.strip() == "*":
-                return ["*"]
-            return [o.strip() for o in v.split(",") if o.strip()]
-        if isinstance(v, list):
-            return v
-        return ["*"]
+    def get_cors_origins_list(self) -> list[str]:
+        """Parse CSV cors_origins string into a list."""
+        if not self.cors_origins or self.cors_origins.strip() == "*":
+            return ["*"]
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     # ── Security ──────────────────────────────────────────────────────────
     # ALLOWED_DUMP_DIRS: colon-separated list for path traversal protection (impact/api/dependencies.py)
@@ -168,7 +163,7 @@ class Settings(BaseSettings):
         Logs once at startup; helps catch prod misconfigs early.
         """
         # Risky CORS: allow_all is common dev mistake that hits prod
-        if self.cors_origins == ["*"] or "*" in self.cors_origins:
+        if "*" in self.get_cors_origins_list():
             logger.warning(
                 "⚠️ Risky cross-origin setup: allowing all origins ('*'). "
                 "Set DEVRANK_CORS_ORIGINS to explicit domains for production. "
