@@ -22,7 +22,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column  # relationship later
 
-from db.base import Base
+from db.base import Base, enum_values
 
 
 class AppRoleStatus(str, Enum):
@@ -61,6 +61,7 @@ class AppRole(Base):
     scope_level: Mapped[ScopeLevel] = mapped_column(
         SAEnum(
             ScopeLevel,
+            values_callable=enum_values,
             name="scope_level_enum",
             create_constraint=True,
             native_enum=True,
@@ -70,6 +71,7 @@ class AppRole(Base):
     status: Mapped[AppRoleStatus] = mapped_column(
         SAEnum(
             AppRoleStatus,
+            values_callable=enum_values,
             name="app_role_status_enum",
             create_constraint=True,
             native_enum=True,

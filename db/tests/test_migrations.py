@@ -129,7 +129,6 @@ class TestMigrationUpgrade:
             "kyc",
             "hashed_password",
             "role",
-            "is_self_evaluating",
             "timezone",
             "locale",
             "last_login_at",
@@ -613,8 +612,8 @@ class TestUserModelUsable:
                 title="Senior Eng Impact Q1",
                 slug="senior-eng-q1-2026",
                 description="Eval via impact metrics",
-                # role_id placeholder (future Role FK)
-                role_id=1,
+                # role_id nullable (UUID FK to roles; None for self-eval)
+                role_id=None,
                 created_by=user_id,
                 status=AssessmentStatus.PUBLISHED,
             )

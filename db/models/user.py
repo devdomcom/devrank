@@ -34,7 +34,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from db.base import Base
+from db.base import Base, enum_values
 
 
 class Gender(str, Enum):
@@ -116,7 +116,7 @@ class User(Base):
         doc="Unique email - used for auth, tenant invites",
     )
     gender: Mapped[Gender] = mapped_column(
-        SAEnum(Gender, name="gender_enum", create_constraint=True, native_enum=True),
+        SAEnum(Gender, values_callable=enum_values, name="gender_enum", create_constraint=True, native_enum=True),
         nullable=False,
         server_default=text("'prefer_not_to_say'"),
         doc="Gender enum - inclusive defaults",
@@ -156,7 +156,7 @@ class User(Base):
 
     # SaaS / domain specific
     role: Mapped[UserRole] = mapped_column(
-        SAEnum(UserRole, name="user_role_enum", create_constraint=True, native_enum=True),
+        SAEnum(UserRole, values_callable=enum_values, name="user_role_enum", create_constraint=True, native_enum=True),
         nullable=False,
         server_default=text("'user'"),
         doc="Global role; extend with org-scoped roles for multi-tenancy",
@@ -195,6 +195,7 @@ class User(Base):
     status: Mapped[UserStatus] = mapped_column(
         SAEnum(
             UserStatus,
+            values_callable=enum_values,
             name="user_status_enum",
             create_constraint=True,
             native_enum=True,

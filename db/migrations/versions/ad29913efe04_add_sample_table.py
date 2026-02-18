@@ -1034,16 +1034,15 @@ def downgrade() -> None:
     op.drop_table("app_roles")
     op.drop_table("system_roles")
     op.drop_table("permissions")
-    # Existing chain
+    # Existing chain (assessments before roles: assessments.role_id FK)
     op.drop_table("user_org_departments")
     op.drop_table("submissions")
     op.drop_table("evaluations")
+    op.drop_table("assessments")
     op.drop_table("positions")
     op.drop_table("roles")
     op.drop_table("departments")
     op.drop_table("organizations")
-    # Prior children
-    op.drop_table("assessments")
     op.drop_table("oauth_accounts")
     # Core
     op.drop_table("users")

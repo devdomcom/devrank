@@ -1,0 +1,45 @@
+# RBAC permission definitions and default role-permission mappings.
+#
+# Source of truth for the permission system. Used by:
+#   - scripts/init_rbac.py       (seeds DB with permissions + role mappings)
+#   - api/auth/rbac/             (runtime loader for validation)
+#   - require_permission()       (FastAPI dependency factory in api/auth/dependencies.py)
+#
+# Permission slugs follow the resource:action convention (e.g. metrics:read).
+# To add a new permission: add it under `permissions:`, then assign it to
+# the appropriate role(s) under `roles:`.
+
+permissions:
+  metrics:list:
+    description: List available metrics catalog
+  metrics:read:
+    description: Read individual metric results
+  metrics:compute:
+    description: Compute metrics reports and comparisons
+  roles:list:
+    description: List available role configurations
+  roles:read:
+    description: Read role configuration details
+  dumps:upload:
+    description: Upload and validate dump ZIP files
+  system:debug:
+    description: Access debug and test endpoints
+
+roles:
+  superuser:
+    type: system
+    name: Superuser
+    description: Full system-wide access to all features
+    permissions: "*"
+
+  analyst:
+    type: app
+    scope: ORG
+    name: Analyst
+    description: Read-only access to metrics and roles
+    permissions:
+      - metrics:list
+      - metrics:read
+      - metrics:compute
+      - roles:list
+      - roles:read

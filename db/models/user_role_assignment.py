@@ -27,7 +27,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from db.base import Base
+from db.base import Base, enum_values
 
 
 class AssignmentStatus(str, Enum):
@@ -62,6 +62,7 @@ class UserRoleAssignment(Base):
         # Reuse from role_permission.py (DRY; imported via models)
         SAEnum(
             RoleType,
+            values_callable=enum_values,
             name="role_type_enum",
             create_constraint=True,
             native_enum=True,
@@ -82,6 +83,7 @@ class UserRoleAssignment(Base):
     status: Mapped[AssignmentStatus] = mapped_column(
         SAEnum(
             AssignmentStatus,
+            values_callable=enum_values,
             name="assignment_status_enum",
             create_constraint=True,
             native_enum=True,

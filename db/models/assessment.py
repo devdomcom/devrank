@@ -27,7 +27,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from db.base import Base
+from db.base import Base, enum_values
 
 
 class AssessmentStatus(str, Enum):
@@ -92,6 +92,7 @@ class Assessment(Base):
         # Native PG enum (SAEnum alias; create_constraint for DB enum type)
         SAEnum(
             AssessmentStatus,
+            values_callable=enum_values,
             name="assessment_status_enum",
             create_constraint=True,
             native_enum=True,

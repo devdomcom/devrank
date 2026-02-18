@@ -22,7 +22,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from db.base import Base
+from db.base import Base, enum_values
 
 
 class RoleType(str, Enum):
@@ -50,6 +50,7 @@ class RolePermission(Base):
     role_type: Mapped[RoleType] = mapped_column(
         SAEnum(
             RoleType,
+            values_callable=enum_values,
             name="role_type_enum",
             create_constraint=True,
             native_enum=True,

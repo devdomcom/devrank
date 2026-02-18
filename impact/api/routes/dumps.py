@@ -6,11 +6,12 @@ import zipfile
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 # Use enhanced ImpactError (class-based safe_detail/to_response()) for handler
 # integration. Thin root helper (errors.py) for logging. HTTPException kept for
 # simple cases (safe details; caught by http handler).
+from api.auth.dependencies import require_permission
 from impact.api.dependencies import load_bundle, load_manifest, validate_dump_path
 from impact.exceptions import ImpactError
 
@@ -23,7 +24,7 @@ router = APIRouter(tags=["dumps"], prefix="/dumps")
 MAX_UPLOAD_FILE_SIZE = 100 * 1024 * 1024
 
 
-@router.post("/upload", summary="Upload and validate GitHub dump ZIP", response_model=dict)
+@router.post("/upload", summary="Upload and validate GitHub dump ZIP", response_model=dict, dependencies=[Depends(require_permission("dumps:upload"))])
 async def upload_dump(
     file: Annotated[UploadFile, File(description="ZIP file containing dump structure (manifest + canonical/*.jsonl)")],
 ) -> dict:

@@ -19,7 +19,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from db.base import Base
+from db.base import Base, enum_values
 
 
 class OrganizationStatus(str, Enum):
@@ -49,6 +49,7 @@ class Organization(Base):
     status: Mapped[OrganizationStatus] = mapped_column(
         SAEnum(
             OrganizationStatus,
+            values_callable=enum_values,
             name="organization_status_enum",
             create_constraint=True,
             native_enum=True,

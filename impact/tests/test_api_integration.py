@@ -3,13 +3,34 @@
 Uses the real app with TestClient (in-process; no server needed).
 Sample dump at impact/samples/github_live_dump provides real data.
 """
+import uuid
+
 import pytest
 from starlette.testclient import TestClient
 
 from api.app import app
+from api.auth.dependencies import get_current_user
+from api.auth.schemas import AuthContext
 
 DUMP_PATH = "impact/samples/github_live_dump"
 VALID_ROLE = "senior_dev"
+
+# Superuser context for integration tests (bypasses permission checks; no DB needed)
+_TEST_AUTH = AuthContext(
+    user_id=uuid.uuid4(),
+    email="test-admin@example.com",
+    name="Test Admin",
+    roles=["superuser"],
+    permissions=[],
+)
+
+
+@pytest.fixture(autouse=True)
+def _override_auth():
+    """Bypass auth for all integration tests (superuser context)."""
+    app.dependency_overrides[get_current_user] = lambda: _TEST_AUTH
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.fixture

@@ -27,7 +27,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from db.base import Base
+from db.base import Base, enum_values
 
 
 class SubmissionStatus(str, Enum):
@@ -90,6 +90,7 @@ class Submission(Base):
         # Native PG enum
         SAEnum(
             SubmissionStatus,
+            values_callable=enum_values,
             name="submission_status_enum",
             create_constraint=True,
             native_enum=True,

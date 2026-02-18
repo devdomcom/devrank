@@ -1,24 +1,21 @@
+"""Impact pipeline dependencies (dump validation, context building).
+
+Auth dependencies (get_db, get_current_user, require_permission) live in
+api/auth/dependencies.py — they are app-level concerns, not impact-specific.
+"""
 from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException, Query, status
-from fastapi.security import OAuth2PasswordBearer
 
 from config import settings
-from db.engine import SyncSessionLocal
-from db.models import User, UserRoleAssignment
-from impact.api.schemas import AuthContext
-from impact.api.security import decode_access_token, TokenData
 from impact.domain.models import CanonicalBundle, MetricContext
-from impact.exceptions import ImpactError, ParseError  # For sanitized raising to handlers
+from impact.exceptions import ImpactError, ParseError
 from impact.ledger.ledger import Ledger
-from sqlalchemy.orm import Session
 
 # Allowed base directories for dump paths (prevents path traversal).
-# Always-allowed base directories (prevents path traversal while keeping tests
-# and CLI scripts working). Extra dirs can be added via DEVRANK_ALLOWED_DUMP_DIRS.
 _DEFAULT_ALLOWED_BASES = [Path("/tmp"), Path.home() / ".devrank", Path.cwd()]
 _extra = (
     [Path(p) for p in settings.allowed_dump_dirs.split(":") if p.strip()]
@@ -44,34 +41,24 @@ def validate_dump_path(dump_path: str) -> Path:
 
 
 def _parse_iso_date(value: str | None, field_name: str) -> datetime | None:
-    """Parse an ISO date string with a user-friendly error message.
-
-    Raises ParseError (sanitized by handlers) instead of raw HTTPException
-    detail leak.
-    """
+    """Parse an ISO date string with a user-friendly error message."""
     if not value:
         return None
     try:
         return datetime.fromisoformat(value)
     except (ValueError, TypeError) as e:
-        # Safe msg; full exc logged in ParseError handler
         raise ParseError(
             f"Invalid date format for '{field_name}': expected ISO 8601",
-            # No {value!r} to avoid injection; logged internally
         ) from e
 
 
 def load_manifest(dump_path: str) -> dict:
-    """Read and return the dump_manifest.json from a validated dump directory.
-
-    Uses safe errors that handlers sanitize (no JSON err details leaked).
-    """
+    """Read and return the dump_manifest.json from a validated dump directory."""
     import json
 
     validated = validate_dump_path(dump_path)
     manifest_path = validated / "dump_manifest.json"
     if not manifest_path.exists():
-        # HTTP kept for simple (safe detail); caught by ValueError handler
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="dump_manifest.json not found in the provided dump directory.",
@@ -79,23 +66,17 @@ def load_manifest(dump_path: str) -> dict:
     try:
         return json.loads(manifest_path.read_text())
     except json.JSONDecodeError as e:
-        # Raise ParseError for consistency with handler sanitization/logging
         raise ParseError("Invalid manifest JSON") from e
 
 
 def load_bundle(dump_path: str) -> CanonicalBundle:
-    """Load a CanonicalBundle from a validated dump directory.
-
-    Wraps any error in ImpactError (base handler sanitizes; full details logged).
-    """
+    """Load a CanonicalBundle from a validated dump directory."""
     from impact.ingestion.dump import DumpIngestion
 
     validated = validate_dump_path(dump_path)
     try:
         return DumpIngestion(str(validated)).ingest()
     except Exception as e:
-        # Safe msg only; status_code=400 for thin handler (consistent)
-        # type(e) logged in root helper
         raise ImpactError("Failed to load dump bundle", status_code=400) from e
 
 
@@ -105,11 +86,7 @@ def build_context(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
 ) -> MetricContext:
-    """Full pipeline: validate path -> load manifest -> load bundle -> create context.
-
-    ``user_login``, ``start_date``, and ``end_date`` are inferred from the
-    dump manifest when not provided.
-    """
+    """Full pipeline: validate path -> load manifest -> load bundle -> create context."""
     manifest = load_manifest(dump_path)
 
     if not user_login:
@@ -149,45 +126,3 @@ def get_metric_context_query(
         _parse_iso_date(start_date, "start_date"),
         _parse_iso_date(end_date, "end_date"),
     )
-
-
-# ── Auth dependencies (JWT/RBAC) ───────────────────────────────────────────
-# Shared DB dep (DRY for auth routes; sync OK in FastAPI threadpool)
-def get_db() -> Session:
-    """Yield sync DB session for auth/user queries (close after)."""
-    db = SyncSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-# OAuth2 scheme for bearer token (tokenUrl for Swagger auto /docs UI)
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
-
-
-def get_current_user(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
-) -> AuthContext:
-    """Get current user from JWT + DB + RBAC perms (dep for protected routes).
-
-    DRY: decode from security, query models (user_role_assignments for roles/perms).
-    Raises 401 on bad token (auth fail). Request-scoped via Depends.
-    Populates full AuthContext for /me etc.
-    """
-    # Decode token (401 on fail; DRY)
-    token_data: TokenData = decode_access_token(token)
-    if token_data.user_id is None:
-        raise ImpactError("Invalid credentials", status_code=status.HTTP_401_UNAUTHORIZED)
-    # DB lookup
-    user = db.get(User, token_data.user_id)
-    if not user:
-        raise ImpactError("User not found", status_code=status.HTTP_401_UNAUTHORIZED)
-    # RBAC query: roles/perms from assignment junction (DRY; extend for full perms join)
-    # Placeholder: fetch roles; full would join RolePermission etc for 'resource:action'
-    assignments = db.scalars(
-        select(UserRoleAssignment).where(UserRoleAssignment.user_id == user.id)
-    ).all()
-    roles = [str(a.role_id) for a in assignments]  # Placeholder; map to slugs
-    # perms = [...]  # TODO full
-    return AuthContext(user_id=user.id, roles=roles, permissions=[])  # Extend perms list

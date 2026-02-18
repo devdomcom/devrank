@@ -1,20 +1,14 @@
-"""Dedicated test suite for error handlers (covers all impact exceptions + metrics pipeline error cases).
-Targets >=80% coverage of error paths/handlers via direct + API simulation.
+"""Dedicated test suite for error handlers (covers all exceptions + metrics pipeline error cases).
 
-Updated for revised class-based pattern (enhanced ImpactError.to_response()/
-safe_detail + thin root errors.py helper): asserts sanitized responses (no
-internals like type/path/value; consistent {"error":, "detail":}) while
-preserving coverage and using standalone test app (per AGENTS.md best practice
-for avoiding module-caching/conditional registration).
-
-Full details logged server-side only via helper; responses friendly/safe via
-classes (lean, reusable).
+Asserts sanitized responses (no internals leaked; consistent {"error":, "detail":})
+while preserving coverage. Uses standalone test app (avoids module-cache issues).
 """
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from impact.api.handlers import register_exception_handlers
+from api.exceptions import AuthenticationError, AuthorizationError
+from api.handlers import register_exception_handlers
 from impact.exceptions import (
     AdapterError,
     DataValidationError,
@@ -45,6 +39,8 @@ def _create_test_app() -> FastAPI:
             "AdapterError": AdapterError("test adapter"),
             "ResponseError": ResponseError("test response"),
             "ImpactError": ImpactError("test base"),
+            "AuthenticationError": AuthenticationError("bad creds"),
+            "AuthorizationError": AuthorizationError("no access"),
             "ValueError": ValueError("test metrics/ledger error"),
         }
         if error_type in exc_map:
@@ -59,15 +55,9 @@ def client():
     return TestClient(_create_test_app())
 
 
-# Test all registered handlers via simulated raises
-# Updated for central utility: asserts *sanitized* shape (no "type"/"path"/"value"
-# keys; only safe {"error":, "detail":}) per security best practices. Coverage
-# preserved; full internals logged (not asserted here).
 @pytest.mark.parametrize(
     "exc_class,expected_status,expected_error",
     [
-        # error_type from class.error_type (e.g., "data_validation_error" via override,
-        # "impact_error" for base/wrapped ValueError; leverages enhanced ImpactError)
         (DataValidationError, 400, "data_validation_error"),
         (ManifestNotFoundError, 404, "manifest_not_found"),
         (ManifestInvalidError, 422, "manifest_invalid"),
@@ -76,25 +66,23 @@ def client():
         (AdapterError, 500, "adapter_error"),
         (ResponseError, 500, "response_error"),
         (ImpactError, 500, "impact_error"),
-        (ValueError, 400, "impact_error"),  # Wrapped to ImpactError in handler
+        (AuthenticationError, 401, "authentication_error"),
+        (AuthorizationError, 403, "authorization_error"),
+        (ValueError, 400, "app_error"),  # Wrapped to AppError in handler
     ],
 )
 def test_error_handlers(client, exc_class, expected_status, expected_error):
-    """Test each handler via dedicated test endpoint (standalone app).
-
-    Verifies sanitization + consistency; no internal leaks.
-    """
+    """Test each handler via dedicated test endpoint (standalone app)."""
     resp = client.get(f"/_test_error?error_type={exc_class.__name__}")
     assert resp.status_code == expected_status
     data = resp.json()
-    # Sanitized shape: only safe keys (utility enforces; overrides old "type"/attrs)
     assert data["error"] == expected_error or expected_error in data["error"]
     assert "detail" in data
     # Security: no leaking fields
     assert "type" not in data
     assert "path" not in data
     assert "value" not in data
-    assert "details" not in data  # logged only
+    assert "details" not in data
 
 
 # Coverage for metrics pipeline error cases (run metrics with bad context)

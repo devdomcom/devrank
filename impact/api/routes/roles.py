@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from api.auth.dependencies import require_permission
 from impact.api.schemas import RoleListItem, RoleResponse
 from impact.config.role_metrics import get_available_roles, get_role_config
 
@@ -19,13 +20,13 @@ def _get_role_list() -> list[RoleListItem]:
     return _ROLES_CACHE
 
 
-@router.get("/", summary="List available roles", response_model=list[RoleListItem])
+@router.get("/", summary="List available roles", response_model=list[RoleListItem], dependencies=[Depends(require_permission("roles:list"))])
 def list_roles() -> list[RoleListItem]:
     """Endpoint follows metrics list pattern (cached, simple)."""
     return _get_role_list()
 
 
-@router.get("/{role_name}", summary="Get role config", response_model=RoleResponse)
+@router.get("/{role_name}", summary="Get role config", response_model=RoleResponse, dependencies=[Depends(require_permission("roles:read"))])
 def get_role(role_name: str) -> RoleResponse:
     """Load specific role (404 on unknown; uses existing get_role_config with fallback)."""
     available = get_available_roles()

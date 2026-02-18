@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 # settings imported at top (DRY/FastAPI best practice; avoids E402).
 # Used for module-level debug gating of test endpoint (see AGENTS.md).
 from config import settings
+from api.auth.dependencies import require_permission
 from impact.api.dependencies import build_context, get_metric_context_query
 from impact.api.schemas import (
     CompareMetricsRequest,
@@ -71,12 +72,12 @@ def _resolve_rating_and_score(
 # sync endpoints in a thread pool, preventing event-loop blocking.
 
 
-@router.get("/", summary="List available metrics", response_model=list[MetricListItem])
+@router.get("/", summary="List available metrics", response_model=list[MetricListItem], dependencies=[Depends(require_permission("metrics:list"))])
 def list_metrics() -> list[MetricListItem]:
     return _get_metric_list()
 
 
-@router.post("/compute", response_model=MetricsReport, summary="Compute metrics report")
+@router.post("/compute", response_model=MetricsReport, summary="Compute metrics report", dependencies=[Depends(require_permission("metrics:compute"))])
 def compute_metrics(req: ComputeMetricsRequest) -> MetricsReport:
     _validate_role(req.role)
     context = build_context(req.dump_path, req.user_login, req.start_date, req.end_date)
@@ -139,7 +140,7 @@ def compute_metrics(req: ComputeMetricsRequest) -> MetricsReport:
     )
 
 
-@router.get("/{metric_slug}", response_model=MetricResponse, summary="Resolve single metric")
+@router.get("/{metric_slug}", response_model=MetricResponse, summary="Resolve single metric", dependencies=[Depends(require_permission("metrics:read"))])
 def resolve_single_metric(
     metric_slug: str,
     context: Annotated[MetricContext, Depends(get_metric_context_query)],
@@ -165,7 +166,7 @@ def resolve_single_metric(
     )
 
 
-@router.post("/compare", response_model=MetricsComparisonReport, summary="Compare metrics across two time windows")
+@router.post("/compare", response_model=MetricsComparisonReport, summary="Compare metrics across two time windows", dependencies=[Depends(require_permission("metrics:compute"))])
 def compare_metrics(req: CompareMetricsRequest) -> MetricsComparisonReport:
     """Compare metrics in two windows (reuses build/resolve; score_delta always higher=better)."""
     _validate_role(req.role)
@@ -229,7 +230,7 @@ def compare_metrics(req: CompareMetricsRequest) -> MetricsComparisonReport:
 # coercion/warnings.
 if settings.debug:
 
-    @router.get("/_test_error")
+    @router.get("/_test_error", dependencies=[Depends(require_permission("system:debug"))])
     def _test_error(error_type: str):
         from impact.exceptions import (
             AdapterError,

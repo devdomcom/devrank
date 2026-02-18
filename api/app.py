@@ -1,6 +1,6 @@
 """Application entry point — creates the FastAPI app and mounts all routers.
 
-Root-level routes (infra health, future auth) live here.
+Root-level routes (health, auth) live in api/routes/.
 Domain-specific routes (metrics, roles, dumps) are mounted from impact.api.
 """
 from __future__ import annotations
@@ -8,11 +8,10 @@ from __future__ import annotations
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import infra_health_router
+from api.handlers import register_exception_handlers
+from api.routes import auth_router, infra_health_router
 from config import settings
-from impact.api.handlers import register_exception_handlers
-# Auth router for login/me (DRY; single source in impact/api)
-from impact.api.routes import auth_router, dumps_router, metrics_router, roles_router
+from impact.api.routes import dumps_router, metrics_router, roles_router
 
 API_V1_PREFIX = "/api/v1"
 
@@ -35,18 +34,17 @@ def create_app() -> FastAPI:
     # ── App-wide routes (no version prefix) ──────────────────────────────
     application.include_router(infra_health_router)
 
-    # ── Impact domain routes (v1) ────────────────────────────────────────
+    # ── Versioned routes ─────────────────────────────────────────────────
     v1 = APIRouter(prefix=API_V1_PREFIX)
+    # Auth (app-level)
+    v1.include_router(auth_router)
+    # Impact domain
     v1.include_router(metrics_router)
     v1.include_router(roles_router)
     v1.include_router(dumps_router)
-    # Auth routes (login/me for JWT/RBAC; documented in Swagger, testable)
-    v1.include_router(auth_router)
     application.include_router(v1)
 
-    # Register handlers (using ImpactError class pattern + thin root errors.py
-    # helper for logging/sanitization; consistent/reusable per Security best
-    # practices and lean design).
+    # Register exception handlers (AppError base catches all domain errors)
     register_exception_handlers(application)
 
     return application
