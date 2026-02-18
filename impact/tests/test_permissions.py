@@ -162,10 +162,13 @@ class TestRbacYamlConfig:
     def test_expected_permissions_present(self):
         from api.auth.rbac import get_all_permission_slugs
 
+        # Includes organizations:list (added for platform endpoint; system-role only)
+        # Validate whenever perms.yaml changes (DRY source-of-truth test)
         expected = {
             "metrics:list", "metrics:read", "metrics:compute",
             "roles:list", "roles:read",
             "dumps:upload", "system:debug",
+            "organizations:list",
         }
         assert expected == get_all_permission_slugs()
 

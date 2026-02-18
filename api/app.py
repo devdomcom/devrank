@@ -9,7 +9,8 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.handlers import register_exception_handlers
-from api.routes import auth_router, infra_health_router
+# Root app routes now include organizations (platform tenancy)
+from api.routes import auth_router, infra_health_router, organizations_router
 from config import settings
 from impact.api.routes import dumps_router, metrics_router, roles_router
 
@@ -38,6 +39,9 @@ def create_app() -> FastAPI:
     v1 = APIRouter(prefix=API_V1_PREFIX)
     # Auth (app-level)
     v1.include_router(auth_router)
+    # Platform tenancy (organizations; system-role restricted via RBAC)
+    # Mounted at /api/v1/organizations/ following root routes pattern
+    v1.include_router(organizations_router)
     # Impact domain
     v1.include_router(metrics_router)
     v1.include_router(roles_router)

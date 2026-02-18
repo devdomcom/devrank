@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+"""Seed sample organizations for dev/testing purposes.
+
+Populates `organizations` (and minimal linked depts/positions for tenancy variations)
+with parametrized data. Idempotent (graceful skip on existing slugs), supports drop.
+
+Usage:
+    # Seed default samples (varied statuses, slugs, timestamps)
+    PYTHONPATH=. python scripts/seed_sample_organizations.py
+
+    # Drop sample data first (targeted by slug prefix; cascades to depts/positions)
+    PYTHONPATH=. python scripts/seed_sample_organizations.py --drop
+
+    # Custom config for more variations
+    PYTHONPATH=. python scripts/seed_sample_organizations.py --config scripts/sample_orgs.yaml
+
+Run after `alembic upgrade head` and `init_rbac.py`. Enables testing /api/v1/organizations/
+endpoint with real data (active/deactivated/banned orgs, etc.). Aligns with
+create_admin.py/init_rbac.py patterns: argparse, SyncSessionLocal, DRY models/enums.
+
+"Generate dumps" here means seed structured sample data (DB records) for orgs
+with sufficient variations; extends to rels for full multi-tenancy dev dumps.
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+import yaml
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from db.engine import SyncSessionLocal
+# DRY: reuse models/enums/timestamps/status patterns from org (core tenancy).
+# (Depts/positions/roles omitted for simplicity; they require additional FKs like
+# roles.id and add complexity for basic org-list testing. Extend if full tenancy
+# dumps needed.)
+from db.models import (
+    Organization,
+    OrganizationStatus,
+)
+
+# Default samples: variations for testing (statuses, lifecycle dates, descs).
+# Slugs prefixed 'sample-' for easy drop/targeting; unique, dev-only.
+# Sufficient for org endpoint testing (e.g., filtering by status, cursor paging,
+# soft-deletes); "dumps" here = structured dev data inserts.
+DEFAULT_SAMPLES: list[dict[str, Any]] = [
+    {
+        "slug": "sample-acme-corp",
+        "description": "Active tech company (standard dev test case)",
+        "status": OrganizationStatus.ACTIVE,
+        # Timestamps: recent for recency tests
+        "created_at": datetime(2025, 1, 15, tzinfo=timezone.utc),
+        "activated_at": datetime(2025, 1, 15, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-beta-inc",
+        "description": "Deactivated startup (tests status filtering)",
+        "status": OrganizationStatus.DEACTIVATED,
+        "created_at": datetime(2024, 6, 1, tzinfo=timezone.utc),
+        "deactivated_at": datetime(2025, 2, 1, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-gamma-labs",
+        "description": "Banned org (edge case for lifecycle)",
+        "status": OrganizationStatus.BANNED,
+        "created_at": datetime(2023, 1, 1, tzinfo=timezone.utc),
+        "banned_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-delta-co",
+        "description": "Soft-deleted org (tests deleted_at filter in queries)",
+        "status": OrganizationStatus.DELETED,
+        "created_at": datetime(2022, 1, 1, tzinfo=timezone.utc),
+        "deleted_at": datetime.now(timezone.utc),
+    },
+]
+
+
+def _parse_datetime(value: str | datetime | None) -> datetime | None:
+    """Parse ISO string to datetime (for YAML config) or pass through.
+
+    DRY helper; handles YAML dates (str) gracefully; tz-aware.
+    """
+    if value is None or isinstance(value, datetime):
+        return value
+    try:
+        # fromisoformat handles ISO with Z/+00:00; fallback for flexibility
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        return datetime.fromisoformat(value)
+    except ValueError:
+        # Graceful; log but continue with None/default
+        print(f"Warning: could not parse datetime '{value}'; using None")
+        return None
+
+
+def load_samples(config_path: str | None = None) -> list[dict[str, Any]]:
+    """Load sample org data from YAML (parametrized) or defaults.
+
+    Allows custom variations via config for flexible dev testing (e.g.,
+    scripts/sample_orgs.yaml). Parses timestamps; falls back to DEFAULT_SAMPLES.
+    """
+    if config_path and Path(config_path).exists():
+        with open(config_path) as f:
+            data = yaml.safe_load(f) or {}
+        samples = data.get("organizations", DEFAULT_SAMPLES)
+        # Parse dates in place for each sample (DRY, non-destructive)
+        for sample in samples:
+            for date_key in [
+                "created_at",
+                "updated_at",
+                "activated_at",
+                "deactivated_at",
+                "banned_at",
+                "deleted_at",
+            ]:
+                sample[date_key] = _parse_datetime(sample.get(date_key))
+        return samples
+    return DEFAULT_SAMPLES
+
+
+def drop_sample_data(db: Session, slug_prefix: str = "sample-") -> int:
+    """Safely drop sample orgs + cascade rels (depts, positions via FKs).
+
+    Targeted by slug prefix (dev-only; avoids prod data). Returns count dropped.
+    Graceful: no-op if none found.
+    """
+    # Delete orgs (cascades to depts/positions/user_memberships per model FKs/ondelete)
+    # Use prefix to scope to samples (DRY with create_admin idempotency)
+    orgs_to_drop = db.scalars(
+        select(Organization).where(Organization.slug.like(f"{slug_prefix}%"))
+    ).all()
+    count = len(orgs_to_drop)
+    if count == 0:
+        print(f"No sample orgs (prefix '{slug_prefix}') found to drop.")
+        return 0
+
+    for org in orgs_to_drop:
+        db.delete(org)  # Cascade handles children
+    db.commit()
+    print(f"Dropped {count} sample organizations (and related depts/positions).")
+    return count
+
+
+def seed_sample_organizations(
+    db: Session | None = None,
+    config_path: str | None = None,
+    drop_first: bool = False,
+) -> int:
+    """Seed parametrized sample orgs (idempotent, variations for testing).
+
+    - drop_first: optional truncate samples first.
+    - Graceful: skip if slug exists (by unique index); no duplicates.
+    - Variations: statuses, dates, depts/positions for endpoint/tenancy tests.
+    - DRY reuses models/enums/timestamps from db/models/* ; session handling
+      mirrors create_admin.py/init_rbac.py.
+
+    Returns count of newly created orgs.
+    """
+    if db is None:
+        db = SyncSessionLocal()
+        close_db = True
+    else:
+        close_db = False
+
+    try:
+        if drop_first:
+            drop_sample_data(db)
+
+        samples = load_samples(config_path)
+        created = 0
+
+        for sample in samples:
+            slug = sample["slug"]
+            # Idempotent check (graceful exists; DRY unique slug index)
+            # Fails gracefully per task (skip vs error; mirrors create_admin.py)
+            existing = db.execute(
+                select(Organization).where(Organization.slug == slug)
+            ).scalar_one_or_none()
+            if existing:
+                print(f"Organization '{slug}' already exists; skipping (idempotent).")
+                continue
+
+            # Create org (core fields + status/lifecycle timestamps for variations)
+            # Defaults fill rest (e.g., updated_at); DRY with model patterns.
+            org = Organization(
+                slug=slug,
+                description=sample.get("description"),
+                status=sample.get("status", OrganizationStatus.ACTIVE),
+                # Override timestamps for test variations (e.g., past dates, deleted)
+                created_at=sample.get(
+                    "created_at", datetime.now(timezone.utc) - timedelta(days=30)
+                ),
+                updated_at=datetime.now(timezone.utc),
+                activated_at=sample.get("activated_at"),
+                deactivated_at=sample.get("deactivated_at"),
+                banned_at=sample.get("banned_at"),
+                deleted_at=sample.get("deleted_at"),
+            )
+            db.add(org)
+            db.flush()  # Ensure PK for potential rels (future-proof)
+
+            db.commit()
+            # Refresh for ID/logging
+            db.refresh(org)
+            print(f"Created sample org: {slug} (id={org.id}, status={org.status})")
+            created += 1
+
+        print(f"\nSeeding complete: {created} new organizations added.")
+        return created
+    except Exception as e:
+        db.rollback()
+        print(f"Error during seeding: {e}")
+        raise
+    finally:
+        if close_db:
+            db.close()
+
+
+def main() -> None:
+    """CLI entrypoint for sample org seeding (dev-focused)."""
+    parser = argparse.ArgumentParser(
+        description="Seed/drop sample organizations for dev/testing (idempotent, parametrized)"
+    )
+    parser.add_argument(
+        "--drop",
+        action="store_true",
+        help="Drop existing sample orgs (prefix 'sample-') before seeding; cascades to rels",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to YAML config for custom samples (defaults to hardcoded variations)",
+    )
+    # Future: --count for auto-gen, but YAML for full param/control
+    args = parser.parse_args()
+
+    db = SyncSessionLocal()
+    try:
+        if args.drop:
+            drop_sample_data(db)
+        seed_sample_organizations(db, config_path=args.config, drop_first=False)
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        print(f"Script failed: {e}")
+        sys.exit(1)

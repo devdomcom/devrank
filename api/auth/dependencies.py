@@ -4,7 +4,7 @@ Provides get_db, get_current_user, and require_permission.
 """
 from __future__ import annotations
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,6 +15,8 @@ from api.exceptions import AuthenticationError, AuthorizationError
 from db.engine import SyncSessionLocal
 from db.models import (
     AppRole,
+    AssignmentStatus,
+    Organization,
     Permission,
     RolePermission,
     SystemRole,
@@ -22,6 +24,8 @@ from db.models import (
     UserRoleAssignment,
 )
 from db.models.role_permission import RoleType
+from sqlalchemy import select
+from uuid import UUID
 
 
 def get_db() -> Session:
@@ -119,3 +123,68 @@ def require_permission(*permission_slugs: str):
         return current_user
 
     return _check_permission
+
+
+def get_organization_with_access(
+    org_id_or_slug: str,
+    current_user: AuthContext = Depends(require_permission("organizations:read")),
+    db: Session = Depends(get_db),
+) -> Organization:
+    """Resolve org by ID/slug AND enforce access (system role or org admin scope).
+
+    Used by GET /organizations/{org_id_or_slug} for tenancy RBAC.
+
+    - System roles (e.g., superuser) bypass scope.
+    - App roles (e.g., org_admin) must have UserRoleAssignment matching org_id.
+    - Raises 404 if not found/active; 403 if no access (via AuthorizationError).
+    DRY extension of require_permission; ties into UserRoleAssignment.org_id
+    and models (soft-delete, UUID/slug lookup).
+    """
+    # Resolve org (flexible ID or slug; indexed; soft-delete filter)
+    org = None
+    try:
+        org_id = UUID(org_id_or_slug)
+        org = db.get(Organization, org_id)
+    except ValueError:
+        # Slug fallback
+        org = db.execute(
+            select(Organization).where(Organization.slug == org_id_or_slug)
+        ).scalar_one_or_none()
+
+    if not org or org.deleted_at:
+        raise HTTPException(  # Safe 404 (pattern from routes; no leak)
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Organization '{org_id_or_slug}' not found",
+        )
+
+    # System role bypass (DRY with require_permission superuser check)
+    if "superuser" in current_user.roles:
+        return org
+
+    # Org admin scope: full RBAC chain for specific org
+    # Combine user_id + org_id (tenancy) + role -> perm (organizations:read)
+    # Joins: UserRoleAssignment (user/org scope) -> RolePermission (polymorphic) -> Permission.slug
+    # (DRY with get_current_user perm resolution; explicit for org_admin app role)
+    # System roles bypassed earlier; active/APP filter for scope.
+    # Ensures perm + org combo as requested.
+    has_access = db.execute(
+        select(UserRoleAssignment)
+        .join(
+            RolePermission,
+            # Polymorphic join on role_type/role_id (DRY with role_permission model)
+            (RolePermission.role_id == UserRoleAssignment.role_id)
+            & (RolePermission.role_type == UserRoleAssignment.role_type),
+        )
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(
+            UserRoleAssignment.user_id == current_user.user_id,
+            UserRoleAssignment.org_id == org.id,  # Org-specific combo
+            UserRoleAssignment.role_type == RoleType.APP,  # Org-scoped app role
+            UserRoleAssignment.status == AssignmentStatus.ACTIVE,  # Active assignment
+            Permission.slug == "organizations:read",  # Specific perm from RBAC yaml
+        )
+    ).first()
+    if not has_access:
+        raise AuthorizationError(f"Not authorized for organization '{org.slug}'")
+
+    return org

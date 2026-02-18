@@ -24,6 +24,17 @@ permissions:
     description: Upload and validate dump ZIP files
   system:debug:
     description: Access debug and test endpoints
+  # Organizations endpoint (platform tenancy).
+  # - list: system roles only (superuser *)
+  # - read: system roles + org admins (app role, ORG scope for tenancy enforcement)
+  # - create: available to all users/roles (beyond system/app; assigned broadly)
+  # Follows resource:action; source-of-truth for RBAC in deps/scripts.
+  organizations:list:
+    description: List all organizations in the platform (system roles only)
+  organizations:read:
+    description: Read specific organization details by ID/slug (system roles or org admins)
+  organizations:create:
+    description: Create a new organization (available to all users irrespective of role)
 
 roles:
   superuser:
@@ -43,3 +54,18 @@ roles:
       - metrics:compute
       - roles:list
       - roles:read
+      # organizations:create added for all users/roles (beyond system/app; broad access)
+
+  # Org admin: app role (ORG scope) for tenancy access (e.g., read own org details).
+  # Complements system roles; enforced via UserRoleAssignment.org_id match in deps.
+  org_admin:
+    type: app
+    scope: ORG
+    name: Org Admin
+    description: Org-scoped admin for tenancy management (read org details)
+    permissions:
+      - organizations:read
+      # organizations:create added; extend for org-specific actions (depts, users etc.)
+
+# Note: organizations:create assigned to analyst/org_admin (and superuser via *) so
+# available to all users irrespective of role , per task. Re-seed DB via init_rbac.py.

@@ -289,10 +289,49 @@ Available roles: `default`, `senior_dev` (add more by dropping YAMLs in the role
 
 ## Development
 
+### Database and Sample Data
+
+Start services:
+```bash
+bash scripts/dev-infra.sh start
+```
+
+Seed RBAC and sample data (for testing /api/v1/organizations/, tenancy, etc.):
+```bash
+# Seed RBAC perms/roles (system/app roles)
+uv run python scripts/init_rbac.py
+
+# Load sample data (generic; orgs first, extensible to roles/assessments)
+# Variations in status/timestamps; idempotent/graceful
+uv run python scripts/load_sample_data.py
+
+# Specific objects + drop first
+uv run python scripts/load_sample_data.py --objects organizations --drop
+
+# Custom YAML (keyed by artifact)
+uv run python scripts/load_sample_data.py --config scripts/sample_data.yaml
+```
+
 Run tests:
 ```bash
 uv run python -m pytest impact/tests/ -q
 ```
+
+See `devrank/cli.py` (Typer-based) for unified CLI, or legacy scripts/ for direct use.
+
+# Unified CLI (recommended)
+```bash
+# After `uv pip install -e .` (or uv sync for editable)
+devrank --help
+devrank seed load --objects organizations
+devrank seed drop --objects organizations
+devrank admin create --email admin@example.com --password secret
+devrank rbac init
+devrank report generate --user msyavuz --role senior_dev
+# ... etc.
+```
+
+Deprecated legacy scripts preserved for backward compat (DRY delegation in CLI).
 
 ## License
 
