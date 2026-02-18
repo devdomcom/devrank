@@ -4,11 +4,17 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException, Query, status
+from fastapi.security import OAuth2PasswordBearer
 
 from config import settings
+from db.engine import SyncSessionLocal
+from db.models import User, UserRoleAssignment
+from impact.api.schemas import AuthContext
+from impact.api.security import decode_access_token, TokenData
 from impact.domain.models import CanonicalBundle, MetricContext
 from impact.exceptions import ImpactError, ParseError  # For sanitized raising to handlers
 from impact.ledger.ledger import Ledger
+from sqlalchemy.orm import Session
 
 # Allowed base directories for dump paths (prevents path traversal).
 # Always-allowed base directories (prevents path traversal while keeping tests
@@ -143,3 +149,45 @@ def get_metric_context_query(
         _parse_iso_date(start_date, "start_date"),
         _parse_iso_date(end_date, "end_date"),
     )
+
+
+# ── Auth dependencies (JWT/RBAC) ───────────────────────────────────────────
+# Shared DB dep (DRY for auth routes; sync OK in FastAPI threadpool)
+def get_db() -> Session:
+    """Yield sync DB session for auth/user queries (close after)."""
+    db = SyncSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# OAuth2 scheme for bearer token (tokenUrl for Swagger auto /docs UI)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+) -> AuthContext:
+    """Get current user from JWT + DB + RBAC perms (dep for protected routes).
+
+    DRY: decode from security, query models (user_role_assignments for roles/perms).
+    Raises 401 on bad token (auth fail). Request-scoped via Depends.
+    Populates full AuthContext for /me etc.
+    """
+    # Decode token (401 on fail; DRY)
+    token_data: TokenData = decode_access_token(token)
+    if token_data.user_id is None:
+        raise ImpactError("Invalid credentials", status_code=status.HTTP_401_UNAUTHORIZED)
+    # DB lookup
+    user = db.get(User, token_data.user_id)
+    if not user:
+        raise ImpactError("User not found", status_code=status.HTTP_401_UNAUTHORIZED)
+    # RBAC query: roles/perms from assignment junction (DRY; extend for full perms join)
+    # Placeholder: fetch roles; full would join RolePermission etc for 'resource:action'
+    assignments = db.scalars(
+        select(UserRoleAssignment).where(UserRoleAssignment.user_id == user.id)
+    ).all()
+    roles = [str(a.role_id) for a in assignments]  # Placeholder; map to slugs
+    # perms = [...]  # TODO full
+    return AuthContext(user_id=user.id, roles=roles, permissions=[])  # Extend perms list

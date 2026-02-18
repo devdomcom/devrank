@@ -4,27 +4,36 @@ Revision ID: ad29913efe04
 Revises: 
 Create Date: 2026-02-16 16:40:20.200201
 
-All-in-one migration (per task: no real DB yet, no incremental needed).
-Table rename: users (plural).
+All-in-one migration (per task: no real/prod DB yet, no incremental needed - continue
+here for RBAC tables as specified). Table rename: users (plural).
 
 Changes:
 - OAuth separation: oauth_accounts for multi-provider (GitHub/GitLab/etc.).
 - is_self_evaluating REMOVED from users; dedicated assessments table/model instead
   (proposal-aligned: title/slug/role_id/created_by/status etc.; supports self-eval/org).
+- RBAC tables added: system_roles (SaaS admin), app_roles (ORG/DEPT scoped), permissions
+  (resource:action slugs e.g. org:read), role_permissions (polymorphic junction with
+  unique constraint). Per "start from implementing the required tables".
 
 Covers:
-- Enums (..., assessment_status) - native PG
+- Enums (..., assessment_status + new RBAC enums) - native PG
 - users (lean; is_self_evaluating dropped)
 - oauth_accounts (1:N)
 - assessments (FKs to users/roles, slug unique)
+- RBAC: system_roles/app_roles/permissions/role_permissions
 - Replaces sample table
 
-DRY: dedicated models (db/models/{user,oauth,assessment}.py); future Role/org.
+DRY: dedicated models (db/models/{user,oauth,assessment,*.rbac}.py); enforces
+JWT/route perms later.
 """
 
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+# PGEnum from postgresql dialect for enum cols (respects create_type=False in SQLA 2.0.46
+# for PG native enums pre-created in op.execute; avoids support error).
+# DRY with db/models/ SAEnum (native_enum=True); right def for migration.
+from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -152,8 +161,14 @@ def upgrade() -> None:
         sa.Column("email", sa.String(length=255), nullable=False),
         sa.Column(
             "gender",
-            sa.Enum(
-                "gender_enum",
+            # Right enum def for SQLA 2.0.46 compat (values list + name, create_type=False
+            # after pre-create in op.execute; avoids support error on PG native enum.
+            # DRY with model Gender enum values)
+            PGEnum(
+                "m",
+                "f",
+                "other",
+                "prefer_not_to_say",
                 name="gender_enum",
                 create_type=False,  # already created above
             ),
@@ -177,7 +192,7 @@ def upgrade() -> None:
         # SaaS/domain
         sa.Column(
             "role",
-            sa.Enum(
+            PGEnum(
                 "user_role_enum",
                 name="user_role_enum",
                 create_type=False,
@@ -208,7 +223,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "status",
-            sa.Enum(
+            PGEnum(
                 "user_status_enum",
                 name="user_status_enum",
                 create_type=False,
@@ -246,7 +261,7 @@ def upgrade() -> None:
         sa.Column(
             "provider",
             # Enum ref; create_type=False as created above
-            sa.Enum(
+            PGEnum(
                 "oauth_provider_enum",
                 name="oauth_provider_enum",
                 create_type=False,
@@ -310,7 +325,7 @@ def upgrade() -> None:
         sa.Column("description", sa.String(length=500), nullable=True),
         sa.Column(
             "status",
-            sa.Enum(
+            PGEnum(
                 "organization_status_enum",
                 name="organization_status_enum",
                 create_type=False,
@@ -351,7 +366,7 @@ def upgrade() -> None:
         sa.Column("description", sa.String(length=500), nullable=True),
         sa.Column(
             "status",
-            sa.Enum(
+            PGEnum(
                 "department_status_enum",
                 name="department_status_enum",
                 create_type=False,
@@ -396,7 +411,7 @@ def upgrade() -> None:
         sa.Column("global_role", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column(
             "status",
-            sa.Enum(
+            PGEnum(
                 "role_status_enum",
                 name="role_status_enum",
                 create_type=False,
@@ -453,7 +468,7 @@ def upgrade() -> None:
         sa.Column(
             "status",
             # Enum ref; create_type=False
-            sa.Enum(
+            PGEnum(
                 "assessment_status_enum",
                 name="assessment_status_enum",
                 create_type=False,
@@ -505,7 +520,7 @@ def upgrade() -> None:
         sa.Column("description", sa.String(length=500), nullable=True),
         sa.Column(
             "status",
-            sa.Enum(
+            PGEnum(
                 "position_status_enum",
                 name="position_status_enum",
                 create_type=False,
@@ -593,7 +608,7 @@ def upgrade() -> None:
         sa.Column(
             "status",
             # Enum ref
-            sa.Enum(
+            PGEnum(
                 "submission_status_enum",
                 name="submission_status_enum",
                 create_type=False,
@@ -662,7 +677,7 @@ def upgrade() -> None:
         sa.Column("dept_id", sa.UUID(), nullable=True),
         sa.Column(
             "status",
-            sa.Enum(
+            PGEnum(
                 "user_org_dept_status_enum",
                 name="user_org_dept_status_enum",
                 create_type=False,
@@ -686,15 +701,340 @@ def upgrade() -> None:
     op.create_index("ix_user_org_departments_org_id", "user_org_departments", ["org_id"])
     op.create_index("ix_user_org_departments_dept_id", "user_org_departments", ["dept_id"])
 
+    # ── RBAC tables for permission system ─────────────────────────────────────
+    # Added here (continue on single migration as no prod DB per task).
+    # Order: enums -> permissions (referenced) -> system_roles/app_roles -> junction.
+    # Polymorphic role_id: no FK constraint (app-enforced + unique; see RolePermission
+    # model doc). Matches spec: resource:action slugs, role_type discriminator,
+    # unique (role_type, role_id, permission_id). DRY enums/statuses/timestamps.
+    # Future: seed defaults (e.g., superuser perms) in data migration.
+    #
+    # Enums (native PG, distinct names to avoid collision)
+    op.execute(
+        """
+        CREATE TYPE system_role_status_enum AS ENUM (
+            'ACTIVE', 'DELETED'
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE TYPE app_role_status_enum AS ENUM (
+            'ACTIVE', 'DELETED'
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE TYPE permission_status_enum AS ENUM (
+            'ACTIVE', 'DELETED'
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE TYPE role_type_enum AS ENUM (
+            'SYSTEM', 'APP'
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE TYPE scope_level_enum AS ENUM (
+            'ORG', 'DEPT'
+        )
+        """
+    )
+    # New for user_role_assignments junction (DRY with user_org_dept_status)
+    op.execute(
+        """
+        CREATE TYPE assignment_status_enum AS ENUM (
+            'ACTIVE', 'DEACTIVATED', 'DELETED'
+        )
+        """
+    )
+
+    # Permissions (base for RBAC slugs e.g. org:read)
+    op.create_table(
+        "permissions",
+        sa.Column(
+            "id", sa.UUID(), primary_key=True, nullable=False,
+            server_default=sa.text("gen_random_uuid()")
+        ),
+        sa.Column("slug", sa.String(length=100), nullable=False),
+        sa.Column("description", sa.String(length=500), nullable=True),
+        sa.Column(
+            "status",
+            PGEnum(
+                "permission_status_enum",
+                name="permission_status_enum",
+                create_type=False,
+            ),
+            nullable=False,
+            server_default="ACTIVE",
+        ),
+        # Timestamps DRY
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True),
+            server_default=sa.text("now()"), nullable=False,
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True),
+            server_default=sa.text("now()"), nullable=False,
+        ),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("slug"),
+    )
+    op.create_index("ix_permissions_slug", "permissions", ["slug"], unique=True)
+
+    # System roles (SaaS-wide admins)
+    op.create_table(
+        "system_roles",
+        sa.Column(
+            "id", sa.UUID(), primary_key=True, nullable=False,
+            server_default=sa.text("gen_random_uuid()")
+        ),
+        sa.Column("slug", sa.String(length=100), nullable=False),
+        sa.Column("name", sa.String(length=100), nullable=False),
+        sa.Column("description", sa.String(length=500), nullable=True),
+        sa.Column(
+            "is_system_wide", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
+        sa.Column(
+            "status",
+            PGEnum(
+                "system_role_status_enum",
+                name="system_role_status_enum",
+                create_type=False,
+            ),
+            nullable=False,
+            server_default="ACTIVE",
+        ),
+        # Timestamps
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True),
+            server_default=sa.text("now()"), nullable=False,
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True),
+            server_default=sa.text("now()"), nullable=False,
+        ),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("slug"),
+    )
+    op.create_index("ix_system_roles_slug", "system_roles", ["slug"], unique=True)
+
+    # App roles (ORG/DEPT scoped)
+    op.create_table(
+        "app_roles",
+        sa.Column(
+            "id", sa.UUID(), primary_key=True, nullable=False,
+            server_default=sa.text("gen_random_uuid()")
+        ),
+        sa.Column("slug", sa.String(length=100), nullable=False),
+        sa.Column("name", sa.String(length=100), nullable=False),
+        sa.Column("description", sa.String(length=500), nullable=True),
+        sa.Column(
+            "scope_level",
+            PGEnum(
+                "scope_level_enum",
+                name="scope_level_enum",
+                create_type=False,
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            PGEnum(
+                "app_role_status_enum",
+                name="app_role_status_enum",
+                create_type=False,
+            ),
+            nullable=False,
+            server_default="ACTIVE",
+        ),
+        # Timestamps
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True),
+            server_default=sa.text("now()"), nullable=False,
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True),
+            server_default=sa.text("now()"), nullable=False,
+        ),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("slug"),
+    )
+    op.create_index("ix_app_roles_slug", "app_roles", ["slug"], unique=True)
+
+    # Role permissions junction (polymorphic role_type + role_id)
+    op.create_table(
+        "role_permissions",
+        sa.Column(
+            "id", sa.UUID(), primary_key=True, nullable=False,
+            server_default=sa.text("gen_random_uuid()")
+        ),
+        sa.Column(
+            "role_type",
+            PGEnum(
+                "role_type_enum",
+                name="role_type_enum",
+                create_type=False,
+            ),
+            nullable=False,
+        ),
+        # role_id polymorphic (SYSTEM=system_roles.id or APP=app_roles.id); no FK
+        # constraint (app-enforced per model doc to avoid dual-target issues)
+        sa.Column("role_id", sa.UUID(), nullable=False),
+        sa.Column(
+            "permission_id", sa.UUID(), nullable=False
+        ),
+        # Constraints/FKs
+        sa.PrimaryKeyConstraint("id"),
+        sa.ForeignKeyConstraint(
+            ["permission_id"], ["permissions.id"], ondelete="CASCADE"
+        ),
+        # Unique per spec
+        sa.UniqueConstraint(
+            "role_type", "role_id", "permission_id",
+            name="uq_role_type_role_permission"
+        ),
+    )
+    # Indexes for perf/join queries
+    op.create_index("ix_role_permissions_role_id", "role_permissions", ["role_id"])
+    op.create_index(
+        "ix_role_permissions_permission_id", "role_permissions", ["permission_id"]
+    )
+    # Composite idx for unique queries (auto from UniqueConstraint but explicit)
+    op.create_index(
+        "ix_role_permissions_role_lookup",
+        "role_permissions",
+        ["role_type", "role_id"],
+    )
+
+    # UserRoleAssignment junction (prod-grade RBAC mapping; after RBAC roles/perms for FKs)
+    # Supports: system admins, org/dept scoped perms, standard users (null scopes),
+    # multi-roles/tenancy. Polymorphic role_id; DRY with user_org_departments.
+    # Unique constraint allows standard/no-org users per req.
+    # Default 'standard_user' APP role seedable here (future).
+    op.create_table(
+        "user_role_assignments",
+        sa.Column(
+            "id", sa.UUID(), primary_key=True, nullable=False,
+            server_default=sa.text("gen_random_uuid()")
+        ),
+        sa.Column("user_id", sa.UUID(), nullable=False),
+        sa.Column(
+            "role_type",
+            PGEnum(
+                "role_type_enum",  # reused from RBAC
+                name="role_type_enum",
+                create_type=False,
+            ),
+            nullable=False,
+        ),
+        # Polymorphic role_id (no FK; app-enforced)
+        sa.Column("role_id", sa.UUID(), nullable=False),
+        # Nullable scopes for org/dept APP roles (null=system/standard)
+        sa.Column("org_id", sa.UUID(), nullable=True),
+        sa.Column("dept_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "status",
+            PGEnum(
+                "assignment_status_enum",
+                name="assignment_status_enum",
+                create_type=False,
+            ),
+            nullable=False,
+            server_default="ACTIVE",
+        ),
+        # Timestamps (DRY)
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True),
+            server_default=sa.text("now()"), nullable=False,
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True),
+            server_default=sa.text("now()"), nullable=False,
+        ),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("deactivated_at", sa.DateTime(timezone=True), nullable=True),
+        # Constraints/FKs
+        sa.PrimaryKeyConstraint("id"),
+        sa.ForeignKeyConstraint(
+            ["user_id"], ["users.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["org_id"], ["organizations.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["dept_id"], ["departments.id"], ondelete="SET NULL"
+        ),
+        # Constraints/FKs only (no UniqueConstraint: composite NULLs treated as
+        # distinct in PG, would allow dupe standard users/null scopes per req cases).
+        # Partial unique indexes below enforce uniqueness DRY.
+    )
+    # Partial unique indexes for NULL handling (PG best practice/industry std for
+    # nullable composites; e.g., unique standard user vs. scoped org/dept perms).
+    # - Standard/system (null scopes): one per user/role_type/role_id
+    # - Scoped: full unique for org/dept cases
+    # (replaces uq_user_role_scope_assignment; avoids dupes while supporting req)
+    # Common for RBAC lookups/JWT claims; perf + integrity.
+    op.create_index(
+        "uq_user_role_standard_assignment",
+        "user_role_assignments",
+        ["user_id", "role_type", "role_id"],
+        unique=True,
+        postgresql_where=sa.text("org_id IS NULL AND dept_id IS NULL"),
+    )
+    op.create_index(
+        "uq_user_role_scoped_assignment",
+        "user_role_assignments",
+        ["user_id", "role_type", "role_id", "org_id", "dept_id"],
+        unique=True,
+        postgresql_where=sa.text("org_id IS NOT NULL OR dept_id IS NOT NULL"),
+    )
+    # Additional query indexes (perf)
+    op.create_index(
+        "ix_user_role_assignments_user_id", "user_role_assignments", ["user_id"]
+    )
+    op.create_index(
+        "ix_user_role_assignments_role_id", "user_role_assignments", ["role_id"]
+    )
+    op.create_index(
+        "ix_user_role_assignments_org_id", "user_role_assignments", ["org_id"]
+    )
+    op.create_index(
+        "ix_user_role_assignments_dept_id", "user_role_assignments", ["dept_id"]
+    )
+
 
 def downgrade() -> None:
-    """Downgrade: drop dependent tables first (full chain: submissions/user_orgs/evals/positions/roles/depts/orgs -> assessments/oauth/users), then enums.
+    """Downgrade: drop dependent tables first (full chain: user_role_assignments +
+    RBAC junction/roles/perms + submissions/user_orgs/evals/positions/roles/depts/orgs
+    -> assessments/oauth/users), then enums.
 
-    Order critical for FKs (multi-tenancy chain: orgs/depts/roles/positions, assoc, submissions, etc.).
+    Order critical for FKs (multi-tenancy chain + RBAC/user_assignment FKs; polymorphic
+    role_id has no FK so safe). Continue in single migration per task (no prod DB).
+    Supports RBAC mapping for system/org/dept/standard users.
     Surfaced missing UserOrganization assoc included.
     pgcrypto left intact.
     """
-    # Drop children first (reverse create order)
+    # Drop children first (reverse create order; user_assignments refs users/RBAC/org/dept)
+    # Drop partial unique indexes explicitly (PG; before table)
+    op.execute("DROP INDEX IF EXISTS uq_user_role_standard_assignment")
+    op.execute("DROP INDEX IF EXISTS uq_user_role_scoped_assignment")
+    op.drop_table("user_role_assignments")
+    # RBAC first due to perms FK
+    # role_permissions (FK to permissions) before roles/perms
+    op.drop_table("role_permissions")
+    op.drop_table("app_roles")
+    op.drop_table("system_roles")
+    op.drop_table("permissions")
+    # Existing chain
     op.drop_table("user_org_departments")
     op.drop_table("submissions")
     op.drop_table("evaluations")
@@ -708,7 +1048,15 @@ def downgrade() -> None:
     # Core
     op.drop_table("users")
 
-    # Drop enum types (PG-specific)
+    # Drop enum types (PG-specific; IF EXISTS idempotent)
+    # RBAC + assignment enums first (no deps)
+    op.execute("DROP TYPE IF EXISTS system_role_status_enum")
+    op.execute("DROP TYPE IF EXISTS app_role_status_enum")
+    op.execute("DROP TYPE IF EXISTS permission_status_enum")
+    op.execute("DROP TYPE IF EXISTS role_type_enum")
+    op.execute("DROP TYPE IF EXISTS scope_level_enum")
+    op.execute("DROP TYPE IF EXISTS assignment_status_enum")
+    # Existing enums
     op.execute("DROP TYPE IF EXISTS gender_enum")
     op.execute("DROP TYPE IF EXISTS user_status_enum")
     op.execute("DROP TYPE IF EXISTS user_role_enum")

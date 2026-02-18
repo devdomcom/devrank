@@ -86,8 +86,13 @@ class Organization(Base):
     positions: Mapped[list[Position]] = relationship(
         "Position", back_populates="organization", cascade="all, delete-orphan"
     )
+    # user_memberships: via UserOrgDepartment junction for multi-user tenancy
+    # (fixed backref mismatch surfaced during RBAC mapping; DRY with user_org_department.py)
+    # users: via FKs in child tables (multi-tenancy kept simple) + RBAC assignments
     # roles: org-specific (global roles have org_id=NULL)
-    # users: via FKs in child tables (multi-tenancy kept simple)
+    user_memberships: Mapped[list["UserOrgDepartment"]] = relationship(
+        "UserOrgDepartment", back_populates="organization", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Organization(id={self.id}, slug={self.slug}, status={self.status})>"

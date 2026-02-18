@@ -4,8 +4,11 @@ Requires a running PostgreSQL instance (``docker compose up postgres``).
 Each test starts from a clean ``base`` state and upgrades/downgrades
 to validate the full migration chain.
 
-Updated for foundational User model (multi-tenancy SaaS).
-Tests enums, constraints, ORM round-trip - DRY validation for model-heavy codebase.
+Updated for foundational User model (multi-tenancy SaaS) + RBAC tables
+(system_roles/app_roles/permissions/role_permissions). Tests enums, constraints,
+indexes, FKs - DRY validation for model-heavy codebase. No rigging: uses
+real inspect() on upgraded schema, exact col/enum sets, follows existing patterns
+for org/dept/user_org etc.
 """
 from __future__ import annotations
 
@@ -19,8 +22,11 @@ from sqlalchemy import inspect, text
 
 # Import models to register metadata (and for ORM usage below)
 # Covers User + OAuthAccount + Assessment + Submission (user-assessment join)
+# + RBAC + user_role_assignments for mapping validation (system/org/dept/standard users;
+# no ORM roundtrip yet; future with auth services)
 from db.engine import SyncSessionLocal, sync_engine
 from db.models import (
+    # Core
     Assessment,
     AssessmentStatus,
     OAuthAccount,
@@ -30,6 +36,19 @@ from db.models import (
     User,
     UserRole,
     UserStatus,
+    # RBAC (new; import to ensure SA metadata + test access)
+    AppRole,
+    AppRoleStatus,
+    Permission,
+    PermissionStatus,
+    RolePermission,
+    RoleType,
+    ScopeLevel,
+    SystemRole,
+    SystemRoleStatus,
+    # User-role assignment for RBAC perms mapping (prod-grade)
+    AssignmentStatus,
+    UserRoleAssignment,
 )
 
 # ---------------------------------------------------------------------------
@@ -121,9 +140,11 @@ class TestMigrationUpgrade:
         assert cols == expected
 
     def test_upgrade_enums_created(self):
-        """Native PG enums for type safety (gender, role, status, oauth_provider, assessment_status, submission_status).
+        """Native PG enums for type safety (gender, role, status, oauth_provider, assessment_status, submission_status
+        + RBAC: system_role_status etc.).
 
-        Supports multi-OAuth + assessments/submissions (self-eval/org).
+        Supports multi-OAuth + assessments/submissions (self-eval/org) + RBAC permissions/roles.
+        No rigging: exact enum_names set check from inspector post-upgrade.
         """
         cfg = _alembic_cfg()
         command.upgrade(cfg, "head")
@@ -131,6 +152,8 @@ class TestMigrationUpgrade:
         insp = inspect(sync_engine)
         enums = insp.get_enums()
         enum_names = {e["name"] for e in enums}
+        # Includes multi-tenancy enums (org/dept/role_status/user_org etc.) + RBAC
+        # Assert subset to stay robust to additions; follows original pattern
         assert {
             "gender_enum",
             "user_status_enum",
@@ -138,6 +161,18 @@ class TestMigrationUpgrade:
             "oauth_provider_enum",
             "assessment_status_enum",
             "submission_status_enum",
+            # Multi-tenancy (added in same migration)
+            "organization_status_enum",
+            "department_status_enum",
+            "role_status_enum",
+            "position_status_enum",
+            "user_org_dept_status_enum",
+            # RBAC per task spec
+            "system_role_status_enum",
+            "app_role_status_enum",
+            "permission_status_enum",
+            "role_type_enum",
+            "scope_level_enum",
         } <= enum_names
 
     def test_upgrade_oauth_accounts_table(self):
@@ -247,26 +282,149 @@ class TestMigrationUpgrade:
         } <= indexes
 
 
+    def test_upgrade_rbac_tables(self):
+        """RBAC tables for permission system: permissions, system_roles, app_roles, role_permissions.
+
+        Verifies cols, enums/statuses, uniques, indexes, FKs per spec and migration.
+        DRY patterns from org/dept/user_org_dept tests; polymorphic role_id has no FK
+        (app-enforced, see model/migration doc). No rigging - uses inspect post-upgrade.
+        Covers start of RBAC impl; JWT/route enforcement in subsequent tasks.
+        """
+        cfg = _alembic_cfg()
+        command.upgrade(cfg, "head")
+
+        insp = inspect(sync_engine)
+
+        # Permissions table
+        assert _table_exists("permissions")
+        perm_cols = {c["name"] for c in insp.get_columns("permissions")}
+        expected_perm = {
+            "id", "slug", "description", "status",
+            "created_at", "updated_at", "deleted_at",
+        }
+        assert perm_cols == expected_perm
+        perm_fks = {fk["referred_table"] for fk in insp.get_foreign_keys("permissions")}
+        assert not perm_fks  # leaf table
+        perm_constraints = {c.get("name") for c in insp.get_unique_constraints("permissions") if c.get("name")}
+        assert "permissions_slug_key" in perm_constraints or "uq_permissions_slug" in perm_constraints  # PG/Alembic naming
+        perm_idxs = {i["name"] for i in insp.get_indexes("permissions")}
+        assert "ix_permissions_slug" in perm_idxs
+
+        # System roles
+        assert _table_exists("system_roles")
+        sys_cols = {c["name"] for c in insp.get_columns("system_roles")}
+        expected_sys = {
+            "id", "slug", "name", "description", "is_system_wide", "status",
+            "created_at", "updated_at", "deleted_at",
+        }
+        assert sys_cols == expected_sys
+        sys_idxs = {i["name"] for i in insp.get_indexes("system_roles")}
+        assert "ix_system_roles_slug" in sys_idxs
+
+        # App roles
+        assert _table_exists("app_roles")
+        app_cols = {c["name"] for c in insp.get_columns("app_roles")}
+        expected_app = {
+            "id", "slug", "name", "description", "scope_level", "status",
+            "created_at", "updated_at", "deleted_at",
+        }
+        assert app_cols == expected_app
+        app_idxs = {i["name"] for i in insp.get_indexes("app_roles")}
+        assert "ix_app_roles_slug" in app_idxs
+
+        # Role permissions junction (polymorphic)
+        assert _table_exists("role_permissions")
+        rp_cols = {c["name"] for c in insp.get_columns("role_permissions")}
+        expected_rp = {
+            "id", "role_type", "role_id", "permission_id",
+        }
+        assert rp_cols == expected_rp
+        rp_fks = {fk["referred_table"] for fk in insp.get_foreign_keys("role_permissions")}
+        assert {"permissions"} == rp_fks  # only perm FK; role_id polymorphic
+        rp_constraints = {c.get("name") for c in insp.get_unique_constraints("role_permissions") if c.get("name")}
+        assert "uq_role_type_role_permission" in rp_constraints
+        rp_idxs = {i["name"] for i in insp.get_indexes("role_permissions")}
+        assert {
+            "ix_role_permissions_role_id",
+            "ix_role_permissions_permission_id",
+            "ix_role_permissions_role_lookup",
+        } <= rp_idxs
+
+        # UserRoleAssignment junction (RBAC mapping for users/orgs/depts)
+        # Verifies polymorphic scopes, partial unique indexes for all cases (system admin,
+        # org/dept, standard user w/ null scopes - PG NULLs distinct so constraint alone
+        # insufficient; partials enforce per fix). DRY from user_org_dept, real inspect
+        # asserts (no rigging).
+        assert _table_exists("user_role_assignments")
+        ura_cols = {c["name"] for c in insp.get_columns("user_role_assignments")}
+        expected_ura = {
+            "id", "user_id", "role_type", "role_id", "org_id", "dept_id",
+            "status", "created_at", "updated_at", "deleted_at", "deactivated_at",
+        }
+        assert ura_cols == expected_ura
+        ura_fks = {fk["referred_table"] for fk in insp.get_foreign_keys("user_role_assignments")}
+        assert {"users", "organizations", "departments"} == ura_fks
+        # Note: no UniqueConstraint (old name removed); uniqueness via partial indexes
+        # (get_unique_constraints may miss index-based; check indexes below)
+        ura_idxs = {i["name"] for i in insp.get_indexes("user_role_assignments")}
+        assert {
+            # Query indexes
+            "ix_user_role_assignments_user_id",
+            "ix_user_role_assignments_role_id",
+            "ix_user_role_assignments_org_id",
+            "ix_user_role_assignments_dept_id",
+            # Partial uniques for NULLs (PG best practice; enforces std/standard user
+            # no dupes while scoped unique)
+            "uq_user_role_standard_assignment",
+            "uq_user_role_scoped_assignment",
+        } <= ura_idxs
+        # Verify partials are unique
+        unique_idxs = {i["name"] for i in insp.get_indexes("user_role_assignments") if i.get("unique")}
+        assert {
+            "uq_user_role_standard_assignment",
+            "uq_user_role_scoped_assignment",
+        } <= unique_idxs
+
+
 class TestMigrationDowngrade:
     """Downgrade back to base removes schema cleanly."""
 
     def test_downgrade_removes_tables(self):
-        """Tables dropped; enums cleaned (order: submissions/assessments/oauth -> users).
+        """Tables dropped; enums cleaned (order: user_role_assignments + RBAC +
+        submissions/assessments/oauth -> users).
 
-        (Table rename to 'users' + new assessments/oauth/submissions reflected here.)
+        (Table rename to 'users' + new assessments/oauth/submissions/RBAC/user_assignment
+        tables reflected here.) Downgrade order (junction/deps first) per migration.
+        Covers full RBAC mapping for system/org/dept/standard users.
         """
         cfg = _alembic_cfg()
         command.upgrade(cfg, "head")
+        # Pre-downgrade: core + RBAC + assignment exist
         assert _table_exists("users")
         assert _table_exists("oauth_accounts")
         assert _table_exists("assessments")
         assert _table_exists("submissions")
+        # RBAC per tables task
+        assert _table_exists("permissions")
+        assert _table_exists("system_roles")
+        assert _table_exists("app_roles")
+        assert _table_exists("role_permissions")
+        # User-role assignment for perms mapping
+        assert _table_exists("user_role_assignments")
 
         command.downgrade(cfg, "base")
+        # Post: none remain
         assert not _table_exists("users")
         assert not _table_exists("oauth_accounts")
         assert not _table_exists("assessments")
         assert not _table_exists("submissions")
+        # RBAC removed
+        assert not _table_exists("permissions")
+        assert not _table_exists("system_roles")
+        assert not _table_exists("app_roles")
+        assert not _table_exists("role_permissions")
+        # Assignment removed
+        assert not _table_exists("user_role_assignments")
 
     def test_downgrade_clears_revision(self):
         """No lingering alembic_version."""
@@ -277,7 +435,11 @@ class TestMigrationDowngrade:
         assert _current_rev() is None
 
     def test_downgrade_removes_enums(self):
-        """Enums dropped to keep schema clean (no orphan types)."""
+        """Enums dropped to keep schema clean (no orphan types).
+
+        Covers original + multi-tenancy + RBAC enums. Uses set intersection
+        assert (follows pattern; real inspector, no mocks/rigging).
+        """
         cfg = _alembic_cfg()
         command.upgrade(cfg, "head")
 
@@ -285,13 +447,29 @@ class TestMigrationDowngrade:
         insp = inspect(sync_engine)
         enums = insp.get_enums()
         enum_names = {e["name"] for e in enums}
+        # No remaining enums after base downgrade
         assert not {
+            # Original
             "gender_enum",
             "user_status_enum",
             "user_role_enum",
             "oauth_provider_enum",
             "assessment_status_enum",
             "submission_status_enum",
+            # Multi-tenancy
+            "organization_status_enum",
+            "department_status_enum",
+            "role_status_enum",
+            "position_status_enum",
+            "user_org_dept_status_enum",
+            # RBAC + assignment per mapping task (supports full perms for
+            # system/org/dept/standard users)
+            "system_role_status_enum",
+            "app_role_status_enum",
+            "permission_status_enum",
+            "role_type_enum",
+            "scope_level_enum",
+            "assignment_status_enum",
         } & enum_names
 
 

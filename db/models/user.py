@@ -9,15 +9,18 @@ As of 2026 FastAPI/SQLAlchemy best practices:
 - Unique constraints + indexes on email
 - Optional password for SSO/OAuth flows (hash via passlib[bcrypt] in auth layer)
 - Relationships: 1:N OAuthAccounts (multi-provider), 1:N created_assessments,
-  1:N submissions (assessments taken), org memberships (many-to-many), roles
-  (via assoc for multi-tenancy)
-- DRY: inherit timestamps if base mixin added later; auth delegated to oauth_accounts
+  1:N submissions (assessments taken), org memberships (many-to-many via
+  user_org_departments), RBAC roles (via user_role_assignments for system/org/dept
+  perms mapping - prod-grade, supports standard users w/o orgs)
+- DRY: inherit timestamps if base mixin added later; auth delegated to oauth_accounts;
+  legacy user_role_enum deprecated (use RBAC system_roles/app_roles + assignments)
 
 Future extensions (in dedicated files):
 - db/models/organization.py
 - db/models/user_organization.py (for tenant isolation, roles like owner/admin/member)
 - db/models/assessment.py (replaces is_self_evaluating)
 - db/models/submission.py (user-assessment join)
+- db/models/user_role_assignment.py (RBAC perms mapping)
 """
 
 from __future__ import annotations
@@ -53,24 +56,28 @@ class UserStatus(str, Enum):
 
 
 class UserRole(str, Enum):
-    """Global roles; per-org roles via association table for true multi-tenancy.
+    """Legacy global roles (deprecated).
 
-    DRY: avoid role duplication; extend later in UserOrganization.
+    Retained for backward compat in existing data/migration; use full RBAC system
+    (system_roles/app_roles + user_role_assignments) for new perms enforcement.
+    DRY: avoid duplication; migrate off in auth layer/services.
     """
 
     USER = "user"
     ENGINEER = "engineer"  # Ties to impact/assessment domain
     ADMIN = "admin"
-    SUPERUSER = "superuser"  # SaaS platform admin
+    SUPERUSER = "superuser"  # SaaS platform admin (maps to system_role)
 
 
 class User(Base):
     """Core User entity for multi-tenancy SaaS.
 
     Supports:
-    - Org membership (0+ via assoc table - tenant isolation)
+    - Org/dept membership (0+ via user_org_departments - tenant isolation)
     - Assessments (self-eval or org-assigned)
-    - Roles (global + scoped)
+    - RBAC roles/permissions (system admin, org/dept scoped, or standard user via
+      user_role_assignments junction - prod-grade, maps to perms DB; legacy
+      user_role_enum deprecated)
     - SSO/OAuth (password optional)
     - KYC/compliance fields
     - Audit timestamps
@@ -221,7 +228,25 @@ class User(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    # org_dept_memberships: 1:N to UserOrgDepartment for multi-org/dept tenancy
+    # (fixed backref mismatch surfaced in RBAC mapping; DRY with user_org_department.py)
+    org_dept_memberships: Mapped[list["UserOrgDepartment"]] = relationship(
+        "UserOrgDepartment",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    # RBAC perms mapping: 1:N to UserRoleAssignment (system_roles/app_roles + scopes for
+    # org/dept; enables standard users w/ default APP role, multi-roles/tenancy)
+    # DRY with role_permissions; prod-grade for JWT claims/services
+    role_assignments: Mapped[list["UserRoleAssignment"]] = relationship(
+        "UserRoleAssignment",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
     # Multi-org tenancy via direct FKs in child tables (positions/submissions/org_id etc.) per intent
+    # Plus user_org_departments for membership; RBAC assignments layered for perms
     # No UserOrganization assoc (misunderstanding surfaced/removed)
     # Example stubs (uncomment once more models wired)
     # roles: Mapped[list["Role"]] = ...

@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 from typing import Any
+import uuid
 
 from pydantic import BaseModel, Field
 
 from impact.domain.models import CanonicalBundle, MetricContext, MetricResult
+# Auth schemas for JWT/RBAC (DRY with FastAPI OAuth2; security utils use these)
 
 
 class Rating(str, Enum):
@@ -136,7 +138,33 @@ class MetricsComparisonReport(BaseModel):
     data_summary: dict[str, Any] | None = None
 
 
+# Auth schemas for JWT/RBAC (DRY with security utils; Pydantic for validation)
+class Token(BaseModel):
+    """OAuth2 token response (standard for /token endpoint)."""
+
+    access_token: str
+    token_type: str = "bearer"
+
+
+class AuthContext(BaseModel):
+    """Current authenticated user context from JWT claims + DB lookup.
+
+    Includes roles/perms from RBAC tables (system/app via user_role_assignments)
+    for dep checks. Injected via Depends (request-scoped); used in routes/services.
+    Follows FastAPI security pattern; no internal details leaked.
+    Full for /me endpoint Swagger testing.
+    """
+
+    user_id: uuid.UUID
+    roles: list[str] = Field(default_factory=list)  # e.g., ['superuser']
+    permissions: list[str] = Field(
+        default_factory=list
+    )  # resource:action e.g., ['system:admin']
+    # org_ids, dept_ids for scoping (extend as needed)
+
+
 # Pipeline objects already Pydantic in domain; re-export for API atomicity
+# + auth for JWT/RBAC
 __all__ = [
     "Rating",
     "GroupScore",
@@ -153,4 +181,7 @@ __all__ = [
     "CanonicalBundle",
     "MetricContext",
     "MetricResult",
+    # Auth
+    "Token",
+    "AuthContext",
 ]

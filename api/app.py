@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routes import infra_health_router
 from config import settings
 from impact.api.handlers import register_exception_handlers
-from impact.api.routes import dumps_router, metrics_router, roles_router
+# Auth router for login/me (DRY; single source in impact/api)
+from impact.api.routes import auth_router, dumps_router, metrics_router, roles_router
 
 API_V1_PREFIX = "/api/v1"
 
@@ -39,6 +40,8 @@ def create_app() -> FastAPI:
     v1.include_router(metrics_router)
     v1.include_router(roles_router)
     v1.include_router(dumps_router)
+    # Auth routes (login/me for JWT/RBAC; documented in Swagger, testable)
+    v1.include_router(auth_router)
     application.include_router(v1)
 
     # Register handlers (using ImpactError class pattern + thin root errors.py

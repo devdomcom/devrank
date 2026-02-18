@@ -139,10 +139,22 @@ class Settings(BaseSettings):
     )
 
     # ── Auth ──────────────────────────────────────────────────────────────
+    # JWT settings for RBAC auth (python-jose; HS256 standard). secret_key reused
+    # (DRY); defaults secure for dev, warnings in validator.
     secret_key: str = Field(
         default="local-dev-secret-change-in-production",
         description="Secret for JWTs/etc (must override in prod). Default triggers warning.",
         # In prod: use strong random, e.g. openssl rand -hex 32
+    )
+    jwt_algorithm: str = Field(
+        default="HS256",
+        description="JWT signing algorithm (HS256 standard; matches python-jose).",
+    )
+    access_token_expire_minutes: int = Field(
+        default=30,
+        description="Access token expiration in minutes (short-lived for security).",
+        ge=1,
+        le=1440,  # Max 24h
     )
     # GITHUB_TOKEN: no prefix originally; now DEVRANK_GITHUB_TOKEN for consistency
     # (standard var prefix). Use AliasChoices to accept legacy GITHUB_TOKEN env var
