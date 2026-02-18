@@ -846,6 +846,7 @@ def _auto_format(v: Any) -> str:
 
 def _compute_group_scores(
     metrics: list[dict],
+    category_weights: dict[str, float] | None = None,
 ) -> tuple[float | None, dict[str, float]]:
     """Thin wrapper: extract (score, category) pairs and delegate."""
     pairs = [
@@ -853,7 +854,7 @@ def _compute_group_scores(
         for m in metrics
         if m.get("score") is not None
     ]
-    return compute_group_scores(pairs)
+    return compute_group_scores(pairs, category_weights)
 
 
 # ---------------------------------------------------------------------------

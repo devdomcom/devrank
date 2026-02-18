@@ -112,7 +112,9 @@ def compute_metrics(req: ComputeMetricsRequest) -> MetricsReport:
         for mr in metrics_results
         if mr.continuous_score is not None
     ]
-    overall_raw, group_map = compute_group_scores(pairs)
+    role_config = get_role_config(req.role)
+    cat_weights = role_config.get("category_weights")
+    overall_raw, group_map = compute_group_scores(pairs, cat_weights)
     overall = round(overall_raw, 1) if overall_raw is not None else None
     gs_list = [
         GroupScore(

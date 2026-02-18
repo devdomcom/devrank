@@ -111,3 +111,70 @@ def test_compute_group_scores_equal_weight_per_group():
     assert groups["review_effectiveness"] == 100.0
     assert groups["review_impact"] == 0.0
     assert overall == 50.0
+
+
+# ---------------------------------------------------------------------------
+# Category weights tests
+# ---------------------------------------------------------------------------
+
+
+def test_compute_group_scores_with_weights():
+    """Weighted average when category_weights provided."""
+    pairs = [
+        (100.0, "delivery_velocity"),
+        (0.0, "code_quality"),
+    ]
+    weights = {"delivery_velocity": 2.0, "code_quality": 1.0}
+    overall, groups = compute_group_scores(pairs, weights)
+    assert groups["delivery_velocity"] == 100.0
+    assert groups["code_quality"] == 0.0
+    # Weighted: (2*100 + 1*0) / (2+1) = 66.67
+    assert round(overall, 2) == 66.67
+
+
+def test_compute_group_scores_weights_default_to_one():
+    """Categories not in weights dict default to weight 1.0."""
+    pairs = [
+        (100.0, "delivery_velocity"),
+        (50.0, "code_quality"),
+    ]
+    # Only specify delivery_velocity weight; code_quality defaults to 1.0
+    weights = {"delivery_velocity": 3.0}
+    overall, groups = compute_group_scores(pairs, weights)
+    # Weighted: (3*100 + 1*50) / (3+1) = 350/4 = 87.5
+    assert overall == 87.5
+
+
+def test_compute_group_scores_none_weights_equals_equal():
+    """Passing None for weights gives same result as no weights."""
+    pairs = [
+        (80.0, "delivery_velocity"),
+        (40.0, "code_quality"),
+    ]
+    overall_no_weights, _ = compute_group_scores(pairs)
+    overall_none_weights, _ = compute_group_scores(pairs, None)
+    assert overall_no_weights == overall_none_weights == 60.0
+
+
+def test_compute_group_scores_weights_ignore_contextual():
+    """Contextual category excluded even if weight is specified."""
+    pairs = [
+        (100.0, "delivery_velocity"),
+        (50.0, "contextual"),
+    ]
+    weights = {"delivery_velocity": 1.0, "contextual": 10.0}
+    overall, groups = compute_group_scores(pairs, weights)
+    assert "contextual" not in groups
+    assert overall == 100.0
+
+
+def test_compute_group_scores_negative_weight_clamped_to_zero():
+    """Negative weights are treated as 0 (excluded from average)."""
+    pairs = [
+        (100.0, "delivery_velocity"),
+        (0.0, "code_quality"),
+    ]
+    weights = {"delivery_velocity": 1.0, "code_quality": -1.0}
+    overall, groups = compute_group_scores(pairs, weights)
+    # code_quality has weight 0 (clamped), so overall = 100
+    assert overall == 100.0

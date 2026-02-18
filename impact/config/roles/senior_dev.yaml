@@ -18,6 +18,20 @@
 #   - blocking_comment_rate:       "Right" blocking rate varies by review culture
 #   - review_leverage:             Depends on org formally using change requests
 #   - first_time_approval_rate:    Multi-approval policies skew this metric
+#
+# CATEGORY WEIGHTS (optional)
+# ---------------------------
+# By default all 6 scored categories get equal weight (1.0 each).
+# Uncomment and adjust to emphasize dimensions that matter for your context.
+# Weights are relative — only their ratio matters. Omitted categories default to 1.0.
+#
+# category_weights:
+#   delivery_velocity: 2.0       # emphasize output volume & speed
+#   code_quality: 1.5            # code quality matters more than process
+#   process_discipline: 1.0
+#   responsiveness: 1.0
+#   review_impact: 0.5           # de-emphasize if candidates lack review activity
+#   review_effectiveness: 0.5
 
 metrics:
 
@@ -75,6 +89,15 @@ metrics:
     good: 2
     neutral: 4
     scores: [[0, 100], [1, 75], [2, 50], [4, 25], [8, 0]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  delivery_volume:
+    key: merged_per_week
+    direction: higher_is_better
+    excellent: 2.0
+    good: 1.0
+    neutral: 0.5
+    scores: [[0, 0], [0.5, 25], [1.0, 50], [2.0, 75], [4.0, 100]]
     allowed_ratings: [excellent, good, neutral, bad]
 
   # ── Code Quality ───────────────────────────────────────────────────────────

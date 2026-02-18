@@ -9,6 +9,7 @@ from impact.metrics.plugins.authored.merge_delay import MergeDelay
 from impact.metrics.plugins.authored.module_area_breadth import ModuleAreaBreadth
 from impact.metrics.plugins.authored.pr_merge_effectiveness import PRMergeEffectiveness
 from impact.metrics.plugins.authored.pr_size_distribution import PRSizeDistribution
+from impact.metrics.plugins.authored.delivery_volume import DeliveryVolume
 from impact.metrics.plugins.authored.pr_throughput import PRThroughput
 from impact.metrics.plugins.authored.revert_introduction_rate import RevertIntroductionRate
 from impact.metrics.plugins.authored.review_quality import (
@@ -72,6 +73,7 @@ def get_metrics():
         "pr_merge_effectiveness": PRMergeEffectiveness,
         "review_leverage": ReviewLeverage,
         "pr_throughput": PRThroughput,
+        "delivery_volume": DeliveryVolume,
         "cycle_time": CycleTime,
         "coding_time_to_pr": CodingTimeToPR,
         "coding_days": CodingDays,

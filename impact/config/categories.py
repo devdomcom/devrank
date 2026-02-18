@@ -45,11 +45,13 @@ def get_category_order() -> list[str]:
 
 def compute_group_scores(
     score_category_pairs: list[tuple[float, str]],
+    category_weights: dict[str, float] | None = None,
 ) -> tuple[float | None, dict[str, float]]:
     """Compute group-averaged overall score from (score, category) pairs.
 
-    Each scored category gets one equal-weight vote in the overall score,
-    regardless of how many metrics it contains.
+    Each scored category gets one vote in the overall score. If category_weights
+    is provided, the overall score is a weighted average; otherwise equal weight.
+    Weights must be >= 0. Categories in UNSCORED_CATEGORIES are always excluded.
 
     Returns (overall_score, {category_slug: group_avg}).
     """
@@ -69,5 +71,19 @@ def compute_group_scores(
     if not group_scores:
         return None, {}
 
-    overall = sum(group_scores.values()) / len(group_scores)
+    if category_weights:
+        # Weighted average: sum(w_i * s_i) / sum(w_i)
+        # Ignore weights for unscored categories and categories not present
+        total_weight = 0.0
+        weighted_sum = 0.0
+        for cat, score in group_scores.items():
+            w = category_weights.get(cat, 1.0)  # default weight 1.0 if not specified
+            if w < 0:
+                w = 0.0
+            total_weight += w
+            weighted_sum += w * score
+        overall = weighted_sum / total_weight if total_weight > 0 else None
+    else:
+        overall = sum(group_scores.values()) / len(group_scores)
+
     return overall, group_scores

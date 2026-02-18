@@ -18,6 +18,14 @@ from typing import Any
 from impact.metrics.utils import is_no_data
 
 METRIC_THRESHOLDS = {
+    "delivery_volume": {
+        "key": "merged_per_week",
+        "excellent": lambda x: x >= 2.0,
+        "good": lambda x: 1.0 <= x < 2.0,
+        "neutral": lambda x: 0.5 <= x < 1.0,
+        "bad": lambda x: x < 0.5,
+        "scores": [(0, 0), (0.5, 25), (1.0, 50), (2.0, 75), (4.0, 100)],
+    },
     "pr_throughput": {
         "key": "merge_ratio",
         "excellent": lambda x: x >= 0.9,
