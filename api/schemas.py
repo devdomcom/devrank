@@ -77,10 +77,19 @@ class OrganizationResponse(OrganizationListItem):
     """Full detail for single organization (by ID or slug).
 
     Extends list item (DRY); full timestamps/status from model.
-    For org admins/system roles (RBAC 'organizations:read').
-    Future: include rel summary (depts count, active users) if needed.
     """
-
-    # Inherits id/slug/description/status/created/updated from ListItem
-    # Add scoped fields here if expanding (e.g., dept_count: int = 0)
     pass
+
+
+class CreateOrganizationRequest(BaseModel):
+    """Request body for POST /organizations/."""
+
+    slug: str = Field(
+        ...,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+        description="URL-safe lowercase slug (e.g. 'acme-corp')",
+        examples=["acme-corp"],
+    )
+    description: str | None = Field(None, max_length=500)

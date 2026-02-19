@@ -13,22 +13,16 @@ from errors import log_error
 
 
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
-    """Catch-all for AppError hierarchy (auth errors, impact errors, etc.).
-
-    Leverages class to_response()/safe_detail for sanitization.
-    """
-    log_error(exc, request)
-    status_code = getattr(exc, "status_code", None) or status.HTTP_500_INTERNAL_SERVER_ERROR
-    return JSONResponse(
-        status_code=status_code,
-        content=exc.to_response(),
-    )
+    """Catch-all for AppError hierarchy (auth errors, impact errors, etc.)."""
+    sc = getattr(exc, "status_code", None) or status.HTTP_500_INTERNAL_SERVER_ERROR
+    log_error(exc, request, status_code=sc)
+    return JSONResponse(status_code=sc, content=exc.to_response())
 
 
 async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
     """Wraps built-in ValueError as AppError for consistent responses."""
     app_exc = AppError(str(exc))
-    log_error(exc, request)
+    log_error(exc, request, status_code=400)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content=app_exc.to_response(),
@@ -37,7 +31,7 @@ async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """Handle HTTPException with a neutral error type."""
-    log_error(exc, request)
+    log_error(exc, request, status_code=exc.status_code)
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": "request_error", "detail": exc.detail},

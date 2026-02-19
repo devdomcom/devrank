@@ -19,7 +19,7 @@ from api.auth.schemas import AuthContext
 # For org-admin scope test (combine user_id + org_id in UserRoleAssignment)
 from api.auth.dependencies import get_organization_with_access
 from api.exceptions import AuthorizationError
-from db.models import AssignmentStatus, Organization, RoleType, UserRoleAssignment
+from db.models import AssignmentStatus, Organization, OrganizationStatus, RoleType, UserRoleAssignment
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from unittest.mock import MagicMock
@@ -370,15 +370,13 @@ class TestOrganizations:
             id=uuid.uuid4(),
             slug="sample-acme-corp",
             description="test",
-            status="ACTIVE",
+            status=OrganizationStatus.ACTIVE,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
             deleted_at=None,
         )
 
-        def _mock_org_access(*args, **kwargs):
-            # Simulate dep: org_admin context + user_id/org_id combo match
-            # (bypass system no; APP/active assignment yes)
+        def _mock_org_access():
             return test_org
 
         # Override dep for isolation (DRY with auth override; AGENTS.md pattern)
@@ -393,15 +391,12 @@ class TestOrganizations:
 
     def test_get_organization_no_org_access_403(self, client):
         """Test no-match org scope raises 403 (org_admin without assignment combo)."""
-        def _mock_no_access(*args, **kwargs):
-            # Simulate dep raise for missing user_id/org_id combination
+        def _mock_no_access():
             raise AuthorizationError("Not authorized for organization 'sample-acme-corp'")
 
         app.dependency_overrides[get_organization_with_access] = _mock_no_access
         try:
-            resp = client.get(
-                "/api/v1/organizations/sample-acme-corp", raise_server_exceptions=False
-            )
+            resp = client.get("/api/v1/organizations/sample-acme-corp")
             assert resp.status_code == 403
             body = resp.json()
             assert body.get("error") == "authorization_error" or "authorized" in body.get("detail", "")

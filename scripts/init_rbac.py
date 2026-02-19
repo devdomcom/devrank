@@ -26,6 +26,7 @@ from db.models import (
     RoleType,
     ScopeLevel,
     SystemRole,
+    UserRoleAssignment,
 )
 from api.auth.rbac import get_permission_descriptions, get_role_definitions
 
@@ -126,6 +127,45 @@ def seed_roles_and_mappings(db) -> dict[str, int]:
     return {"roles": roles_created, "mappings": mappings_created}
 
 
+def seed_default_user_role(db) -> int:
+    """Assign the 'user' system role to all existing users who don't have it.
+
+    The 'user' role is the baseline every user gets on signup, granting
+    permissions like organizations:create. This backfills existing users.
+    Returns the number of newly created assignments.
+    """
+    from db.models import User
+
+    user_role = db.execute(
+        select(SystemRole).where(SystemRole.slug == "user")
+    ).scalar_one_or_none()
+    if not user_role:
+        print("  Warning: 'user' system role not found — run seed_roles_and_mappings first")
+        return 0
+
+    all_users = db.execute(select(User)).scalars().all()
+    created = 0
+    for u in all_users:
+        existing = db.execute(
+            select(UserRoleAssignment).where(
+                UserRoleAssignment.user_id == u.id,
+                UserRoleAssignment.role_type == RoleType.SYSTEM,
+                UserRoleAssignment.role_id == user_role.id,
+            )
+        ).scalar_one_or_none()
+        if not existing:
+            db.add(
+                UserRoleAssignment(
+                    user_id=u.id,
+                    role_type=RoleType.SYSTEM,
+                    role_id=user_role.id,
+                )
+            )
+            created += 1
+    db.commit()
+    return created
+
+
 def main() -> None:
     db = SyncSessionLocal()
     try:
@@ -135,6 +175,10 @@ def main() -> None:
         counts = seed_roles_and_mappings(db)
         print(f"Roles: {counts['roles']} created")
         print(f"Role-permission mappings: {counts['mappings']} created")
+
+        # Backfill default 'user' role for all existing users
+        user_assigned = seed_default_user_role(db)
+        print(f"Default 'user' role: {user_assigned} users updated")
 
         # Summary
         total_perms = db.execute(select(Permission)).scalars().all()
