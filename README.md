@@ -26,8 +26,8 @@ The impact assessment tool analyzes GitHub activity to compute metrics that quan
 ```bash
 git clone <repo-url>
 cd devdom_eng_metrics
-uv sync && uv pip install -e .
-uv run devrank init            # starts infra, runs migrations, seeds RBAC + sample data, creates admin
+uv sync
+bash scripts/dev-infra.sh start
 uv run uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -38,28 +38,33 @@ No `.env` file needed — `config.py` ships sensible localhost defaults for ever
 ### 1. Install Dependencies
 
 ```bash
-uv sync && uv pip install -e .
+uv sync
 ```
 
-This installs all dependencies and registers the `uv run devrank` CLI. Run `uv run devrank --help` to see all subcommands.
-
-### 2. Initialize
+### 2. Start Infrastructure (PostgreSQL + Redis)
 
 ```bash
-uv run devrank init
+bash scripts/dev-infra.sh start
 ```
 
-This single command runs all bootstrap steps:
+The script auto-detects which environment you're in:
 
-| Step | What it does |
-|---|---|
-| **[1/5] Infrastructure** | Starts PostgreSQL + Redis via Docker Compose |
-| **[2/5] Migrations** | Runs `alembic upgrade head` to create/update tables |
-| **[3/5] RBAC** | Seeds permissions and roles from `permissions.yaml` |
-| **[4/5] Sample data** | Loads sample organizations and roles |
-| **[5/5] Admin user** | Creates a superuser if none exists |
+| Environment | How services are reached | What the script does |
+|---|---|---|
+| **Native Docker** (macOS / Linux host) | `localhost:5432` / `localhost:6379` | Starts containers, done |
+| **Docker-in-Docker** (Dev Containers, Codespaces, Gitpod) | `postgres:5432` / `redis:6379` | Starts containers, connects your dev container to the `devrank` Docker network so service names resolve |
 
-Options: `--skip-infra` (if Docker is already running), `--admin-email` / `--admin-password` (customize admin credentials, defaults to `admin@devrank.local` / `admin`).
+DinD is detected via `/.dockerenv`, cgroup markers, `/proc/self/mountinfo`, or environment variables set by Codespaces / Gitpod / VS Code Dev Containers.
+
+On first run the script generates a `.env` from `.env.example` with the correct hostnames substituted. This is optional — `config.py` already has working defaults for native Docker. The `.env` is mainly useful in DinD where hostnames differ.
+
+Other commands:
+
+```bash
+bash scripts/dev-infra.sh stop    # stop containers (keep data)
+bash scripts/dev-infra.sh reset   # stop + delete volumes (fresh start)
+bash scripts/dev-infra.sh status  # show container status
+```
 
 ### 3. Start the API Server
 
@@ -67,47 +72,28 @@ Options: `--skip-infra` (if Docker is already running), `--admin-email` / `--adm
 uv run uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
 ```
 
+`--host 0.0.0.0` binds to all interfaces. This is required in DinD environments so the host machine can reach the server via port forwarding. In native setups it works identically to `localhost`.
+
 ### 4. Verify
 
+**Liveness probe** (instant, no external dependencies):
+
 ```bash
-# Liveness probe
 curl http://localhost:8000/health
-
-# Infrastructure readiness (Postgres + Redis)
-curl http://localhost:8000/health/infra
-
-# Login and get a JWT token
-curl -X POST http://localhost:8000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "admin@devrank.local", "password": "admin"}'
-# → {"access_token": "eyJ...", "token_type": "bearer"}
-
-# Use the token on protected endpoints
-curl http://localhost:8000/api/v1/metrics/ \
-  -H "Authorization: Bearer eyJ..."
+# {"status":"healthy","service":"devrank"}
 ```
+
+**Infrastructure readiness** (checks Postgres + Redis connectivity, version, latency):
+
+```bash
+curl http://localhost:8000/health/infra
+# {"status":"healthy","postgres":{"status":"healthy","latency_ms":2.1,"version":"PostgreSQL 16..."},"redis":{"status":"healthy","latency_ms":0.5,"version":"7.2.4"}}
+```
+
+If you're in a DinD environment and `localhost` doesn't reach the server, use the container's hostname or IP instead, or verify port forwarding is enabled in your IDE.
 
 **Swagger UI**: http://localhost:8000/docs
 **ReDoc**: http://localhost:8000/redoc
-
-### Infrastructure Details
-
-The `devrank init` command (or `bash scripts/dev-infra.sh start` directly) auto-detects your environment:
-
-| Environment | How services are reached | What happens |
-|---|---|---|
-| **Native Docker** (macOS / Linux host) | `localhost:5432` / `localhost:6379` | Starts containers, done |
-| **Docker-in-Docker** (Dev Containers, Codespaces, Gitpod) | `postgres:5432` / `redis:6379` | Starts containers, connects your dev container to the `devrank` Docker network |
-
-DinD is detected via `/.dockerenv`, cgroup markers, `/proc/self/mountinfo`, or environment variables set by Codespaces / Gitpod / VS Code Dev Containers.
-
-Infrastructure management:
-
-```bash
-bash scripts/dev-infra.sh stop    # stop containers (keep data)
-bash scripts/dev-infra.sh reset   # stop + delete volumes (fresh start)
-bash scripts/dev-infra.sh status  # show container status
-```
 
 ## Configuration
 
@@ -179,43 +165,26 @@ The dump directory should contain `dump_manifest.json` and a `canonical/` subdir
 
 ### API Endpoints
 
-**Public (no auth)**
+**Platform (root-level)**
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Liveness probe (instant, no external calls) |
 | GET | `/health/infra` | Readiness check (Postgres + Redis connectivity, version, latency) |
-| POST | `/auth/login` | Authenticate with email/password, returns JWT |
-
-**Auth (`/auth`)**
-
-| Method | Path | Permission | Description |
-|--------|------|------------|-------------|
-| GET | `/auth/me` | authenticated | Current user context (roles, permissions) |
-
-**Organizations (`/api/v1/organizations`)**
-
-| Method | Path | Permission | Description |
-|--------|------|------------|-------------|
-| GET | `/organizations/` | `organizations:list` | Cursor-paginated list of organizations |
-| GET | `/organizations/{id_or_slug}` | `organizations:read` | Single organization detail (org-scoped RBAC) |
-| POST | `/organizations/` | `organizations:create` | Create organization (creator becomes org admin) |
 
 **Impact metrics (`/api/v1`)**
 
-| Method | Path | Permission | Description |
-|--------|------|------------|-------------|
-| GET | `/metrics/` | `metrics:list` | List all available metrics (slug, name, description) |
-| GET | `/metrics/{slug}` | `metrics:read` | Compute a single metric |
-| POST | `/metrics/compute` | `metrics:compute` | Compute a full metrics report from a dump |
-| POST | `/metrics/compare` | `metrics:compute` | Compare metrics across two time windows |
-| GET | `/roles/` | `roles:list` | List available role configs |
-| GET | `/roles/{name}` | `roles:read` | Get a specific role config |
-| POST | `/dumps/upload` | `dumps:upload` | Upload and validate a GitHub dump ZIP |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/metrics/` | List all available metrics (slug, name, description) |
+| GET | `/metrics/{slug}` | Compute a single metric (query params: `dump_path`, `user_login`, `start_date`, `end_date`, `role`) |
+| POST | `/metrics/compute` | Compute a full metrics report from a dump |
+| POST | `/metrics/compare` | Compare metrics across two time windows |
+| GET | `/roles/` | List available role configs |
+| GET | `/roles/{name}` | Get a specific role config |
+| POST | `/dumps/upload` | Upload and validate a GitHub dump ZIP |
 
 `user_login`, `start_date`, and `end_date` are inferred from the dump manifest when omitted.
-
-All protected endpoints require a `Authorization: Bearer <token>` header. Permissions are enforced via RBAC — see [Authentication & RBAC](#authentication--rbac) below.
 
 ## Available Metrics
 
@@ -318,74 +287,51 @@ Role configs live in `impact/config/roles/` as YAML files. Each role can overrid
 
 Available roles: `default`, `senior_dev` (add more by dropping YAMLs in the roles directory).
 
-## Authentication & RBAC
-
-DevRank uses JWT-based authentication with a YAML-driven RBAC permission system.
-
-### Permissions
-
-Permissions follow a `resource:action` format and are defined in [`api/auth/rbac/permissions.yaml`](api/auth/rbac/permissions.yaml). The full set:
-
-| Permission | Description |
-|---|---|
-| `metrics:list` | List available metrics catalog |
-| `metrics:read` | Read individual metric results |
-| `metrics:compute` | Compute metrics reports and comparisons |
-| `roles:list` | List available role configurations |
-| `roles:read` | Read role configuration details |
-| `dumps:upload` | Upload and validate dump ZIP files |
-| `organizations:list` | List organizations |
-| `organizations:read` | Read organization details |
-| `organizations:create` | Create new organizations |
-| `system:debug` | Access debug/test endpoints |
-
-### Roles
-
-Roles are defined in the same YAML and seeded to the database via `devrank rbac init`.
-
-| Role | Type | Scope | Permissions |
-|---|---|---|---|
-| `superuser` | system | global | All permissions (wildcard) |
-| `user` | system | global | `organizations:create` |
-| `analyst` | app | org | `metrics:list`, `metrics:read`, `metrics:compute`, `roles:list`, `roles:read` |
-| `org_admin` | app | org | `organizations:read` |
-
-- **System roles** apply platform-wide. Every user gets the `user` role on signup.
-- **App roles** are scoped to an organization (and optionally a department).
-- **Superuser** bypasses all permission checks.
-
-### Flow
-
-1. `POST /auth/login` with email + password returns a JWT access token
-2. Include `Authorization: Bearer <token>` on subsequent requests
-3. `require_permission("slug")` on each route checks the user's role-derived permissions
-4. Creating an organization (`POST /organizations/`) auto-assigns the creator as `org_admin` for that org
-
 ## Development
 
-### Tests
+### Database and Sample Data
 
+Start services:
 ```bash
-uv run python -m pytest impact/tests/ db/tests/ -q
+bash scripts/dev-infra.sh start
 ```
 
-### CLI Reference
-
-After installing with `uv pip install -e .`, all commands are available via `uv run devrank`:
-
+Seed RBAC and sample data (for testing /api/v1/organizations/, tenancy, etc.):
 ```bash
-uv run devrank --help                                 # show all subcommands
-uv run devrank init                                   # full bootstrap (infra + migrations + RBAC + samples + admin)
-uv run devrank init --skip-infra                      # same but skip Docker start (infra already running)
-uv run devrank rbac init                              # seed RBAC permissions and roles only
-uv run devrank admin create --email admin@example.com --password secret
-uv run devrank seed load                              # load all sample data
-uv run devrank seed load --objects organizations      # load specific artifacts
-uv run devrank seed drop --objects organizations      # drop sample data
-uv run devrank report generate --user msyavuz --role senior_dev
-uv run devrank fetch github --user msyavuz
-uv run devrank api test --url http://localhost:8000   # smoke-test endpoints
+# Seed RBAC perms/roles (system/app roles)
+uv run python scripts/init_rbac.py
+
+# Load sample data (generic; orgs first, extensible to roles/assessments)
+# Variations in status/timestamps; idempotent/graceful
+uv run python scripts/load_sample_data.py
+
+# Specific objects + drop first
+uv run python scripts/load_sample_data.py --objects organizations --drop
+
+# Custom YAML (keyed by artifact)
+uv run python scripts/load_sample_data.py --config scripts/sample_data.yaml
 ```
+
+Run tests:
+```bash
+uv run python -m pytest impact/tests/ -q
+```
+
+See `devrank/cli.py` (Typer-based) for unified CLI, or legacy scripts/ for direct use.
+
+# Unified CLI (recommended)
+```bash
+# After `uv pip install -e .` (or uv sync for editable)
+devrank --help
+devrank seed load --objects organizations
+devrank seed drop --objects organizations
+devrank admin create --email admin@example.com --password secret
+devrank rbac init
+devrank report generate --user msyavuz --role senior_dev
+# ... etc.
+```
+
+Deprecated legacy scripts preserved for backward compat (DRY delegation in CLI).
 
 ## License
 
