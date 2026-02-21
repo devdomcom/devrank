@@ -18,12 +18,23 @@ from api.auth.dependencies import get_current_user, get_db
 from api.auth.schemas import AuthContext
 # For org-admin scope test (combine user_id + org_id in UserRoleAssignment)
 from api.auth.dependencies import (
+    get_department_with_access,
+    get_department_with_delete_access,
+    get_department_with_update_access,
     get_organization_with_access,
     get_organization_with_delete_access,
     get_organization_with_update_access,
 )
 from api.exceptions import AuthorizationError
-from db.models import AssignmentStatus, Organization, OrganizationStatus, RoleType, UserRoleAssignment
+from db.models import (
+    AssignmentStatus,
+    Department,
+    DepartmentStatus,
+    Organization,
+    OrganizationStatus,
+    RoleType,
+    UserRoleAssignment,
+)
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from unittest.mock import MagicMock
@@ -1020,4 +1031,668 @@ class TestDeletedOrgVisibility:
             assert resp.status_code == 404
         finally:
             app.dependency_overrides.pop(get_organization_with_update_access, None)
+
+
+# ---------------------------------------------------------------------------
+# Departments (org-scoped; nested under organizations)
+# ---------------------------------------------------------------------------
+# Tests mirror organization list patterns with dep overrides.
+# get_organization_with_access is overridden to return a fake org (simulates
+# org resolution + RBAC); get_db provides a MagicMock session for pagination.
+
+class TestListDepartments:
+    """Integration tests for GET /api/v1/organizations/{org}/departments/."""
+
+    @pytest.fixture
+    def org_for_depts(self):
+        """Reusable fake Organization for department list tests."""
+        return Organization(
+            id=uuid.uuid4(),
+            name="Dept Test Org",
+            slug="dept-test-org",
+            description="Org for department tests",
+            status=OrganizationStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    @pytest.fixture(autouse=True)
+    def _override_org_access(self, org_for_depts):
+        """Override org access dep so department endpoint resolves the org."""
+        app.dependency_overrides[get_organization_with_access] = lambda: org_for_depts
+        yield
+        app.dependency_overrides.pop(get_organization_with_access, None)
+
+    def test_list_departments_ok(self, client, org_for_depts):
+        """Basic list returns cursor page shape (empty when no depts)."""
+        resp = client.get(f"/api/v1/organizations/{org_for_depts.slug}/departments/")
+        assert resp.status_code == 200
+        data = resp.json()
+        # Matches DepartmentsCursorPage schema
+        assert "items" in data
+        assert isinstance(data["items"], list)
+        assert "next_cursor" in data
+        assert data["limit"] == 20  # default
+
+    def test_list_departments_with_custom_limit(self, client, org_for_depts):
+        """Query param limit respected."""
+        resp = client.get(
+            f"/api/v1/organizations/{org_for_depts.slug}/departments/?limit=5"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["limit"] == 5
+        assert len(data["items"]) <= 5
+
+    def test_list_departments_invalid_cursor_returns_400(self, client, org_for_depts):
+        """Bad cursor -> ValueError -> handler 400 (sanitized; no leak)."""
+        resp = client.get(
+            f"/api/v1/organizations/{org_for_depts.slug}/departments/?cursor=invalid!!"
+        )
+        assert resp.status_code == 400
+        body = resp.json()
+        assert "error" in body or "detail" in body
+
+    def test_list_departments_no_org_access_403(self, client):
+        """No org access raises 403 (org_admin without assignment combo)."""
+        def _mock_no_access():
+            raise AuthorizationError("Not authorized for organization 'no-access-org'")
+
+        app.dependency_overrides[get_organization_with_access] = _mock_no_access
+        resp = client.get("/api/v1/organizations/no-access-org/departments/")
+        assert resp.status_code == 403
+        body = resp.json()
+        assert body.get("error") == "authorization_error" or "authorized" in body.get("detail", "")
+
+    def test_list_departments_status_filter_accepted(self, client, org_for_depts):
+        """Status filter query param is accepted (no 422)."""
+        resp = client.get(
+            f"/api/v1/organizations/{org_for_depts.slug}/departments/?status=ACTIVE"
+        )
+        assert resp.status_code == 200
+
+    def test_list_departments_search_filter_accepted(self, client, org_for_depts):
+        """Search filter query param is accepted (no 422)."""
+        resp = client.get(
+            f"/api/v1/organizations/{org_for_depts.slug}/departments/?search=eng"
+        )
+        assert resp.status_code == 200
+
+    def test_list_departments_org_not_found_404(self, client):
+        """Non-existent org returns 404 (via get_organization_with_access)."""
+        from fastapi import HTTPException
+
+        def _mock_not_found():
+            raise HTTPException(
+                status_code=404,
+                detail="Organization 'ghost-org' not found",
+            )
+
+        app.dependency_overrides[get_organization_with_access] = _mock_not_found
+        resp = client.get("/api/v1/organizations/ghost-org/departments/")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /organizations/{org}/departments/{dept} (single department detail)
+# ---------------------------------------------------------------------------
+# get_department_with_access is overridden to return a fake Department
+# (or raise 403/404), mirroring the org GET pattern.
+
+class TestGetDepartment:
+    """Integration tests for GET /api/v1/organizations/{org}/departments/{dept}."""
+
+    @pytest.fixture
+    def org_for_dept(self):
+        """Fake parent organization."""
+        return Organization(
+            id=uuid.uuid4(),
+            name="Dept Detail Org",
+            slug="dept-detail-org",
+            description="Org for single department tests",
+            status=OrganizationStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    @pytest.fixture
+    def test_dept(self, org_for_dept):
+        """Fake Department for detail tests."""
+        return Department(
+            id=uuid.uuid4(),
+            org_id=org_for_dept.id,
+            slug="sample-engineering",
+            description="Engineering department",
+            status=DepartmentStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            activated_at=datetime.now(timezone.utc),
+            deactivated_at=None,
+            deleted_at=None,
+        )
+
+    def test_get_department_ok(self, client, org_for_dept, test_dept):
+        """Successful GET returns DepartmentResponse shape with lifecycle fields."""
+        app.dependency_overrides[get_department_with_access] = lambda: test_dept
+        try:
+            resp = client.get(
+                f"/api/v1/organizations/{org_for_dept.slug}/departments/{test_dept.slug}"
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["slug"] == "sample-engineering"
+            assert data["description"] == "Engineering department"
+            assert data["status"] == "ACTIVE"
+            # DepartmentResponse includes lifecycle timestamps
+            assert "activated_at" in data
+            assert "deactivated_at" in data
+            assert "deleted_at" in data
+            assert "created_at" in data
+            assert "updated_at" in data
+            assert "org_id" in data
+            assert "id" in data
+        finally:
+            app.dependency_overrides.pop(get_department_with_access, None)
+
+    def test_get_department_not_found_404(self, client, org_for_dept):
+        """Non-existent department returns 404."""
+        from fastapi import HTTPException
+
+        def _mock_not_found():
+            raise HTTPException(
+                status_code=404,
+                detail="Department 'nonexistent' not found in organization 'dept-detail-org'",
+            )
+
+        app.dependency_overrides[get_department_with_access] = _mock_not_found
+        try:
+            resp = client.get(
+                f"/api/v1/organizations/{org_for_dept.slug}/departments/nonexistent"
+            )
+            assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_department_with_access, None)
+
+    def test_get_department_no_org_access_403(self, client):
+        """No org access raises 403 (via get_department_with_access chain)."""
+        def _mock_no_access():
+            raise AuthorizationError("Not authorized for organization 'no-access-org'")
+
+        app.dependency_overrides[get_department_with_access] = _mock_no_access
+        try:
+            resp = client.get(
+                "/api/v1/organizations/no-access-org/departments/some-dept"
+            )
+            assert resp.status_code == 403
+            body = resp.json()
+            assert body.get("error") == "authorization_error" or "authorized" in body.get("detail", "")
+        finally:
+            app.dependency_overrides.pop(get_department_with_access, None)
+
+    def test_get_department_org_not_found_404(self, client):
+        """Non-existent org in the path returns 404 (from org resolution)."""
+        from fastapi import HTTPException
+
+        def _mock_org_not_found():
+            raise HTTPException(
+                status_code=404,
+                detail="Organization 'ghost-org' not found",
+            )
+
+        app.dependency_overrides[get_department_with_access] = _mock_org_not_found
+        try:
+            resp = client.get(
+                "/api/v1/organizations/ghost-org/departments/any-dept"
+            )
+            assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_department_with_access, None)
+
+    def test_get_department_response_validates_from_orm(self, client, org_for_dept, test_dept):
+        """Response fields correctly map from ORM Department via from_attributes."""
+        app.dependency_overrides[get_department_with_access] = lambda: test_dept
+        try:
+            resp = client.get(
+                f"/api/v1/organizations/{org_for_dept.slug}/departments/{test_dept.slug}"
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["org_id"] == str(test_dept.org_id)
+            assert data["id"] == str(test_dept.id)
+        finally:
+            app.dependency_overrides.pop(get_department_with_access, None)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /organizations/{org}/departments/{dept} (partial update)
+# ---------------------------------------------------------------------------
+# Mirrors TestUpdateOrganization patterns: get_department_with_update_access
+# is overridden to return a fake Department (or raise 403/404), and get_db
+# provides a MagicMock session.
+
+class TestUpdateDepartment:
+    """Integration tests for PATCH /api/v1/organizations/{org}/departments/{dept}."""
+
+    @pytest.fixture
+    def org_for_patch(self):
+        """Fake parent organization for PATCH tests."""
+        return Organization(
+            id=uuid.uuid4(),
+            name="Dept Patch Org",
+            slug="dept-patch-org",
+            description="Org for department PATCH tests",
+            status=OrganizationStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    @pytest.fixture
+    def test_dept(self, org_for_patch):
+        """Reusable fake Department for PATCH tests."""
+        return Department(
+            id=uuid.uuid4(),
+            org_id=org_for_patch.id,
+            slug="patch-test-dept",
+            description="Original dept description",
+            status=DepartmentStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            activated_at=datetime.now(timezone.utc),
+            deactivated_at=None,
+            deleted_at=None,
+        )
+
+    def _override_update_access(self, dept):
+        app.dependency_overrides[get_department_with_update_access] = lambda: dept
+
+    def _cleanup_overrides(self):
+        app.dependency_overrides.pop(get_department_with_update_access, None)
+
+    def test_patch_description_only(self, client, org_for_patch, test_dept):
+        """PATCH with description only updates description, leaves slug/status."""
+        self._override_update_access(test_dept)
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={"description": "Updated dept description"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["description"] == "Updated dept description"
+            assert data["slug"] == "patch-test-dept"
+            assert data["status"] == "ACTIVE"
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_clear_description_to_null(self, client, org_for_patch, test_dept):
+        """PATCH with explicit null description clears it."""
+        self._override_update_access(test_dept)
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={"description": None},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["description"] is None
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_slug_updates_slug(self, client, org_for_patch, test_dept):
+        """PATCH with new slug updates the slug (uniqueness check passes on mock)."""
+        self._override_update_access(test_dept)
+        # Mock session: execute().scalar_one_or_none() returns None (no conflict)
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={"slug": "renamed-dept"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["slug"] == "renamed-dept"
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_slug_conflict_returns_409(self, client, org_for_patch, test_dept):
+        """PATCH slug that already exists in the org returns 409 Conflict."""
+        self._override_update_access(test_dept)
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        existing_dept = Department(
+            id=uuid.uuid4(), org_id=org_for_patch.id, slug="taken-slug"
+        )
+        mock_result.scalar_one_or_none.return_value = existing_dept
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={"slug": "taken-slug"},
+            )
+            assert resp.status_code == 409
+            assert "already exists" in resp.json()["detail"]
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_slug_null_returns_422(self, client, org_for_patch, test_dept):
+        """PATCH with slug explicitly set to null is rejected."""
+        self._override_update_access(test_dept)
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={"slug": None},
+            )
+            # Pydantic validation rejects null slug due to min_length constraint
+            assert resp.status_code == 422
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_status_transition_to_deactivated(self, client, org_for_patch, test_dept):
+        """PATCH status from ACTIVE to DEACTIVATED sets lifecycle timestamp."""
+        self._override_update_access(test_dept)
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={"status": "DEACTIVATED"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "DEACTIVATED"
+            assert test_dept.deactivated_at is not None
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_status_transition_to_active(self, client, org_for_patch, test_dept):
+        """PATCH status from DEACTIVATED back to ACTIVE sets activated_at."""
+        test_dept.status = DepartmentStatus.DEACTIVATED
+        self._override_update_access(test_dept)
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={"status": "ACTIVE"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "ACTIVE"
+            assert test_dept.activated_at is not None
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_status_deleted_rejected(self, client, org_for_patch, test_dept):
+        """PATCH status to DELETED is rejected — use DELETE endpoint instead."""
+        self._override_update_access(test_dept)
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={"status": "DELETED"},
+            )
+            assert resp.status_code == 422
+            assert "DELETE endpoint" in resp.json()["detail"]
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_status_null_returns_422(self, client, org_for_patch, test_dept):
+        """PATCH with status explicitly set to null is rejected."""
+        self._override_update_access(test_dept)
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={"status": None},
+            )
+            assert resp.status_code == 422
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_empty_body_returns_422(self, client, org_for_patch, test_dept):
+        """PATCH with empty JSON body returns 422 (no fields to update)."""
+        self._override_update_access(test_dept)
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={},
+            )
+            assert resp.status_code == 422
+            assert "No fields" in resp.json()["detail"]
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_no_access_returns_403(self, client, org_for_patch):
+        """PATCH without dept update permission returns 403."""
+        def _mock_no_access():
+            raise AuthorizationError("Not authorized for organization 'dept-patch-org'")
+
+        app.dependency_overrides[get_department_with_update_access] = _mock_no_access
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/some-dept",
+                json={"description": "try update"},
+            )
+            assert resp.status_code == 403
+            body = resp.json()
+            assert body.get("error") == "authorization_error" or "authorized" in body.get("detail", "")
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_multiple_fields(self, client, org_for_patch, test_dept):
+        """PATCH with multiple fields updates all of them."""
+        self._override_update_access(test_dept)
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={
+                    "slug": "renamed-dept",
+                    "description": "New dept desc",
+                    "status": "DEACTIVATED",
+                },
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["slug"] == "renamed-dept"
+            assert data["description"] == "New dept desc"
+            assert data["status"] == "DEACTIVATED"
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_invalid_status_returns_422(self, client, org_for_patch, test_dept):
+        """PATCH with invalid status enum value returns 422."""
+        self._override_update_access(test_dept)
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={"status": "NOT_A_STATUS"},
+            )
+            assert resp.status_code == 422
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_same_slug_no_conflict(self, client, org_for_patch, test_dept):
+        """PATCH sending the same slug the dept already has should succeed."""
+        self._override_update_access(test_dept)
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/{test_dept.slug}",
+                json={"slug": "patch-test-dept"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["slug"] == "patch-test-dept"
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_deleted_dept_returns_404(self, client, org_for_patch):
+        """PATCH on a soft-deleted department returns 404."""
+        from fastapi import HTTPException
+
+        def _mock_deleted():
+            raise HTTPException(
+                status_code=404,
+                detail="Department 'deleted-dept' not found in organization 'dept-patch-org'",
+            )
+
+        app.dependency_overrides[get_department_with_update_access] = _mock_deleted
+        try:
+            resp = client.patch(
+                f"/api/v1/organizations/{org_for_patch.slug}/departments/deleted-dept",
+                json={"description": "try to edit deleted"},
+            )
+            assert resp.status_code == 404
+        finally:
+            self._cleanup_overrides()
+
+
+# ---------------------------------------------------------------------------
+# DELETE /organizations/{org}/departments/{dept} (soft-delete)
+# ---------------------------------------------------------------------------
+# Mirrors TestDeleteOrganization patterns: get_department_with_delete_access
+# is overridden to return a fake Department (or raise 403/404).
+
+class TestDeleteDepartment:
+    """Integration tests for DELETE /api/v1/organizations/{org}/departments/{dept}."""
+
+    @pytest.fixture
+    def org_for_delete(self):
+        """Fake parent organization for DELETE tests."""
+        return Organization(
+            id=uuid.uuid4(),
+            name="Dept Delete Org",
+            slug="dept-delete-org",
+            description="Org for department DELETE tests",
+            status=OrganizationStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    @pytest.fixture
+    def active_dept(self, org_for_delete):
+        """Active department for delete tests."""
+        return Department(
+            id=uuid.uuid4(),
+            org_id=org_for_delete.id,
+            slug="delete-test-dept",
+            description="Department to be deleted",
+            status=DepartmentStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            activated_at=datetime.now(timezone.utc),
+            deactivated_at=None,
+            deleted_at=None,
+        )
+
+    @pytest.fixture
+    def already_deleted_dept(self, org_for_delete):
+        """Already deleted department for idempotency tests."""
+        return Department(
+            id=uuid.uuid4(),
+            org_id=org_for_delete.id,
+            slug="already-deleted-dept",
+            description="Already deleted department",
+            status=DepartmentStatus.DELETED,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=datetime.now(timezone.utc),
+        )
+
+    def _override_delete_access(self, dept):
+        app.dependency_overrides[get_department_with_delete_access] = lambda: dept
+
+    def _cleanup_overrides(self):
+        app.dependency_overrides.pop(get_department_with_delete_access, None)
+
+    def test_delete_department_ok(self, client, org_for_delete, active_dept):
+        """Successful DELETE soft-deletes the department."""
+        self._override_delete_access(active_dept)
+        try:
+            resp = client.delete(
+                f"/api/v1/organizations/{org_for_delete.slug}/departments/{active_dept.slug}"
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["slug"] == "delete-test-dept"
+            assert data["status"] == "DELETED"
+            assert data["org_id"] == str(org_for_delete.id)
+            assert "deleted_at" in data
+            # Verify ORM mutation
+            assert active_dept.status == DepartmentStatus.DELETED
+            assert active_dept.deleted_at is not None
+        finally:
+            self._cleanup_overrides()
+
+    def test_delete_already_deleted_returns_409(self, client, org_for_delete, already_deleted_dept):
+        """DELETE on already-deleted department returns 409 (idempotency)."""
+        self._override_delete_access(already_deleted_dept)
+        try:
+            resp = client.delete(
+                f"/api/v1/organizations/{org_for_delete.slug}/departments/{already_deleted_dept.slug}"
+            )
+            assert resp.status_code == 409
+            assert "already deleted" in resp.json()["detail"]
+        finally:
+            self._cleanup_overrides()
+
+    def test_delete_no_access_returns_403(self, client, org_for_delete):
+        """DELETE without dept delete permission returns 403."""
+        def _mock_no_access():
+            raise AuthorizationError("Not authorized for department 'no-access-dept'")
+
+        app.dependency_overrides[get_department_with_delete_access] = _mock_no_access
+        try:
+            resp = client.delete(
+                f"/api/v1/organizations/{org_for_delete.slug}/departments/no-access-dept"
+            )
+            assert resp.status_code == 403
+            body = resp.json()
+            assert body.get("error") == "authorization_error" or "authorized" in body.get("detail", "")
+        finally:
+            self._cleanup_overrides()
+
+    def test_delete_dept_not_found_404(self, client, org_for_delete):
+        """DELETE on non-existent department returns 404."""
+        from fastapi import HTTPException
+
+        def _mock_not_found():
+            raise HTTPException(
+                status_code=404,
+                detail="Department 'ghost-dept' not found in organization 'dept-delete-org'",
+            )
+
+        app.dependency_overrides[get_department_with_delete_access] = _mock_not_found
+        try:
+            resp = client.delete(
+                f"/api/v1/organizations/{org_for_delete.slug}/departments/ghost-dept"
+            )
+            assert resp.status_code == 404
+        finally:
+            self._cleanup_overrides()
+
+    def test_delete_org_not_found_404(self, client):
+        """DELETE with non-existent org in path returns 404."""
+        from fastapi import HTTPException
+
+        def _mock_org_not_found():
+            raise HTTPException(
+                status_code=404,
+                detail="Organization 'ghost-org' not found",
+            )
+
+        app.dependency_overrides[get_department_with_delete_access] = _mock_org_not_found
+        try:
+            resp = client.delete(
+                "/api/v1/organizations/ghost-org/departments/any-dept"
+            )
+            assert resp.status_code == 404
+        finally:
+            self._cleanup_overrides()
 

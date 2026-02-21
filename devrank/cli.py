@@ -46,6 +46,34 @@ def main() -> None:
 
 # ── Init (full bootstrap) ────────────────────────────────────────────────────
 
+def _start_local_infra() -> None:
+    """Start Postgres and Redis directly (no Docker) for DinD / bare-metal setups.
+
+    Runs:
+      su postgres -c "pg_ctlcluster 15 main start"
+      redis-server --daemonize yes
+
+    Raises typer.Exit(1) on failure.
+    """
+    import subprocess
+
+    typer.echo("[1/5] Starting local infrastructure (no Docker) ...")
+
+    pg_result = subprocess.run(
+        ["su", "postgres", "-c", "pg_ctlcluster 15 main start"],
+    )
+    if pg_result.returncode != 0:
+        typer.echo("Failed to start PostgreSQL via pg_ctlcluster.", err=True)
+        raise typer.Exit(1)
+    typer.echo("      PostgreSQL started (pg_ctlcluster 15 main).")
+
+    redis_result = subprocess.run(["redis-server", "--daemonize", "yes"])
+    if redis_result.returncode != 0:
+        typer.echo("Failed to start Redis.", err=True)
+        raise typer.Exit(1)
+    typer.echo("      Redis started (daemonized).")
+
+
 @cli.command("init")
 def init(
     admin_email: str = typer.Option(
@@ -56,6 +84,12 @@ def init(
     ),
     skip_infra: bool = typer.Option(
         False, "--skip-infra", help="Skip starting Docker infrastructure",
+    ),
+    local: bool = typer.Option(
+        False,
+        "--local/--no-local",
+        help="Start Postgres/Redis directly (no Docker). "
+        "Useful inside Docker-in-Docker or bare-metal environments.",
     ),
 ):
     """Bootstrap everything: infra, migrations, RBAC, sample data, admin user."""
@@ -68,7 +102,9 @@ def init(
     project_root = Path.cwd()
 
     # 1. Start infrastructure
-    if not skip_infra:
+    if local:
+        _start_local_infra()
+    elif not skip_infra:
         if shutil.which("docker") is None:
             typer.echo(
                 "[1/5] Docker not found — skipping infrastructure.\n"
@@ -141,7 +177,7 @@ def init(
         typer.echo(f"      Created admin: {admin_email}")
 
     typer.echo("\nDevRank initialized. Start the server with:")
-    typer.echo("  uv run uvicorn api.app:app --reload --host 0.0.0.0 --port 8000")
+    typer.echo("  uvicorn api.app:app --reload --host 0.0.0.0 --port 8000")
 
 
 # ── Seed subcommand (for load_sample_data.py; orgs first) ───────────────────

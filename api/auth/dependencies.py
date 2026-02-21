@@ -16,6 +16,7 @@ from db.engine import SyncSessionLocal
 from db.models import (
     AppRole,
     AssignmentStatus,
+    Department,
     Organization,
     Permission,
     RolePermission,
@@ -194,6 +195,68 @@ def _check_org_scoped_permission(
         raise AuthorizationError(f"Not authorized for organization '{org.slug}'")
 
 
+def _check_dept_scoped_permission(
+    current_user: AuthContext,
+    dept: Department,
+    permission_slug: str,
+    db: Session,
+) -> None:
+    """Verify the user has a specific department permission via org OR dept RBAC.
+
+    Two-level check for department operations:
+    1. Org-level admin (org_admin with org_id = dept.org_id)
+    2. Dept-level admin (dept_admin with dept_id = dept.id)
+
+    DRY helper: superuser bypasses; otherwise checks UserRoleAssignment →
+    RolePermission → Permission for either org-scoped or dept-scoped access.
+    Raises AuthorizationError (403) on failure.
+    """
+    if "superuser" in current_user.roles:
+        return
+
+    # Check 1: Org-level admin access (org_admin role with matching org_id)
+    org_access = db.execute(
+        select(UserRoleAssignment)
+        .join(
+            RolePermission,
+            (RolePermission.role_id == UserRoleAssignment.role_id)
+            & (RolePermission.role_type == UserRoleAssignment.role_type),
+        )
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(
+            UserRoleAssignment.user_id == current_user.user_id,
+            UserRoleAssignment.org_id == dept.org_id,
+            UserRoleAssignment.dept_id.is_(None),  # ORG-scoped (not dept-specific)
+            UserRoleAssignment.role_type == RoleType.APP,
+            UserRoleAssignment.status == AssignmentStatus.ACTIVE,
+            Permission.slug == permission_slug,
+        )
+    ).first()
+
+    # Check 2: Dept-level admin access (dept_admin role with matching dept_id)
+    dept_access = db.execute(
+        select(UserRoleAssignment)
+        .join(
+            RolePermission,
+            (RolePermission.role_id == UserRoleAssignment.role_id)
+            & (RolePermission.role_type == UserRoleAssignment.role_type),
+        )
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(
+            UserRoleAssignment.user_id == current_user.user_id,
+            UserRoleAssignment.dept_id == dept.id,
+            UserRoleAssignment.role_type == RoleType.APP,
+            UserRoleAssignment.status == AssignmentStatus.ACTIVE,
+            Permission.slug == permission_slug,
+        )
+    ).first()
+
+    if not (org_access or dept_access):
+        raise AuthorizationError(
+            f"Not authorized for department '{dept.slug}' in organization '{dept.organization.slug}'"
+        )
+
+
 def get_organization_with_access(
     org_id_or_slug: str,
     current_user: AuthContext = Depends(require_permission("organizations:read")),
@@ -256,3 +319,131 @@ def get_organization_with_delete_access(
     org = _resolve_organization(org_id_or_slug, db, allow_deleted=True)
     _check_org_scoped_permission(current_user, org, "organizations:delete", db)
     return org
+
+
+# ── Department-scoped dependencies ─────────────────────────────────────────
+
+
+def _resolve_department(
+    dept_id_or_slug: str,
+    org: Organization,
+    db: Session,
+    *,
+    allow_deleted: bool = False,
+) -> Department:
+    """Resolve department by UUID or slug within a specific organization.
+
+    DRY helper for department access dependencies.
+    Departments are scoped to an org — slug uniqueness is per-org (not global),
+    so we always filter by ``org.id``.
+    When ``allow_deleted=False`` (default), soft-deleted departments raise 404.
+    Raises 404 if not found (or soft-deleted when not allowed).
+    """
+    dept = None
+    try:
+        dept_id = UUID(dept_id_or_slug)
+        dept = db.execute(
+            select(Department).where(
+                Department.id == dept_id,
+                Department.org_id == org.id,
+            )
+        ).scalar_one_or_none()
+    except ValueError:
+        # Slug fallback (scoped to org)
+        dept = db.execute(
+            select(Department).where(
+                Department.slug == dept_id_or_slug,
+                Department.org_id == org.id,
+            )
+        ).scalar_one_or_none()
+
+    if not dept:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Department '{dept_id_or_slug}' not found in organization '{org.slug}'",
+        )
+    if dept.deleted_at and not allow_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Department '{dept_id_or_slug}' not found in organization '{org.slug}'",
+        )
+    return dept
+
+
+def get_department_with_access(
+    dept_id_or_slug: str,
+    org: Organization = Depends(get_organization_with_access),
+    current_user: AuthContext = Depends(require_permission("departments:read")),
+    db: Session = Depends(get_db),
+) -> Department:
+    """Resolve department by ID/slug AND enforce access (org-scoped RBAC).
+
+    Used by GET /organizations/{org}/departments/{dept} for tenancy RBAC.
+
+    Two-level access check:
+    1. Organization access — via ``get_organization_with_access`` (resolves org,
+       checks ``organizations:read`` + org-scoped RBAC).
+    2. Department permission — via ``require_permission("departments:read")``.
+
+    - System roles (e.g., superuser) bypass scope AND can see soft-deleted depts.
+    - App roles (e.g., org_admin, analyst) must have org-scoped assignment.
+    - Raises 404 if org or dept not found/active; 403 if no access.
+    """
+    dept = _resolve_department(
+        dept_id_or_slug, org, db, allow_deleted=current_user.is_system_admin
+    )
+    return dept
+
+
+def get_department_with_update_access(
+    dept_id_or_slug: str,
+    org: Organization = Depends(get_organization_with_access),
+    current_user: AuthContext = Depends(require_permission("departments:update")),
+    db: Session = Depends(get_db),
+) -> Department:
+    """Resolve department by ID/slug AND enforce update access (org + dept RBAC).
+
+    Used by PATCH /organizations/{org}/departments/{dept} for tenancy RBAC.
+
+    Three-level access check:
+    1. Organization access — via ``get_organization_with_access`` (resolves org,
+       checks ``organizations:read`` + org-scoped RBAC).
+    2. Department permission — via ``require_permission("departments:update")``.
+    3. Dept-specific RBAC — via ``_check_dept_scoped_permission`` (org_admin OR dept_admin).
+
+    - Soft-deleted departments are **never** editable — ``allow_deleted=False``
+      ensures a 404 for any deleted dept, regardless of caller role.
+    - System roles (e.g., superuser) bypass all scope checks.
+    - App roles: org_admin (org-scoped) OR dept_admin (dept-scoped) required.
+    - Raises 404 if org or dept not found/deleted; 403 if no update access.
+    """
+    dept = _resolve_department(dept_id_or_slug, org, db, allow_deleted=False)
+    _check_dept_scoped_permission(current_user, dept, "departments:update", db)
+    return dept
+
+
+def get_department_with_delete_access(
+    dept_id_or_slug: str,
+    org: Organization = Depends(get_organization_with_access),
+    current_user: AuthContext = Depends(require_permission("departments:delete")),
+    db: Session = Depends(get_db),
+) -> Department:
+    """Resolve department by ID/slug AND enforce delete access (org + dept RBAC).
+
+    Used by DELETE /organizations/{org}/departments/{dept} for tenancy RBAC.
+
+    Three-level access check:
+    1. Organization access — via ``get_organization_with_access`` (resolves org,
+       checks ``organizations:read`` + org-scoped RBAC).
+    2. Department permission — via ``require_permission("departments:delete")``.
+    3. Dept-specific RBAC — via ``_check_dept_scoped_permission`` (org_admin OR dept_admin).
+
+    - ``allow_deleted=True`` so the endpoint can return 409 for already-deleted
+      departments via route logic, rather than silently hiding them.
+    - System roles (e.g., superuser) bypass all scope checks.
+    - App roles: org_admin (org-scoped) OR dept_admin (dept-scoped) required.
+    - Raises 404 if org or dept not found; 403 if no delete access.
+    """
+    dept = _resolve_department(dept_id_or_slug, org, db, allow_deleted=True)
+    _check_dept_scoped_permission(current_user, dept, "departments:delete", db)
+    return dept

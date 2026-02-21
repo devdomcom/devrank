@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 
 from db.engine import SyncSessionLocal
 # Core models for seedable artifacts (start with orgs; extend registry)
-from db.models import Organization, OrganizationStatus
+from db.models import Department, DepartmentStatus, Organization, OrganizationStatus
 # Import others on-demand in seeders (avoid heavy if unused)
 
 # Registry for artifacts: artifact -> (seeder_func, drop_func, sample_data_key)
@@ -104,11 +104,16 @@ ORG_DEFAULT_SAMPLES: list[dict[str, Any]] = [
 ]
 
 
+_ARTIFACT_DEFAULTS: Dict[str, list[dict[str, Any]]] = {
+    "organizations": ORG_DEFAULT_SAMPLES,
+}
+
+
 def _load_samples_for_artifact(
     artifact: str, config_path: str | None = None
 ) -> list[dict[str, Any]]:
     """Load samples from YAML or defaults (keyed by artifact; shared)."""
-    defaults = ORG_DEFAULT_SAMPLES if artifact == "organizations" else []
+    defaults = _ARTIFACT_DEFAULTS.get(artifact, [])
     if config_path and Path(config_path).exists():
         with open(config_path) as f:
             data = yaml.safe_load(f) or {}
@@ -189,6 +194,137 @@ def drop_organizations(
 
 # Register organizations (first artifact, per task)
 SEED_REGISTRY["organizations"] = (seed_organizations, drop_organizations, "organizations")
+
+
+# ── Departments seeder (org-scoped; FK to organizations) ─────────────────────
+# Default samples: varied statuses for endpoint/tenancy testing.
+# Each dept references an org by slug (resolved at seed time).
+DEPT_DEFAULT_SAMPLES: list[dict[str, Any]] = [
+    {
+        "slug": "sample-engineering",
+        "org_slug": "sample-acme-corp",
+        "description": "Engineering department (core dev team)",
+        "status": DepartmentStatus.ACTIVE,
+        "created_at": datetime(2025, 1, 20, tzinfo=timezone.utc),
+        "activated_at": datetime(2025, 1, 20, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-product",
+        "org_slug": "sample-acme-corp",
+        "description": "Product management department",
+        "status": DepartmentStatus.ACTIVE,
+        "created_at": datetime(2025, 1, 25, tzinfo=timezone.utc),
+        "activated_at": datetime(2025, 1, 25, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-data-science",
+        "org_slug": "sample-acme-corp",
+        "description": "Data science and analytics",
+        "status": DepartmentStatus.ACTIVE,
+        "created_at": datetime(2025, 2, 1, tzinfo=timezone.utc),
+        "activated_at": datetime(2025, 2, 1, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-legacy-ops",
+        "org_slug": "sample-beta-inc",
+        "description": "Legacy operations (deactivated dept for status testing)",
+        "status": DepartmentStatus.DEACTIVATED,
+        "created_at": datetime(2024, 6, 15, tzinfo=timezone.utc),
+        "deactivated_at": datetime(2025, 2, 1, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-old-team",
+        "org_slug": "sample-beta-inc",
+        "description": "Old team (soft-deleted dept for filter testing)",
+        "status": DepartmentStatus.DELETED,
+        "created_at": datetime(2024, 3, 1, tzinfo=timezone.utc),
+        "deleted_at": datetime.now(timezone.utc),
+    },
+]
+
+_ARTIFACT_DEFAULTS["departments"] = DEPT_DEFAULT_SAMPLES
+
+
+def seed_departments(
+    db: Session, config_path: str | None = None
+) -> int:
+    """Seeder for departments artifact (idempotent, org-scoped).
+
+    Resolves org by slug (FK); skips if org not found or dept already exists.
+    Departments registered after organizations in SEED_REGISTRY to ensure
+    FK targets exist (dict insertion order).
+    """
+    samples = _load_samples_for_artifact("departments", config_path)
+    created = 0
+    for sample in samples:
+        org_slug = sample.get("org_slug", "")
+        slug = sample["slug"]
+
+        # Resolve parent org by slug
+        org = db.execute(
+            select(Organization).where(Organization.slug == org_slug)
+        ).scalar_one_or_none()
+        if not org:
+            print(f"Dept '{slug}': parent org '{org_slug}' not found; skipping.")
+            continue
+
+        # Check for existing dept (unique per org+slug)
+        existing = db.execute(
+            select(Department).where(
+                Department.org_id == org.id, Department.slug == slug
+            )
+        ).scalar_one_or_none()
+        if existing:
+            print(f"Dept '{slug}' in org '{org_slug}' exists; skipping.")
+            continue
+
+        # Resolve status from string if loaded from YAML
+        dept_status = sample.get("status", DepartmentStatus.ACTIVE)
+        if isinstance(dept_status, str):
+            dept_status = DepartmentStatus(dept_status)
+
+        dept = Department(
+            org_id=org.id,
+            slug=slug,
+            description=sample.get("description"),
+            status=dept_status,
+            created_at=sample.get(
+                "created_at", datetime.now(timezone.utc) - timedelta(days=15)
+            ),
+            updated_at=datetime.now(timezone.utc),
+            activated_at=sample.get("activated_at"),
+            deactivated_at=sample.get("deactivated_at"),
+            deleted_at=sample.get("deleted_at"),
+        )
+        db.add(dept)
+        db.flush()
+        db.commit()
+        db.refresh(dept)
+        print(f"Created dept: {slug} in org '{org_slug}' (status={dept.status})")
+        created += 1
+    return created
+
+
+def drop_departments(
+    db: Session, slug_prefix: str = "sample-"
+) -> int:
+    """Dropper for departments (targeted by slug prefix; graceful)."""
+    depts = db.scalars(
+        select(Department).where(Department.slug.like(f"{slug_prefix}%"))
+    ).all()
+    count = len(depts)
+    if count == 0:
+        print(f"No sample depts (prefix '{slug_prefix}') to drop.")
+        return 0
+    for dept in depts:
+        db.delete(dept)
+    db.commit()
+    print(f"Dropped {count} depts.")
+    return count
+
+
+# Register departments (after organizations for FK order)
+SEED_REGISTRY["departments"] = (seed_departments, drop_departments, "departments")
 
 
 # ── Roles seeder (example extension; simple SystemRole for RBAC variations) ─

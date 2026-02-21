@@ -8,8 +8,8 @@ best practices and AGENTS.md guidance:
 - Reusable deps/funcs to avoid duplication across orgs/users/depts etc.
 - Pydantic v2 model_validate(from_attributes=True) for ORM -> schema.
 - Soft-delete filter (configurable via include_deleted), PK ordering for efficiency.
-- Status filtering + free-text search via OrganizationFilterParams (extensible).
-- Search: contains-matched (ILIKE '%term%') on name, slug, and description.
+- Status filtering + free-text search via filter params (extensible).
+- Search: contains-matched (ILIKE '%term%') on relevant text fields.
   User-supplied ``%``/``_`` wildcards escaped. For large tables consider adding
   ``pg_trgm`` GIN indexes on name and description.
 - limit clamped to prevent abuse; next_cursor=None at end.
@@ -21,6 +21,7 @@ auth routes) since DB I/O is blocking.
 Example usage in router:
     params: tuple[str | None, int] = Depends(get_cursor_params)
     page = paginate_organizations(db, *params, filters=filters, include_deleted=auth.is_system_admin)
+    page = paginate_departments(db, org_id, *params, filters=filters, include_deleted=auth.is_system_admin)
 """
 from __future__ import annotations
 
@@ -32,7 +33,15 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 # Import schemas/DB here (avoid circular; schemas are app-level)
-from api.schemas import OrganizationFilterParams, OrganizationsCursorPage, OrganizationListItem
+from api.schemas import (
+    DepartmentFilterParams,
+    DepartmentListItem,
+    DepartmentsCursorPage,
+    OrganizationFilterParams,
+    OrganizationListItem,
+    OrganizationsCursorPage,
+)
+from db.models.department import Department
 from db.models.organization import Organization
 
 
@@ -164,3 +173,78 @@ def paginate_organizations(
     ]
 
     return OrganizationsCursorPage(items=items, next_cursor=next_cursor, limit=limit)
+
+
+def paginate_departments(
+    db: Session,
+    org_id: uuid.UUID,
+    cursor: str | None = None,
+    limit: int = 20,
+    *,
+    filters: DepartmentFilterParams | None = None,
+    include_deleted: bool = False,
+) -> DepartmentsCursorPage:
+    """Fetch paginated departments for a specific organization using cursor.
+
+    - Scoped to ``org_id`` (FK filter; enforces tenancy at query level).
+    - Soft-delete filter: ``include_deleted=False`` (default) hides deleted depts;
+      ``True`` (system admins) includes them. Status filters override this when
+      DELETED is explicitly requested.
+    - Status filter: narrows to specific statuses when provided.
+    - Search filter: case-insensitive contains-match on slug and description.
+      User-supplied wildcards are escaped for safety.
+    - ORDER BY id (PK index ensures efficient range scan, no offset)
+    - Fetches limit+1 to peek for next_cursor (standard technique)
+    - Maps ORM to DepartmentListItem via Pydantic (from_attributes=True)
+
+    Enforces tenancy patterns; departments are always scoped to an org.
+    """
+    # Base query: scoped to org, sorted by ID for cursor stability
+    query = (
+        select(Department)
+        .where(Department.org_id == org_id)
+        .order_by(Department.id)
+    )
+
+    # Apply status filter if provided
+    if filters and filters.status:
+        query = query.where(Department.status.in_(filters.status))
+    elif not include_deleted:
+        # No explicit status filter: hide soft-deleted for non-system-admins
+        query = query.where(Department.deleted_at.is_(None))
+
+    # Apply search filter (slug/description contains, case-insensitive)
+    if filters and filters.search:
+        safe_term = _escape_like(filters.search)
+        query = query.where(
+            or_(
+                Department.slug.ilike(f"%{safe_term}%"),
+                Department.description.ilike(f"%{safe_term}%"),
+            )
+        )
+
+    # Apply cursor filter if provided (id > last)
+    if cursor:
+        try:
+            last_id = decode_cursor(cursor)
+        except ValueError as e:
+            raise ValueError("Invalid pagination cursor") from e
+        query = query.where(Department.id > last_id)
+
+    # +1 peek for has_next (don't expose to client)
+    results = db.scalars(query.limit(limit + 1)).all()
+    has_next = len(results) > limit
+    page_depts = results[:limit]
+
+    # Compute next_cursor from last item in page (if exists next)
+    next_cursor = (
+        encode_cursor(page_depts[-1].id) if has_next and page_depts else None
+    )
+
+    # Convert ORM instances to Pydantic schema items (v2, from_attributes)
+    items = [
+        DepartmentListItem.model_validate(dept, from_attributes=True)
+        for dept in page_depts
+    ]
+
+    return DepartmentsCursorPage(items=items, next_cursor=next_cursor, limit=limit)

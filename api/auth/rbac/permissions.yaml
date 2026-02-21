@@ -34,6 +34,14 @@ permissions:
     description: Soft-delete an organization (org admins / superusers)
   organizations:create:
     description: Create a new organization (all authenticated users)
+  departments:list:
+    description: List departments within an organization (org members / superusers)
+  departments:read:
+    description: Read specific department details by ID/slug
+  departments:update:
+    description: Update department properties (org admins / dept admins / superusers)
+  departments:delete:
+    description: Soft-delete a department (org admins / dept admins / superusers)
 
 roles:
   # ── System roles (platform-wide, not org-scoped) ────────────────────
@@ -62,6 +70,8 @@ roles:
       - metrics:compute
       - roles:list
       - roles:read
+      - departments:list
+      - departments:read
 
   org_admin:
     type: app
@@ -72,3 +82,17 @@ roles:
       - organizations:read
       - organizations:update
       - organizations:delete
+      - departments:list
+      - departments:read
+      - departments:update
+      - departments:delete
+
+  dept_admin:
+    type: app
+    scope: DEPT
+    name: Dept Admin
+    description: Department-scoped admin for department management
+    permissions:
+      - departments:read
+      - departments:update
+      - departments:delete
