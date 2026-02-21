@@ -125,22 +125,17 @@ def require_permission(*permission_slugs: str):
     return _check_permission
 
 
-def get_organization_with_access(
-    org_id_or_slug: str,
-    current_user: AuthContext = Depends(require_permission("organizations:read")),
-    db: Session = Depends(get_db),
+def _resolve_organization(
+    org_id_or_slug: str, db: Session, *, allow_deleted: bool = False
 ) -> Organization:
-    """Resolve org by ID/slug AND enforce access (system role or org admin scope).
+    """Resolve org by UUID or slug.
 
-    Used by GET /organizations/{org_id_or_slug} for tenancy RBAC.
-
-    - System roles (e.g., superuser) bypass scope.
-    - App roles (e.g., org_admin) must have UserRoleAssignment matching org_id.
-    - Raises 404 if not found/active; 403 if no access (via AuthorizationError).
-    DRY extension of require_permission; ties into UserRoleAssignment.org_id
-    and models (soft-delete, UUID/slug lookup).
+    DRY helper shared by read/update/delete access dependencies.
+    When ``allow_deleted=False`` (default), soft-deleted orgs raise 404.
+    When ``allow_deleted=True`` (for system admins or delete ops), soft-deleted
+    orgs are returned so callers can inspect/act on them.
+    Raises 404 if not found (or soft-deleted when not allowed).
     """
-    # Resolve org (flexible ID or slug; indexed; soft-delete filter)
     org = None
     try:
         org_id = UUID(org_id_or_slug)
@@ -151,40 +146,113 @@ def get_organization_with_access(
             select(Organization).where(Organization.slug == org_id_or_slug)
         ).scalar_one_or_none()
 
-    if not org or org.deleted_at:
-        raise HTTPException(  # Safe 404 (pattern from routes; no leak)
+    if not org:
+        raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Organization '{org_id_or_slug}' not found",
         )
+    if org.deleted_at and not allow_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Organization '{org_id_or_slug}' not found",
+        )
+    return org
 
-    # System role bypass (DRY with require_permission superuser check)
+
+def _check_org_scoped_permission(
+    current_user: AuthContext,
+    org: Organization,
+    permission_slug: str,
+    db: Session,
+) -> None:
+    """Verify the user has a specific org-scoped permission via RBAC chain.
+
+    DRY helper: superuser bypasses; otherwise checks UserRoleAssignment →
+    RolePermission → Permission for the specific org + permission combo.
+    Raises AuthorizationError (403) on failure.
+    """
     if "superuser" in current_user.roles:
-        return org
+        return
 
-    # Org admin scope: full RBAC chain for specific org
-    # Combine user_id + org_id (tenancy) + role -> perm (organizations:read)
-    # Joins: UserRoleAssignment (user/org scope) -> RolePermission (polymorphic) -> Permission.slug
-    # (DRY with get_current_user perm resolution; explicit for org_admin app role)
-    # System roles bypassed earlier; active/APP filter for scope.
-    # Ensures perm + org combo as requested.
     has_access = db.execute(
         select(UserRoleAssignment)
         .join(
             RolePermission,
-            # Polymorphic join on role_type/role_id (DRY with role_permission model)
             (RolePermission.role_id == UserRoleAssignment.role_id)
             & (RolePermission.role_type == UserRoleAssignment.role_type),
         )
         .join(Permission, Permission.id == RolePermission.permission_id)
         .where(
             UserRoleAssignment.user_id == current_user.user_id,
-            UserRoleAssignment.org_id == org.id,  # Org-specific combo
-            UserRoleAssignment.role_type == RoleType.APP,  # Org-scoped app role
-            UserRoleAssignment.status == AssignmentStatus.ACTIVE,  # Active assignment
-            Permission.slug == "organizations:read",  # Specific perm from RBAC yaml
+            UserRoleAssignment.org_id == org.id,
+            UserRoleAssignment.role_type == RoleType.APP,
+            UserRoleAssignment.status == AssignmentStatus.ACTIVE,
+            Permission.slug == permission_slug,
         )
     ).first()
     if not has_access:
         raise AuthorizationError(f"Not authorized for organization '{org.slug}'")
 
+
+def get_organization_with_access(
+    org_id_or_slug: str,
+    current_user: AuthContext = Depends(require_permission("organizations:read")),
+    db: Session = Depends(get_db),
+) -> Organization:
+    """Resolve org by ID/slug AND enforce access (system role or org admin scope).
+
+    Used by GET /organizations/{org_id_or_slug} for tenancy RBAC.
+
+    - System roles (e.g., superuser) bypass scope AND can see soft-deleted orgs.
+    - App roles (e.g., org_admin) must have UserRoleAssignment matching org_id.
+    - Raises 404 if not found/active; 403 if no access (via AuthorizationError).
+    DRY extension of require_permission; ties into UserRoleAssignment.org_id
+    and models (soft-delete, UUID/slug lookup).
+    """
+    org = _resolve_organization(
+        org_id_or_slug, db, allow_deleted=current_user.is_system_admin
+    )
+    _check_org_scoped_permission(current_user, org, "organizations:read", db)
+    return org
+
+
+def get_organization_with_update_access(
+    org_id_or_slug: str,
+    current_user: AuthContext = Depends(require_permission("organizations:update")),
+    db: Session = Depends(get_db),
+) -> Organization:
+    """Resolve org by ID/slug AND enforce update access (system role or org admin scope).
+
+    Used by PATCH /organizations/{org_id_or_slug} for tenancy RBAC.
+
+    - Soft-deleted orgs are **never** editable — even system admins must first
+      re-enable (un-delete) an org before patching it. ``allow_deleted=False``
+      ensures a 404 for any deleted org, regardless of caller role.
+    - System roles (e.g., superuser) bypass scope check (but not the soft-delete guard).
+    - App roles (e.g., org_admin) must have UserRoleAssignment with organizations:update perm.
+    - Raises 404 if not found or soft-deleted; 403 if no update access.
+    DRY: reuses _resolve_organization + _check_org_scoped_permission with update perm.
+    """
+    org = _resolve_organization(org_id_or_slug, db, allow_deleted=False)
+    _check_org_scoped_permission(current_user, org, "organizations:update", db)
+    return org
+
+
+def get_organization_with_delete_access(
+    org_id_or_slug: str,
+    current_user: AuthContext = Depends(require_permission("organizations:delete")),
+    db: Session = Depends(get_db),
+) -> Organization:
+    """Resolve org by ID/slug AND enforce delete access (system role or org admin scope).
+
+    Used by DELETE /organizations/{org_id_or_slug} for tenancy RBAC.
+
+    - ``allow_deleted=True`` so the endpoint can return 404 for already-deleted
+      orgs via route logic, rather than silently hiding them.
+    - System roles (e.g., superuser) bypass scope.
+    - App roles (e.g., org_admin) must have organizations:delete perm scoped to org.
+    DRY: reuses _resolve_organization + _check_org_scoped_permission with delete perm.
+    """
+    org = _resolve_organization(org_id_or_slug, db, allow_deleted=True)
+    _check_org_scoped_permission(current_user, org, "organizations:delete", db)
     return org

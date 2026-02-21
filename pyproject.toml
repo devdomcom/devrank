@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "devrank"
 version = "0.1.0"
@@ -36,10 +40,10 @@ dependencies = [
 [project.scripts]
 devrank = "devrank.cli:main"
 
-# Package discovery (flat-layout issue with multiple top-level pkgs like api/db/impact)
-# Focus CLI package for devrank entry; others are internal (DRY avoid full src-layout).
-[tool.setuptools]
-packages = ["devrank"]
+# Package discovery (flat-layout with multiple top-level pkgs: api/db/impact/scripts/devrank).
+# Hatchling needs explicit inclusion for non-src layouts; setuptools section removed.
+[tool.hatch.build.targets.wheel]
+packages = ["devrank", "api", "db", "impact", "scripts", "config.py", "errors.py"]
 
 [tool.uv]
 dev-dependencies = [

@@ -31,3 +31,11 @@ class AuthContext(BaseModel):
     name: str
     roles: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
+
+    @property
+    def is_system_admin(self) -> bool:
+        """True if user has a system-level admin role (superuser).
+
+        Used for visibility decisions (e.g., showing soft-deleted orgs).
+        """
+        return "superuser" in self.roles

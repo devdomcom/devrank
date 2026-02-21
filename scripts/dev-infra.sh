@@ -34,6 +34,15 @@ get_container_id() {
 start() {
     cd "$PROJECT_ROOT"
     echo "Starting dev infrastructure..."
+
+    # Guard: Docker must be available to start services
+    if ! command -v docker &>/dev/null; then
+        echo "Error: docker is not installed or not in PATH." >&2
+        echo "If running inside a container with external DB/Redis, use --skip-infra" >&2
+        echo "and set DEVRANK_DATABASE_URL / DEVRANK_REDIS_URL env vars." >&2
+        exit 1
+    fi
+
     docker compose up -d --wait
 
     if is_in_container; then

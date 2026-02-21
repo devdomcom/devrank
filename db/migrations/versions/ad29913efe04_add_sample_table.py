@@ -321,6 +321,7 @@ def upgrade() -> None:
         sa.Column(
             "id", sa.UUID(), primary_key=True, nullable=False, server_default=sa.text("gen_random_uuid()")
         ),
+        sa.Column("name", sa.String(length=200), nullable=False),
         sa.Column("slug", sa.String(length=100), nullable=False),
         sa.Column("description", sa.String(length=500), nullable=True),
         sa.Column(
@@ -354,6 +355,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("slug"),
     )
     op.create_index("ix_organizations_slug", "organizations", ["slug"], unique=True)
+    op.create_index("ix_organizations_name", "organizations", ["name"])
 
     # Departments (org subunit)
     op.create_table(

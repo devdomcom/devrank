@@ -17,9 +17,13 @@ from api.app import app
 from api.auth.dependencies import get_current_user, get_db
 from api.auth.schemas import AuthContext
 # For org-admin scope test (combine user_id + org_id in UserRoleAssignment)
-from api.auth.dependencies import get_organization_with_access
+from api.auth.dependencies import (
+    get_organization_with_access,
+    get_organization_with_delete_access,
+    get_organization_with_update_access,
+)
 from api.exceptions import AuthorizationError
-from db.models import AssignmentStatus, Organization, RoleType, UserRoleAssignment
+from db.models import AssignmentStatus, Organization, OrganizationStatus, RoleType, UserRoleAssignment
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from unittest.mock import MagicMock
@@ -334,12 +338,14 @@ class TestOrganizations:
         assert isinstance(data["items"], list)
         assert "next_cursor" in data
         assert data["limit"] == 20  # default
-        # Each item (if any) has org fields
+        # Each item (if any) has org fields (including name, deleted_at)
         for item in data["items"]:
             assert "id" in item
+            assert "name" in item
             assert "slug" in item
             assert "status" in item
             assert "created_at" in item
+            assert "deleted_at" in item
 
     def test_list_organizations_with_custom_limit(self, client):
         """Query param limit respected (cursor dep)."""
@@ -368,17 +374,16 @@ class TestOrganizations:
         # Fake org for dep return (combination check simulated pass)
         test_org = Organization(
             id=uuid.uuid4(),
+            name="Sample Acme Corp",
             slug="sample-acme-corp",
             description="test",
-            status="ACTIVE",
+            status=OrganizationStatus.ACTIVE,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
             deleted_at=None,
         )
 
-        def _mock_org_access(*args, **kwargs):
-            # Simulate dep: org_admin context + user_id/org_id combo match
-            # (bypass system no; APP/active assignment yes)
+        def _mock_org_access():
             return test_org
 
         # Override dep for isolation (DRY with auth override; AGENTS.md pattern)
@@ -387,24 +392,632 @@ class TestOrganizations:
             resp = client.get("/api/v1/organizations/sample-acme-corp")
             assert resp.status_code == 200
             data = resp.json()
+            assert data["name"] == "Sample Acme Corp"
             assert data["slug"] == "sample-acme-corp"
         finally:
             app.dependency_overrides.pop(get_organization_with_access, None)
 
     def test_get_organization_no_org_access_403(self, client):
         """Test no-match org scope raises 403 (org_admin without assignment combo)."""
-        def _mock_no_access(*args, **kwargs):
-            # Simulate dep raise for missing user_id/org_id combination
+        def _mock_no_access():
             raise AuthorizationError("Not authorized for organization 'sample-acme-corp'")
 
         app.dependency_overrides[get_organization_with_access] = _mock_no_access
         try:
-            resp = client.get(
-                "/api/v1/organizations/sample-acme-corp", raise_server_exceptions=False
-            )
+            resp = client.get("/api/v1/organizations/sample-acme-corp")
             assert resp.status_code == 403
             body = resp.json()
             assert body.get("error") == "authorization_error" or "authorized" in body.get("detail", "")
         finally:
             app.dependency_overrides.pop(get_organization_with_access, None)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /organizations/{id_or_slug} (partial update)
+# ---------------------------------------------------------------------------
+# Tests follow existing dep-override pattern from GET org tests.
+# get_organization_with_update_access is overridden to return a fake org
+# (or raise 403), and get_db provides a MagicMock session.
+
+
+class TestUpdateOrganization:
+    """Integration tests for PATCH /api/v1/organizations/{id_or_slug}."""
+
+    @pytest.fixture
+    def test_org(self):
+        """Reusable fake Organization for PATCH tests."""
+        return Organization(
+            id=uuid.uuid4(),
+            name="Patch Test Org",
+            slug="patch-test-org",
+            description="Original description",
+            status=OrganizationStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+            activated_at=None,
+            deactivated_at=None,
+            banned_at=None,
+        )
+
+    def _override_update_access(self, org):
+        """Override get_organization_with_update_access to return the given org."""
+        app.dependency_overrides[get_organization_with_update_access] = lambda: org
+
+    def _cleanup_overrides(self):
+        app.dependency_overrides.pop(get_organization_with_update_access, None)
+
+    def test_patch_name_only(self, client, test_org):
+        """PATCH with name only updates name, leaves slug/description/status."""
+        self._override_update_access(test_org)
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"name": "Renamed Org"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["name"] == "Renamed Org"
+            assert data["slug"] == "patch-test-org"
+            assert data["description"] == "Original description"
+            assert data["status"] == "ACTIVE"
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_name_null_returns_422(self, client, test_org):
+        """PATCH with name explicitly set to null is rejected (name is required)."""
+        self._override_update_access(test_org)
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"name": None},
+            )
+            # Pydantic validation rejects null name due to min_length constraint
+            assert resp.status_code == 422
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_description_only(self, client, test_org):
+        """PATCH with description only updates description, leaves slug/status."""
+        self._override_update_access(test_org)
+        # Mock DB: commit/refresh are no-ops on MagicMock session
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"description": "Updated description"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["description"] == "Updated description"
+            assert data["slug"] == "patch-test-org"
+            assert data["status"] == "ACTIVE"
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_clear_description_to_null(self, client, test_org):
+        """PATCH with explicit null description clears it."""
+        self._override_update_access(test_org)
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"description": None},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["description"] is None
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_slug_updates_slug(self, client, test_org):
+        """PATCH with new slug updates the slug (uniqueness check passes on mock)."""
+        self._override_update_access(test_org)
+        # Mock session: execute().scalar_one_or_none() returns None (no conflict)
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"slug": "new-slug-name"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["slug"] == "new-slug-name"
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_slug_conflict_returns_409(self, client, test_org):
+        """PATCH slug that already exists returns 409 Conflict."""
+        self._override_update_access(test_org)
+        # Mock session: execute().scalar_one_or_none() returns an existing org
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        existing_org = Organization(id=uuid.uuid4(), name="Taken Org", slug="taken-slug")
+        mock_result.scalar_one_or_none.return_value = existing_org
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"slug": "taken-slug"},
+            )
+            assert resp.status_code == 409
+            assert "already exists" in resp.json()["detail"]
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_slug_null_returns_422(self, client, test_org):
+        """PATCH with slug explicitly set to null is rejected (slug is required)."""
+        self._override_update_access(test_org)
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"slug": None},
+            )
+            # Pydantic validation rejects null slug due to min_length constraint
+            assert resp.status_code == 422
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_status_transition(self, client, test_org):
+        """PATCH status from ACTIVE to DEACTIVATED sets lifecycle timestamp."""
+        self._override_update_access(test_org)
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"status": "DEACTIVATED"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "DEACTIVATED"
+            # ORM attribute should be set (verified via the org object)
+            assert test_org.deactivated_at is not None
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_status_null_returns_422(self, client, test_org):
+        """PATCH with status explicitly set to null is rejected."""
+        self._override_update_access(test_org)
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"status": None},
+            )
+            assert resp.status_code == 422
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_empty_body_returns_422(self, client, test_org):
+        """PATCH with empty JSON body returns 422 (no fields to update)."""
+        self._override_update_access(test_org)
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={},
+            )
+            assert resp.status_code == 422
+            assert "No fields" in resp.json()["detail"]
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_no_access_returns_403(self, client):
+        """PATCH without org update permission returns 403."""
+        def _mock_no_access():
+            raise AuthorizationError("Not authorized for organization 'patch-test-org'")
+
+        app.dependency_overrides[get_organization_with_update_access] = _mock_no_access
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"description": "try update"},
+            )
+            assert resp.status_code == 403
+            body = resp.json()
+            assert body.get("error") == "authorization_error" or "authorized" in body.get("detail", "")
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_multiple_fields(self, client, test_org):
+        """PATCH with multiple fields updates all of them."""
+        self._override_update_access(test_org)
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={
+                    "slug": "renamed-org",
+                    "description": "New desc",
+                    "status": "DEACTIVATED",
+                },
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["slug"] == "renamed-org"
+            assert data["description"] == "New desc"
+            assert data["status"] == "DEACTIVATED"
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_invalid_status_returns_422(self, client, test_org):
+        """PATCH with invalid status enum value returns 422."""
+        self._override_update_access(test_org)
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"status": "NOT_A_STATUS"},
+            )
+            assert resp.status_code == 422
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_same_slug_no_conflict(self, client, test_org):
+        """PATCH sending the same slug that org already has should succeed (no conflict)."""
+        self._override_update_access(test_org)
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/patch-test-org",
+                json={"slug": "patch-test-org"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["slug"] == "patch-test-org"
+        finally:
+            self._cleanup_overrides()
+
+    def test_patch_deleted_org_returns_404(self, client):
+        """PATCH on a soft-deleted org returns 404 — even for superusers.
+
+        Deleted orgs must be re-enabled before any edits are allowed.
+        The dependency (get_organization_with_update_access) uses
+        allow_deleted=False regardless of role.
+        """
+        from fastapi import HTTPException
+
+        def _mock_deleted():
+            raise HTTPException(
+                status_code=404,
+                detail="Organization 'deleted-org' not found",
+            )
+
+        app.dependency_overrides[get_organization_with_update_access] = _mock_deleted
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/deleted-org",
+                json={"description": "try to edit deleted"},
+            )
+            assert resp.status_code == 404
+        finally:
+            self._cleanup_overrides()
+
+
+# ---------------------------------------------------------------------------
+# DELETE /organizations/{id_or_slug} (soft-delete)
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteOrganization:
+    """Integration tests for DELETE /api/v1/organizations/{id_or_slug}."""
+
+    @pytest.fixture
+    def active_org(self):
+        """Active org for delete tests."""
+        return Organization(
+            id=uuid.uuid4(),
+            name="Delete Test Org",
+            slug="delete-test-org",
+            description="To be deleted",
+            status=OrganizationStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+            activated_at=None,
+            deactivated_at=None,
+            banned_at=None,
+        )
+
+    @pytest.fixture
+    def deleted_org(self):
+        """Already soft-deleted org."""
+        return Organization(
+            id=uuid.uuid4(),
+            name="Already Deleted Org",
+            slug="already-deleted-org",
+            description="Was deleted",
+            status=OrganizationStatus.DELETED,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=datetime.now(timezone.utc),
+            activated_at=None,
+            deactivated_at=None,
+            banned_at=None,
+        )
+
+    def _override_delete_access(self, org):
+        app.dependency_overrides[get_organization_with_delete_access] = lambda: org
+
+    def _cleanup_overrides(self):
+        app.dependency_overrides.pop(get_organization_with_delete_access, None)
+
+    def test_delete_active_org(self, client, active_org):
+        """DELETE active org → 200 with DELETED status and deleted_at."""
+        self._override_delete_access(active_org)
+        try:
+            resp = client.delete("/api/v1/organizations/delete-test-org")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "DELETED"
+            assert data["deleted_at"] is not None
+            assert data["slug"] == "delete-test-org"
+            # Verify ORM object was mutated
+            assert active_org.status == OrganizationStatus.DELETED
+            assert active_org.deleted_at is not None
+        finally:
+            self._cleanup_overrides()
+
+    def test_delete_already_deleted_org_returns_409(self, client, deleted_org):
+        """DELETE already-deleted org → 409 Conflict."""
+        self._override_delete_access(deleted_org)
+        try:
+            resp = client.delete("/api/v1/organizations/already-deleted-org")
+            assert resp.status_code == 409
+            assert "already deleted" in resp.json()["detail"]
+        finally:
+            self._cleanup_overrides()
+
+    def test_delete_no_access_returns_403(self, client):
+        """DELETE without permission → 403."""
+        def _mock_no_access():
+            raise AuthorizationError("Not authorized for organization 'test-org'")
+
+        app.dependency_overrides[get_organization_with_delete_access] = _mock_no_access
+        try:
+            resp = client.delete("/api/v1/organizations/test-org")
+            assert resp.status_code == 403
+            body = resp.json()
+            assert body.get("error") == "authorization_error" or "authorized" in body.get("detail", "")
+        finally:
+            self._cleanup_overrides()
+
+    def test_delete_response_shape(self, client, active_org):
+        """DELETE response contains id, slug, status, deleted_at (and nothing else sensitive)."""
+        self._override_delete_access(active_org)
+        try:
+            resp = client.delete("/api/v1/organizations/delete-test-org")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert set(data.keys()) == {"id", "slug", "status", "deleted_at"}
+        finally:
+            self._cleanup_overrides()
+
+
+# ---------------------------------------------------------------------------
+# GET /organizations/ — status filter query params
+# ---------------------------------------------------------------------------
+
+
+class TestOrganizationFilters:
+    """Tests for status filtering and search on the list endpoint."""
+
+    # ── Status filters ─────────────────────────────────────────────────
+
+    def test_list_accepts_status_filter_param(self, client):
+        """?status=ACTIVE is accepted (no 422)."""
+        resp = client.get("/api/v1/organizations/?status=ACTIVE")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+
+    def test_list_accepts_multiple_status_filters(self, client):
+        """?status=ACTIVE&status=BANNED is accepted (repeatable)."""
+        resp = client.get("/api/v1/organizations/?status=ACTIVE&status=BANNED")
+        assert resp.status_code == 200
+        assert "items" in resp.json()
+
+    def test_list_invalid_status_returns_422(self, client):
+        """?status=NOT_REAL → 422 (enum validation)."""
+        resp = client.get("/api/v1/organizations/?status=NOT_REAL")
+        assert resp.status_code == 422
+
+    def test_list_no_filter_returns_page(self, client):
+        """Omitting ?status still returns valid cursor page."""
+        resp = client.get("/api/v1/organizations/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert data["limit"] == 20
+
+    # ── Search filter ──────────────────────────────────────────────────
+
+    def test_search_param_accepted(self, client):
+        """?search=acme is accepted (no 422), returns valid page."""
+        resp = client.get("/api/v1/organizations/?search=acme")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert "next_cursor" in data
+
+    def test_search_combined_with_status(self, client):
+        """?search=acme&status=ACTIVE composes both filters (no 422)."""
+        resp = client.get("/api/v1/organizations/?search=acme&status=ACTIVE")
+        assert resp.status_code == 200
+        assert "items" in resp.json()
+
+    def test_search_combined_with_limit(self, client):
+        """?search=acme&limit=5 composes with pagination limit."""
+        resp = client.get("/api/v1/organizations/?search=acme&limit=5")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["limit"] == 5
+
+    def test_search_empty_string_returns_422(self, client):
+        """?search= (empty) → 422 due to min_length=1 validation."""
+        resp = client.get("/api/v1/organizations/?search=")
+        assert resp.status_code == 422
+
+    def test_search_too_long_returns_422(self, client):
+        """?search=<101 chars> → 422 due to max_length=100 validation."""
+        long_term = "a" * 101
+        resp = client.get(f"/api/v1/organizations/?search={long_term}")
+        assert resp.status_code == 422
+
+    def test_search_whitespace_stripped(self, client):
+        """?search=+acme+ (whitespace) is stripped and accepted."""
+        # URL-encoded spaces become '+' in query params; FastAPI decodes them
+        resp = client.get("/api/v1/organizations/?search=%20acme%20")
+        assert resp.status_code == 200
+        assert "items" in resp.json()
+
+    def test_search_special_chars_safe(self, client):
+        """?search=acme%25corp (containing %) is accepted (wildcards escaped)."""
+        # %25 = URL-encoded '%'
+        resp = client.get("/api/v1/organizations/?search=acme%25corp")
+        assert resp.status_code == 200
+        assert "items" in resp.json()
+
+
+# ---------------------------------------------------------------------------
+# _escape_like unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestEscapeLike:
+    """Unit tests for ILIKE wildcard escaping in pagination."""
+
+    def test_no_wildcards(self):
+        from api.pagination import _escape_like
+        assert _escape_like("acme") == "acme"
+
+    def test_percent_escaped(self):
+        from api.pagination import _escape_like
+        assert _escape_like("100%") == "100\\%"
+
+    def test_underscore_escaped(self):
+        from api.pagination import _escape_like
+        assert _escape_like("acme_corp") == "acme\\_corp"
+
+    def test_backslash_escaped(self):
+        from api.pagination import _escape_like
+        assert _escape_like("path\\to") == "path\\\\to"
+
+    def test_combined_wildcards(self):
+        from api.pagination import _escape_like
+        assert _escape_like("50%_off\\deal") == "50\\%\\_off\\\\deal"
+
+    def test_empty_string(self):
+        from api.pagination import _escape_like
+        assert _escape_like("") == ""
+
+
+# ---------------------------------------------------------------------------
+# Visibility: soft-deleted orgs hidden for non-system-admins
+# ---------------------------------------------------------------------------
+
+
+class TestDeletedOrgVisibility:
+    """Tests that soft-deleted orgs are invisible to non-system-admin roles."""
+
+    @pytest.fixture
+    def deleted_org(self):
+        return Organization(
+            id=uuid.uuid4(),
+            name="Invisible Org",
+            slug="invisible-org",
+            description="Deleted org",
+            status=OrganizationStatus.DELETED,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=datetime.now(timezone.utc),
+            activated_at=None,
+            deactivated_at=None,
+            banned_at=None,
+        )
+
+    def test_get_deleted_org_as_superuser_ok(self, client, deleted_org):
+        """Superuser can GET a soft-deleted org."""
+        # _TEST_AUTH is superuser by default (autouse fixture)
+        app.dependency_overrides[get_organization_with_access] = lambda: deleted_org
+        try:
+            resp = client.get("/api/v1/organizations/invisible-org")
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "DELETED"
+        finally:
+            app.dependency_overrides.pop(get_organization_with_access, None)
+
+    def test_get_deleted_org_includes_deleted_at(self, client, deleted_org):
+        """GET response for a soft-deleted org includes deleted_at timestamp."""
+        app.dependency_overrides[get_organization_with_access] = lambda: deleted_org
+        try:
+            resp = client.get("/api/v1/organizations/invisible-org")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "deleted_at" in data
+            assert data["deleted_at"] is not None
+        finally:
+            app.dependency_overrides.pop(get_organization_with_access, None)
+
+    def test_get_active_org_has_deleted_at_null(self, client):
+        """GET response for an active org has deleted_at=null."""
+        active_org = Organization(
+            id=uuid.uuid4(),
+            name="Alive Org",
+            slug="alive-org",
+            description="Still active",
+            status=OrganizationStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+            activated_at=None,
+            deactivated_at=None,
+            banned_at=None,
+        )
+        app.dependency_overrides[get_organization_with_access] = lambda: active_org
+        try:
+            resp = client.get("/api/v1/organizations/alive-org")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "deleted_at" in data
+            assert data["deleted_at"] is None
+        finally:
+            app.dependency_overrides.pop(get_organization_with_access, None)
+
+    def test_get_deleted_org_as_regular_user_404(self, client, deleted_org):
+        """Non-system-admin gets 404 for soft-deleted org (via dep)."""
+        from fastapi import HTTPException
+        def _mock_not_found():
+            raise HTTPException(
+                status_code=404,
+                detail="Organization 'invisible-org' not found",
+            )
+
+        app.dependency_overrides[get_organization_with_access] = _mock_not_found
+        try:
+            resp = client.get("/api/v1/organizations/invisible-org")
+            assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_organization_with_access, None)
+
+    def test_patch_deleted_org_blocked_for_system_admin(self, client, deleted_org):
+        """Even system admins cannot PATCH a deleted org — must re-enable first."""
+        from fastapi import HTTPException
+
+        def _mock_deleted():
+            raise HTTPException(
+                status_code=404,
+                detail="Organization 'invisible-org' not found",
+            )
+
+        app.dependency_overrides[get_organization_with_update_access] = _mock_deleted
+        try:
+            resp = client.patch(
+                "/api/v1/organizations/invisible-org",
+                json={"description": "system admin tries to edit deleted"},
+            )
+            assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_organization_with_update_access, None)
 

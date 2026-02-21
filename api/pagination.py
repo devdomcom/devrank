@@ -7,7 +7,11 @@ best practices and AGENTS.md guidance:
   performance (index-friendly forward scan), statelessness.
 - Reusable deps/funcs to avoid duplication across orgs/users/depts etc.
 - Pydantic v2 model_validate(from_attributes=True) for ORM -> schema.
-- Soft-delete filter, PK ordering for efficiency.
+- Soft-delete filter (configurable via include_deleted), PK ordering for efficiency.
+- Status filtering + free-text search via OrganizationFilterParams (extensible).
+- Search: contains-matched (ILIKE '%term%') on name, slug, and description.
+  User-supplied ``%``/``_`` wildcards escaped. For large tables consider adding
+  ``pg_trgm`` GIN indexes on name and description.
 - limit clamped to prevent abuse; next_cursor=None at end.
 - Error on bad cursor -> ValueError (caught/sanitized by api/handlers.py).
 
@@ -16,7 +20,7 @@ auth routes) since DB I/O is blocking.
 
 Example usage in router:
     params: tuple[str | None, int] = Depends(get_cursor_params)
-    page = paginate_organizations(db, *params)
+    page = paginate_organizations(db, *params, filters=filters, include_deleted=auth.is_system_admin)
 """
 from __future__ import annotations
 
@@ -24,12 +28,21 @@ import base64
 import uuid
 
 from fastapi import Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 # Import schemas/DB here (avoid circular; schemas are app-level)
-from api.schemas import OrganizationsCursorPage, OrganizationListItem
+from api.schemas import OrganizationFilterParams, OrganizationsCursorPage, OrganizationListItem
 from db.models.organization import Organization
+
+
+def _escape_like(term: str) -> str:
+    """Escape LIKE/ILIKE wildcards in user-supplied search input.
+
+    Prevents ``%`` and ``_`` in the term from acting as SQL wildcards.
+    Uses backslash as the escape character (Postgres default for ILIKE).
+    """
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def get_cursor_params(
@@ -79,24 +92,50 @@ def decode_cursor(cursor: str) -> uuid.UUID:
 
 
 def paginate_organizations(
-    db: Session, cursor: str | None = None, limit: int = 20
+    db: Session,
+    cursor: str | None = None,
+    limit: int = 20,
+    *,
+    filters: OrganizationFilterParams | None = None,
+    include_deleted: bool = False,
 ) -> OrganizationsCursorPage:
     """Fetch paginated organizations (system data) using cursor.
 
-    - Filters deleted_at IS NULL (DRY soft-delete pattern from org/role models)
+    - Soft-delete filter: ``include_deleted=False`` (default) hides deleted orgs;
+      ``True`` (system admins) includes them. Status filters override this when
+      DELETED is explicitly requested.
+    - Status filter: narrows to specific statuses when provided.
+    - Search filter: case-insensitive contains-match on name, slug, and
+      description. User-supplied wildcards are escaped for safety.
     - ORDER BY id (PK index ensures efficient range scan, no offset)
     - Fetches limit+1 to peek for next_cursor (standard technique)
     - Maps ORM to OrganizationListItem via Pydantic (from_attributes=True)
-    - Specific to Organization now; generalize later if more lists added.
 
     Enforces tenancy patterns; for system-role-only endpoints.
     """
-    # Base query: active orgs, sorted by ID for cursor stability
-    query = (
-        select(Organization)
-        .where(Organization.deleted_at.is_(None))
-        .order_by(Organization.id)
-    )
+    # Base query sorted by ID for cursor stability
+    query = select(Organization).order_by(Organization.id)
+
+    # Apply status filter if provided
+    if filters and filters.status:
+        query = query.where(Organization.status.in_(filters.status))
+    elif not include_deleted:
+        # No explicit status filter: hide soft-deleted for non-system-admins
+        query = query.where(Organization.deleted_at.is_(None))
+
+    # Apply search filter (name/slug/description contains, case-insensitive)
+    if filters and filters.search:
+        safe_term = _escape_like(filters.search)
+        query = query.where(
+            or_(
+                # Contains match on name — primary human-readable field.
+                Organization.name.ilike(f"%{safe_term}%"),
+                # Contains match on slug — e.g. "acme" matches "sample-acme-corp".
+                Organization.slug.ilike(f"%{safe_term}%"),
+                # Contains match on description.
+                Organization.description.ilike(f"%{safe_term}%"),
+            )
+        )
 
     # Apply cursor filter if provided (id > last)
     if cursor:

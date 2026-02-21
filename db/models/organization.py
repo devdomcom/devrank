@@ -42,6 +42,9 @@ class Organization(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    name: Mapped[str] = mapped_column(
+        String(200), nullable=False, index=True
+    )
     slug: Mapped[str] = mapped_column(
         String(100), unique=True, nullable=False, index=True
     )
@@ -96,4 +99,4 @@ class Organization(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Organization(id={self.id}, slug={self.slug}, status={self.status})>"
+        return f"<Organization(id={self.id}, name={self.name}, slug={self.slug}, status={self.status})>"

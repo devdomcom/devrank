@@ -69,6 +69,7 @@ def get_db_session() -> Session:
 # Defaults/samples here; YAML overrides via key 'organizations'
 ORG_DEFAULT_SAMPLES: list[dict[str, Any]] = [
     {
+        "name": "Acme Corporation",
         "slug": "sample-acme-corp",
         "description": "Active tech company (standard dev test case)",
         "status": OrganizationStatus.ACTIVE,
@@ -77,6 +78,7 @@ ORG_DEFAULT_SAMPLES: list[dict[str, Any]] = [
         "activated_at": datetime(2025, 1, 15, tzinfo=timezone.utc),
     },
     {
+        "name": "Beta Inc",
         "slug": "sample-beta-inc",
         "description": "Deactivated startup (tests status filtering)",
         "status": OrganizationStatus.DEACTIVATED,
@@ -84,6 +86,7 @@ ORG_DEFAULT_SAMPLES: list[dict[str, Any]] = [
         "deactivated_at": datetime(2025, 2, 1, tzinfo=timezone.utc),
     },
     {
+        "name": "Gamma Labs",
         "slug": "sample-gamma-labs",
         "description": "Banned org (edge case for lifecycle)",
         "status": OrganizationStatus.BANNED,
@@ -91,6 +94,7 @@ ORG_DEFAULT_SAMPLES: list[dict[str, Any]] = [
         "banned_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
     },
     {
+        "name": "Delta Co",
         "slug": "sample-delta-co",
         "description": "Soft-deleted org (tests deleted_at filter)",
         "status": OrganizationStatus.DELETED,
@@ -143,6 +147,7 @@ def seed_organizations(
             continue
         # Insert (status/timestamps; defaults fill)
         org = Organization(
+            name=sample.get("name", slug),
             slug=slug,
             description=sample.get("description"),
             status=sample.get("status", OrganizationStatus.ACTIVE),

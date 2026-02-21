@@ -18,7 +18,14 @@ Extensible; respects AGENTS.md/2026 FastAPI patterns (deps, typing).
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import Optional
+
+# Ensure the project root is importable (api/, db/, impact/, scripts/ live there).
+# In editable installs devrank/ is at <project_root>/devrank/, so parent.parent works.
+_project_root = str(Path(__file__).resolve().parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 import typer
 
@@ -35,6 +42,107 @@ cli = typer.Typer(
 def main() -> None:
     """Entry point for console script (devrank CLI)."""
     cli()
+
+
+# ── Init (full bootstrap) ────────────────────────────────────────────────────
+
+@cli.command("init")
+def init(
+    admin_email: str = typer.Option(
+        "admin@devrank.local", "--admin-email", help="Default admin email",
+    ),
+    admin_password: str = typer.Option(
+        "admin", "--admin-password", help="Default admin password",
+    ),
+    skip_infra: bool = typer.Option(
+        False, "--skip-infra", help="Skip starting Docker infrastructure",
+    ),
+):
+    """Bootstrap everything: infra, migrations, RBAC, sample data, admin user."""
+    import shutil
+    import subprocess
+    import time
+
+    # Use CWD as project root (user runs from project dir); avoids PYTHONPATH
+    # pollution issues where __file__ resolves to a different checkout.
+    project_root = Path.cwd()
+
+    # 1. Start infrastructure
+    if not skip_infra:
+        if shutil.which("docker") is None:
+            typer.echo(
+                "[1/5] Docker not found — skipping infrastructure.\n"
+                "      If Postgres/Redis are already running (e.g. container sidecar),\n"
+                "      set DEVRANK_DATABASE_URL and DEVRANK_REDIS_URL env vars.\n"
+                "      You can also pass --skip-infra explicitly to silence this."
+            )
+        else:
+            typer.echo("[1/5] Starting infrastructure ...")
+            result = subprocess.run(
+                ["bash", str(project_root / "scripts" / "dev-infra.sh"), "start"],
+                cwd=str(project_root),
+            )
+            if result.returncode != 0:
+                typer.echo("Failed to start infrastructure.", err=True)
+                raise typer.Exit(1)
+            typer.echo("      Waiting for services ...")
+            time.sleep(3)
+    else:
+        typer.echo("[1/5] Skipping infrastructure (--skip-infra)")
+
+    # 2. Run migrations
+    typer.echo("[2/5] Running database migrations ...")
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=str(project_root),
+    )
+    if result.returncode != 0:
+        typer.echo("Migrations failed.", err=True)
+        raise typer.Exit(1)
+
+    # 3. Seed RBAC
+    typer.echo("[3/5] Seeding RBAC permissions and roles ...")
+    from scripts.init_rbac import main as rbac_main
+    rbac_main()
+
+    # 4. Load sample data
+    typer.echo("[4/5] Loading sample data ...")
+    from scripts.load_sample_data import load_sample_data
+    results = load_sample_data()
+    typer.echo(f"      Loaded: {results}")
+
+    # 5. Create admin if none exists
+    typer.echo("[5/5] Checking for admin user ...")
+    from sqlalchemy import select
+    from db.engine import SyncSessionLocal
+    from db.models import SystemRole, UserRoleAssignment, RoleType
+
+    db = SyncSessionLocal()
+    try:
+        su_role = db.execute(
+            select(SystemRole).where(SystemRole.slug == "superuser")
+        ).scalar_one_or_none()
+        has_admin = False
+        if su_role:
+            has_admin = db.execute(
+                select(UserRoleAssignment).where(
+                    UserRoleAssignment.role_type == RoleType.SYSTEM,
+                    UserRoleAssignment.role_id == su_role.id,
+                )
+            ).first() is not None
+    finally:
+        db.close()
+
+    if has_admin:
+        typer.echo("      Admin already exists, skipping.")
+    else:
+        from scripts.create_admin import create_system_admin
+        create_system_admin(admin_email, admin_password)
+        typer.echo(f"      Created admin: {admin_email}")
+
+    typer.echo("\nDevRank initialized. Start the server with:")
+    typer.echo("  uv run uvicorn api.app:app --reload --host 0.0.0.0 --port 8000")
+
 
 # ── Seed subcommand (for load_sample_data.py; orgs first) ───────────────────
 seed_app = typer.Typer(help="Seed/drop sample data (organizations first; extensible).")

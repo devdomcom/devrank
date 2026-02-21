@@ -1,91 +1,271 @@
 """Organizations routes (platform tenancy; app-level like auth/health).
 
-GET /organizations/ — cursor-paginated list, system-role restricted via RBAC perm.
-
-Follows existing patterns:
-- APIRouter with prefix/tags (see auth.py, health.py)
-- require_permission dep from api/auth/dependencies.py for enforcement
-  at API level (DRY; ties into permissions.yaml/system_roles)
-- get_db dep, sync endpoint (blocking DB = threadpooled by FastAPI)
-- Reuses pagination utils + schemas (DRY)
-- Pydantic response_model (AGENTS.md best practice; schema validation)
-- No direct body consumer + Depends mix (avoids parsing error)
-- Soft-delete aware, indexed query for perf
-
-RBAC note: perm "organizations:list" only in superuser (system role) via "*";
-app roles excluded. Service-layer guard in paginate_ func.
-
-2026 FastAPI: dep factories, typed Annotated, cursor over offset.
+Endpoints:
+- GET    /organizations/               — cursor-paginated list with filters (system roles only)
+- GET    /organizations/{id_or_slug}   — single org detail (system roles + org admins)
+- POST   /organizations/               — create org (any user with organizations:create)
+- PATCH  /organizations/{id_or_slug}   — partial update (org admins + superusers)
+- DELETE /organizations/{id_or_slug}   — soft-delete (org admins + superusers)
 """
 from __future__ import annotations
 
 from typing import Annotated
 
-# FastAPI (APIRouter, Depends, HTTPException for 404 pattern from roles.py/metrics)
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-# Auth/DB deps (app-level; shared with /auth, /health/infra)
-# Includes get_organization_with_access for RBAC scope (system/org-admin)
-from api.auth.dependencies import get_db, get_organization_with_access, require_permission
-# Pagination utils (DRY cursor logic)
-from api.pagination import get_cursor_params, paginate_organizations
-# Response schema (platform-level in api/schemas.py)
-from api.schemas import OrganizationsCursorPage, OrganizationResponse
+from datetime import datetime, timezone
 
-# Router mounted at /api/v1/organizations (v1 prefix in app.py)
+from api.auth.dependencies import (
+    get_db,
+    get_organization_with_access,
+    get_organization_with_delete_access,
+    get_organization_with_update_access,
+    require_permission,
+)
+from api.auth.schemas import AuthContext
+from api.pagination import get_cursor_params, paginate_organizations
+from api.schemas import (
+    CreateOrganizationRequest,
+    OrganizationDeletedResponse,
+    OrganizationFilterParams,
+    OrganizationResponse,
+    OrganizationsCursorPage,
+    UpdateOrganizationRequest,
+    get_organization_filters,
+)
+from db.models import (
+    AppRole,
+    Organization,
+    OrganizationStatus,
+    RoleType,
+    UserOrgDepartment,
+    UserRoleAssignment,
+)
+
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
 
 @router.get(
     "/",
-    summary="List all organizations (cursor paginated)",
-    description=(
-        "Returns active organizations with cursor pagination. "
-        "Restricted to users with system roles (e.g., superuser) via "
-        "'organizations:list' permission (see api/auth/rbac/permissions.yaml)."
-    ),
+    summary="List all organizations (cursor paginated, filterable)",
     response_model=OrganizationsCursorPage,
-    # Dependencies list for perm check (pattern from metrics/roles routes;
-    # handler receives no auth if not needed, but could inject)
-    dependencies=[Depends(require_permission("organizations:list"))],
 )
 def list_organizations(
-    # Unpack cursor/limit from shared dep (DRY; validated Query)
-    params: Annotated[
-        tuple[str | None, int], Depends(get_cursor_params)
-    ],
-    # DB session per-request (from api/auth/dependencies.py; matches auth.py)
-    db: Annotated[Session, Depends(get_db)],
+    params: Annotated[tuple[str | None, int], Depends(get_cursor_params)],
+    filters: Annotated[OrganizationFilterParams, Depends(get_organization_filters)],
+    auth: AuthContext = Depends(require_permission("organizations:list")),
+    db: Session = Depends(get_db),
 ) -> OrganizationsCursorPage:
-    """List organizations endpoint.
+    """List organizations with optional status filters.
 
-    Uses pagination.paginate_organizations for query/encoding/mapping.
-    Aligns with DB models (soft-delete, UUID PK) and FastAPI best practices.
+    Non-system-admin users see only non-deleted organizations by default.
+    System admins see all organizations including soft-deleted ones.
+    Explicit status filters (e.g. ``?status=DELETED``) narrow results
+    to the requested statuses regardless of role.
     """
     cursor, limit = params
-    return paginate_organizations(db, cursor, limit)
+    return paginate_organizations(
+        db, cursor, limit,
+        filters=filters,
+        include_deleted=auth.is_system_admin,
+    )
 
 
 @router.get(
     "/{org_id_or_slug}",
     summary="Get organization by ID or slug",
-    description=(
-        "Returns full details for an org (active only). Accessible to system roles "
-        "(e.g., superuser) or org admins (app role with org_id scope match via "
-        "RBAC 'organizations:read' perm and UserRoleAssignment check)."
-    ),
     response_model=OrganizationResponse,
-    # Perm check at API level (DRY with list; org-scope enforced in dep)
     dependencies=[Depends(require_permission("organizations:read"))],
 )
 def get_organization(
-    # Uses dep for resolve + RBAC scope (system/org-admin; handles ID/slug, 404, access)
-    # DRY with single-item pattern from roles.py/metrics/{slug}
     org: Organization = Depends(get_organization_with_access),
 ) -> OrganizationResponse:
-    """Get org detail.
-
-    Dep handles query/scope; map ORM to schema (Pydantic from_attributes).
-    """
     return OrganizationResponse.model_validate(org, from_attributes=True)
+
+
+@router.post(
+    "/",
+    summary="Create a new organization",
+    response_model=OrganizationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_organization(
+    body: CreateOrganizationRequest,
+    auth: AuthContext = Depends(require_permission("organizations:create")),
+    db: Session = Depends(get_db),
+) -> OrganizationResponse:
+    """Create an organization and assign the creator as org_admin.
+
+    Steps (single transaction):
+    1. Validate slug uniqueness
+    2. Create Organization record
+    3. Create UserOrgDepartment membership (creator → org)
+    4. Assign org_admin role scoped to the new org
+    """
+    # 1. Check slug uniqueness
+    existing = db.execute(
+        select(Organization).where(Organization.slug == body.slug)
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Organization with slug '{body.slug}' already exists",
+        )
+
+    # 2. Create organization
+    org = Organization(name=body.name, slug=body.slug, description=body.description)
+    db.add(org)
+    db.flush()  # Get org.id for FK refs
+
+    # 3. Create membership (creator → org, no dept)
+    membership = UserOrgDepartment(user_id=auth.user_id, org_id=org.id)
+    db.add(membership)
+
+    # 4. Assign org_admin role scoped to this org
+    org_admin_role = db.execute(
+        select(AppRole).where(AppRole.slug == "org_admin")
+    ).scalar_one_or_none()
+    if org_admin_role:
+        db.add(
+            UserRoleAssignment(
+                user_id=auth.user_id,
+                role_type=RoleType.APP,
+                role_id=org_admin_role.id,
+                org_id=org.id,
+            )
+        )
+
+    db.commit()
+    db.refresh(org)
+
+    return OrganizationResponse.model_validate(org, from_attributes=True)
+
+
+# ── Status → timestamp mapping for lifecycle transitions ──────────────
+_STATUS_TIMESTAMP_FIELD: dict[OrganizationStatus, str] = {
+    OrganizationStatus.ACTIVE: "activated_at",
+    OrganizationStatus.DEACTIVATED: "deactivated_at",
+    OrganizationStatus.BANNED: "banned_at",
+    OrganizationStatus.DELETED: "deleted_at",
+}
+
+
+@router.patch(
+    "/{org_id_or_slug}",
+    summary="Partially update an organization",
+    response_model=OrganizationResponse,
+)
+def update_organization(
+    body: UpdateOrganizationRequest,
+    org: Organization = Depends(get_organization_with_update_access),
+    db: Session = Depends(get_db),
+) -> OrganizationResponse:
+    """Partially update an organization's properties.
+
+    Only fields present in the request body are applied (true PATCH semantics).
+    Uses Pydantic v2 ``model_fields_set`` to distinguish "not sent" from
+    "explicitly sent as null" — e.g., sending ``{"description": null}`` clears
+    the description, while omitting it leaves it unchanged.
+
+    Steps:
+    1. Reject empty body (no fields to update)
+    2. Validate slug uniqueness if changing
+    3. Apply only sent fields to the ORM instance
+    4. Set lifecycle timestamp on status transitions
+    5. Commit + refresh and return updated org
+    """
+    sent_fields = body.model_fields_set
+    if not sent_fields:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No fields provided for update",
+        )
+
+    # Slug uniqueness check (only if slug is being changed)
+    if "slug" in sent_fields and body.slug is not None and body.slug != org.slug:
+        existing = db.execute(
+            select(Organization).where(Organization.slug == body.slug)
+        ).scalar_one_or_none()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Organization with slug '{body.slug}' already exists",
+            )
+
+    # Apply each sent field granularly
+    if "name" in sent_fields:
+        if body.name is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="name cannot be null",
+            )
+        org.name = body.name
+
+    if "slug" in sent_fields:
+        if body.slug is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="slug cannot be null",
+            )
+        org.slug = body.slug
+
+    if "description" in sent_fields:
+        # description is nullable — setting to None clears it
+        org.description = body.description
+
+    if "status" in sent_fields:
+        if body.status is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="status cannot be null",
+            )
+        if body.status != org.status:
+            org.status = body.status
+            # Record lifecycle timestamp for the new status
+            ts_field = _STATUS_TIMESTAMP_FIELD.get(body.status)
+            if ts_field:
+                setattr(org, ts_field, datetime.now(timezone.utc))
+
+    db.commit()
+    db.refresh(org)
+
+    return OrganizationResponse.model_validate(org, from_attributes=True)
+
+
+@router.delete(
+    "/{org_id_or_slug}",
+    summary="Soft-delete an organization",
+    response_model=OrganizationDeletedResponse,
+)
+def delete_organization(
+    org: Organization = Depends(get_organization_with_delete_access),
+    db: Session = Depends(get_db),
+) -> OrganizationDeletedResponse:
+    """Soft-delete an organization (sets status=DELETED and deleted_at timestamp).
+
+    Idempotency: returns 409 if the organization is already soft-deleted,
+    so callers can distinguish "just deleted" from "was already deleted".
+    The organization record is preserved for auditing; hard-delete is not
+    supported via API.
+    """
+    if org.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Organization '{org.slug}' is already deleted",
+        )
+
+    now = datetime.now(timezone.utc)
+    org.status = OrganizationStatus.DELETED
+    org.deleted_at = now
+
+    db.commit()
+    db.refresh(org)
+
+    return OrganizationDeletedResponse(
+        id=org.id,
+        slug=org.slug,
+        status=org.status,
+        deleted_at=org.deleted_at,
+    )

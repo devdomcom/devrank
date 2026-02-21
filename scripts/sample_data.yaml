@@ -4,13 +4,15 @@
 # Usage: --config scripts/sample_data.yaml
 
 organizations:
-  - slug: custom-acme
+  - name: Custom Acme
+    slug: custom-acme
     description: Custom active org from YAML
     status: ACTIVE
     created_at: 2025-03-01T00:00:00+00:00
     activated_at: 2025-03-01T00:00:00+00:00
 
-  - slug: custom-test-deact
+  - name: Custom Test Deactivated
+    slug: custom-test-deact
     description: Custom deactivated org
     status: DEACTIVATED
     created_at: 2024-01-01T00:00:00+00:00

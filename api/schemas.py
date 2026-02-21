@@ -10,6 +10,7 @@ from datetime import datetime
 import uuid
 from enum import Enum  # for potential local enums; OrganizationStatus reused from model
 
+from fastapi import Query
 from pydantic import BaseModel, Field
 
 # Reuses OrganizationStatus enum from db/models for DRY (immutable str Enum;
@@ -45,14 +46,19 @@ class OrganizationListItem(BaseModel):
 
     Mirrors core fields from db/models/organization.py (status, timestamps)
     for API safety. Used in cursor pagination response.
+
+    ``deleted_at`` is nullable — present only for soft-deleted orgs (visible
+    to system admins). Non-deleted orgs return ``null``.
     """
 
     id: uuid.UUID
+    name: str
     slug: str
     description: str | None = None
     status: OrganizationStatus
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None = None
 
 
 class OrganizationsCursorPage(BaseModel):
@@ -77,21 +83,123 @@ class OrganizationResponse(OrganizationListItem):
     """Full detail for single organization (by ID or slug).
 
     Extends list item (DRY); full timestamps/status from model.
-    For org admins/system roles (RBAC 'organizations:read').
-    Future: include rel summary (depts count, active users) if needed.
     """
-
-    # Inherits id/slug/description/status/created/updated from ListItem
-    # Add scoped fields here if expanding (e.g., dept_count: int = 0)
     pass
 
 
 class CreateOrganizationRequest(BaseModel):
-    """Request body for creating a new organization (POST /organizations/).
+    """Request body for POST /organizations/."""
 
-    Validates slug/description; creator (from auth) auto-becomes org_admin.
-    Mirrors Organization model fields (DRY); Pydantic Field for input guards.
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Human-readable organization name (e.g. 'Acme Corporation')",
+        examples=["Acme Corporation"],
+    )
+    slug: str = Field(
+        ...,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+        description="URL-safe lowercase slug (e.g. 'acme-corp')",
+        examples=["acme-corp"],
+    )
+    description: str | None = Field(None, max_length=500)
+
+
+class UpdateOrganizationRequest(BaseModel):
+    """Request body for PATCH /organizations/{id_or_slug} (partial update).
+
+    All fields optional — only fields present in the request body are applied.
+    Callers use ``model_fields_set`` to distinguish "not sent" from "sent as null".
+    Follows Pydantic v2 partial-update best practice (2026): explicit None default
+    on every field; route checks ``body.model_fields_set`` for granular mutation.
+
+    ``slug`` validated with same constraints as create (unique, URL-safe).
+    ``status`` accepts any valid OrganizationStatus for lifecycle transitions.
+    ``description`` can be set to null (cleared) or a new value.
     """
 
-    slug: str = Field(..., min_length=1, max_length=100, description="Unique org slug")
-    description: str | None = Field(None, max_length=500, description="Optional description")
+    name: str | None = Field(
+        None,
+        min_length=1,
+        max_length=200,
+        description="Human-readable organization name",
+        examples=["Acme Corporation"],
+    )
+    slug: str | None = Field(
+        None,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+        description="URL-safe lowercase slug (e.g. 'acme-corp')",
+        examples=["acme-corp"],
+    )
+    description: str | None = Field(None, max_length=500)
+    status: OrganizationStatus | None = Field(
+        None,
+        description="Organization lifecycle status (ACTIVE, DEACTIVATED, BANNED, DELETED)",
+    )
+
+
+class OrganizationDeletedResponse(BaseModel):
+    """Response for DELETE /organizations/{id_or_slug} (soft-delete).
+
+    Confirms soft-deletion with minimal detail (no full org dump for safety).
+    """
+
+    id: uuid.UUID
+    slug: str
+    status: OrganizationStatus
+    deleted_at: datetime
+
+
+class OrganizationFilterParams(BaseModel):
+    """Query-parameter filter bag for GET /organizations/ (extensible).
+
+    Designed for future expansion (date ranges, tags, etc.) without
+    breaking the endpoint signature. Currently supports status filtering
+    and free-text search across slug/description.
+    All fields optional — omitting them returns all (within visibility rules).
+
+    Extracted as a Pydantic model (vs. bare Query params) so the growing
+    filter surface stays testable and documented in OpenAPI.
+    """
+
+    status: list[OrganizationStatus] = Field(default_factory=list)
+    search: str | None = Field(
+        None,
+        description=(
+            "Case-insensitive search term matched against name, slug, and description "
+            "(contains-match on all three)."
+        ),
+    )
+
+
+def get_organization_filters(
+    status: list[OrganizationStatus] | None = Query(
+        None,
+        description="Filter by status(es). Repeatable: ?status=ACTIVE&status=BANNED. "
+        "Omit to return all statuses visible to the caller.",
+        examples=["ACTIVE"],
+    ),
+    search: str | None = Query(
+        None,
+        min_length=1,
+        max_length=100,
+        description="Search organizations by name, slug, or description (contains-match, "
+        "case-insensitive). Example: ?search=acme",
+        examples=["acme"],
+    ),
+) -> OrganizationFilterParams:
+    """FastAPI dependency for organization list filters.
+
+    DRY extraction + validation; extensible for future params.
+    Strips whitespace from search to normalize user input.
+    Returns a typed filter bag for the pagination layer.
+    """
+    return OrganizationFilterParams(
+        status=status or [],
+        search=search.strip() if search else None,
+    )
