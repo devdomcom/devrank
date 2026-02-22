@@ -246,6 +246,13 @@ class User(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    # Server-side refresh tokens (hashed; cascade-delete on user removal)
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        "RefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="dynamic",  # dynamic: never eager-load all tokens; query on demand
+    )
     # Multi-org tenancy via direct FKs in child tables (positions/submissions/org_id etc.) per intent
     # Plus user_org_departments for membership; RBAC assignments layered for perms
     # No UserOrganization assoc (misunderstanding surfaced/removed)

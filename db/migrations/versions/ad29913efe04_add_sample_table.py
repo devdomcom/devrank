@@ -367,6 +367,10 @@ def upgrade() -> None:
         sa.Column("slug", sa.String(length=100), nullable=False),
         sa.Column("description", sa.String(length=500), nullable=True),
         sa.Column(
+            "is_default", sa.Boolean(), nullable=False, server_default=sa.text("false"),
+            comment="True for the auto-created default department; cannot be soft-deleted or deactivated via API.",
+        ),
+        sa.Column(
             "status",
             PGEnum(
                 "department_status_enum",
@@ -1013,6 +1017,44 @@ def upgrade() -> None:
         "ix_user_role_assignments_dept_id", "user_role_assignments", ["dept_id"]
     )
 
+    # ── Refresh tokens (server-side hashed store for JWT rotation) ────────
+    # Stores SHA-256 hashes of issued refresh tokens (raw token never persisted).
+    # revoked_at IS NOT NULL => consumed/rotated/invalidated.
+    # Cascade-delete via users.id FK keeps table clean on user removal.
+    op.create_table(
+        "refresh_tokens",
+        sa.Column(
+            "id",
+            sa.UUID(),
+            primary_key=True,
+            nullable=False,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column("user_id", sa.UUID(), nullable=False),
+        # SHA-256 hex digest (64 chars); unique so duplicate issuance is impossible
+        sa.Column("token_hash", sa.String(length=64), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("token_hash", name="uq_refresh_tokens_token_hash"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+    )
+    op.create_index(
+        "ix_refresh_tokens_token_hash", "refresh_tokens", ["token_hash"], unique=True
+    )
+    op.create_index("ix_refresh_tokens_user_id", "refresh_tokens", ["user_id"])
+    op.create_index(
+        "ix_refresh_tokens_user_id_revoked",
+        "refresh_tokens",
+        ["user_id", "revoked_at"],
+    )
+
 
 def downgrade() -> None:
     """Downgrade: drop dependent tables first (full chain: user_role_assignments +
@@ -1026,6 +1068,8 @@ def downgrade() -> None:
     pgcrypto left intact.
     """
     # Drop children first (reverse create order; user_assignments refs users/RBAC/org/dept)
+    # refresh_tokens first (FK to users; no other deps)
+    op.drop_table("refresh_tokens")
     # Drop partial unique indexes explicitly (PG; before table)
     op.execute("DROP INDEX IF EXISTS uq_user_role_standard_assignment")
     op.execute("DROP INDEX IF EXISTS uq_user_role_scoped_assignment")

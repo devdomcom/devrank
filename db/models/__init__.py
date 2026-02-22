@@ -31,6 +31,8 @@ from .role_permission import RolePermission, RoleType
 from .system_role import SystemRole, SystemRoleStatus
 # User-role assignment for RBAC mapping (prod-grade; after roles/perms for refs)
 from .user_role_assignment import AssignmentStatus, UserRoleAssignment
+# Refresh tokens (server-side hashed store for JWT rotation; after User for back_populates)
+from .refresh_token import RefreshToken
 
 __all__ = [
     "Assessment",
@@ -67,4 +69,6 @@ __all__ = [
     # User-role assignment for RBAC mapping (prod-grade; supports system/org/dept/standard users)
     "AssignmentStatus",
     "UserRoleAssignment",
+    # Refresh tokens (server-side hashed store for JWT rotation)
+    "RefreshToken",
 ]

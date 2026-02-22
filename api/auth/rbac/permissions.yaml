@@ -40,6 +40,10 @@ permissions:
     description: Read specific department details by ID/slug
   departments:update:
     description: Update department properties (org admins / dept admins / superusers)
+  departments:create:
+    description: Create a new department within an organization (org admins / superusers)
+  departments:set-default:
+    description: Designate a department as the org default, transferring the flag from the current default (org admins / superusers only)
   departments:delete:
     description: Soft-delete a department (org admins / dept admins / superusers)
 
@@ -84,6 +88,8 @@ roles:
       - organizations:delete
       - departments:list
       - departments:read
+      - departments:create
+      - departments:set-default
       - departments:update
       - departments:delete
 

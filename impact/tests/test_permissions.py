@@ -168,7 +168,8 @@ class TestRbacYamlConfig:
             "dumps:upload", "system:debug",
             "organizations:list", "organizations:read", "organizations:create",
             "organizations:update", "organizations:delete",
-            "departments:list", "departments:read", "departments:update", "departments:delete",
+            "departments:list", "departments:read", "departments:create",
+            "departments:set-default", "departments:update", "departments:delete",
         }
         assert expected == get_all_permission_slugs()
 

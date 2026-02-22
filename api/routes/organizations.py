@@ -28,6 +28,8 @@ from api.auth.schemas import AuthContext
 from api.pagination import get_cursor_params, paginate_organizations
 from api.schemas import (
     CreateOrganizationRequest,
+    DepartmentResponse,
+    OrganizationCreateResponse,
     OrganizationDeletedResponse,
     OrganizationFilterParams,
     OrganizationResponse,
@@ -37,6 +39,7 @@ from api.schemas import (
 )
 from db.models import (
     AppRole,
+    Department,
     Organization,
     OrganizationStatus,
     RoleType,
@@ -88,21 +91,22 @@ def get_organization(
 @router.post(
     "/",
     summary="Create a new organization",
-    response_model=OrganizationResponse,
+    response_model=OrganizationCreateResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_organization(
     body: CreateOrganizationRequest,
     auth: AuthContext = Depends(require_permission("organizations:create")),
     db: Session = Depends(get_db),
-) -> OrganizationResponse:
-    """Create an organization and assign the creator as org_admin.
+) -> OrganizationCreateResponse:
+    """Create an organization with a default department and assign the creator as org_admin.
 
     Steps (single transaction):
     1. Validate slug uniqueness
     2. Create Organization record
-    3. Create UserOrgDepartment membership (creator → org)
-    4. Assign org_admin role scoped to the new org
+    3. Create default Department (slug ``general``) for the new org
+    4. Create UserOrgDepartment membership (creator → org + default dept)
+    5. Assign org_admin role scoped to the new org
     """
     # 1. Check slug uniqueness
     existing = db.execute(
@@ -119,11 +123,30 @@ def create_organization(
     db.add(org)
     db.flush()  # Get org.id for FK refs
 
-    # 3. Create membership (creator → org, no dept)
-    membership = UserOrgDepartment(user_id=auth.user_id, org_id=org.id)
+    # 3. Create default department (every org starts with a "general" department)
+    #    is_default=True marks it as the immutable org default (cannot be
+    #    soft-deleted or deactivated via API; cascade-deleted with the org).
+    #    activated_at set to creation time since it is always active.
+    now = datetime.now(timezone.utc)
+    default_dept = Department(
+        org_id=org.id,
+        slug="general",
+        description="Default department",
+        is_default=True,
+        activated_at=now,
+    )
+    db.add(default_dept)
+    db.flush()  # Get default_dept.id for FK refs
+
+    # 4. Create membership (creator → org + default dept)
+    membership = UserOrgDepartment(
+        user_id=auth.user_id,
+        org_id=org.id,
+        dept_id=default_dept.id,
+    )
     db.add(membership)
 
-    # 4. Assign org_admin role scoped to this org
+    # 5. Assign org_admin role scoped to this org
     org_admin_role = db.execute(
         select(AppRole).where(AppRole.slug == "org_admin")
     ).scalar_one_or_none()
@@ -139,8 +162,15 @@ def create_organization(
 
     db.commit()
     db.refresh(org)
+    db.refresh(default_dept)
 
-    return OrganizationResponse.model_validate(org, from_attributes=True)
+    org_response = OrganizationResponse.model_validate(org, from_attributes=True)
+    dept_response = DepartmentResponse.model_validate(default_dept, from_attributes=True)
+
+    return OrganizationCreateResponse(
+        **org_response.model_dump(),
+        default_department=dept_response,
+    )
 
 
 # ── Status → timestamp mapping for lifecycle transitions ──────────────

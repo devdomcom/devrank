@@ -321,6 +321,45 @@ def get_organization_with_delete_access(
     return org
 
 
+def check_set_default_permission(
+    current_user: AuthContext,
+    dept: Department,
+    db: Session,
+) -> None:
+    """Verify the caller has ``departments:set-default`` at org scope.
+
+    Used inline by ``update_department`` when ``is_default=True`` is sent.
+    This permission is intentionally restricted to org-level roles (org_admin /
+    superuser) and is NOT granted to dept_admin, ensuring only org admins can
+    transfer the default flag across departments.
+
+    DRY: delegates to ``_check_org_scoped_permission`` with the set-default slug.
+    Raises AuthorizationError (403) on failure.
+    """
+    _check_org_scoped_permission(current_user, dept.organization, "departments:set-default", db)
+
+
+def get_organization_with_create_dept_access(
+    org_id_or_slug: str,
+    current_user: AuthContext = Depends(require_permission("departments:create")),
+    db: Session = Depends(get_db),
+) -> Organization:
+    """Resolve org by ID/slug AND enforce department-create access (org admin scope).
+
+    Used by POST /organizations/{org}/departments/ for tenancy RBAC.
+
+    - Soft-deleted orgs cannot have departments created — ``allow_deleted=False``
+      ensures a 404 for any deleted org.
+    - System roles (e.g., superuser) bypass scope check.
+    - App roles (e.g., org_admin) must have ``departments:create`` perm scoped to org.
+    - Raises 404 if org not found or soft-deleted; 403 if no create access.
+    DRY: reuses _resolve_organization + _check_org_scoped_permission with create perm.
+    """
+    org = _resolve_organization(org_id_or_slug, db, allow_deleted=False)
+    _check_org_scoped_permission(current_user, org, "departments:create", db)
+    return org
+
+
 # ── Department-scoped dependencies ─────────────────────────────────────────
 
 

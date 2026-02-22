@@ -156,6 +156,15 @@ class Settings(BaseSettings):
         ge=1,
         le=1440,  # Max 24h
     )
+    refresh_token_expire_days: int = Field(
+        default=30,
+        description=(
+            "Refresh token expiration in days (long-lived; stored hashed in DB). "
+            "Refresh tokens are rotated on each use — old token revoked, new one issued."
+        ),
+        ge=1,
+        le=365,
+    )
     # GITHUB_TOKEN: no prefix originally; now DEVRANK_GITHUB_TOKEN for consistency
     # (standard var prefix). Use AliasChoices to accept legacy GITHUB_TOKEN env var
     # without breaking existing scripts/docker/CI during refactor. This is DRY

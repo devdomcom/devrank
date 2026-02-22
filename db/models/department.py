@@ -3,6 +3,11 @@
 Orgs have depts; depts have positions. Status lifecycle.
 
 DRY: rels to org/positions; timestamps.
+
+Default department: Every organization has exactly one default department
+(``is_default=True``, slug ``general``) that is auto-created with the org.
+The default department cannot be soft-deleted or deactivated via API — it
+lives as long as the organization does (cascade-deleted with it).
 """
 
 from __future__ import annotations
@@ -11,7 +16,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, func, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -42,6 +47,11 @@ class Department(Base):
         String(100), nullable=False, index=True  # unique per org (not global)
     )
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"),
+        doc="True for the auto-created default department; "
+        "cannot be soft-deleted or deactivated via API.",
+    )
     status: Mapped[DepartmentStatus] = mapped_column(
         SAEnum(
             DepartmentStatus,

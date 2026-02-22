@@ -215,6 +215,9 @@ class DepartmentListItem(BaseModel):
     Mirrors core fields from db/models/department.py (status, timestamps)
     for API safety. Used in cursor pagination response.
 
+    ``is_default`` indicates the auto-created default department for an org.
+    Default departments cannot be soft-deleted or deactivated via API.
+
     ``deleted_at`` is nullable — present only for soft-deleted departments
     (visible to system admins). Non-deleted departments return ``null``.
     """
@@ -223,6 +226,7 @@ class DepartmentListItem(BaseModel):
     org_id: uuid.UUID
     slug: str
     description: str | None = None
+    is_default: bool = False
     status: DepartmentStatus
     created_at: datetime
     updated_at: datetime
@@ -251,6 +255,10 @@ class UpdateDepartmentRequest(BaseModel):
     ``status`` accepts ACTIVE or DEACTIVATED only — DELETED is handled by a
     dedicated DELETE endpoint for audit/lifecycle separation.
     ``description`` can be set to null (cleared) or a new value.
+    ``is_default`` — when ``True``, transfers the default flag from the current
+    default department to this one (org admins / superusers only). Setting
+    ``False`` explicitly is rejected; omitting the field leaves it unchanged.
+    Only one department per organization can be the default at any time.
     """
 
     slug: str | None = Field(
@@ -266,6 +274,15 @@ class UpdateDepartmentRequest(BaseModel):
         None,
         description="Department lifecycle status (ACTIVE or DEACTIVATED only; "
         "use DELETE endpoint for soft-deletion)",
+    )
+    is_default: bool | None = Field(
+        None,
+        description=(
+            "Set to true to make this department the org default, transferring "
+            "the flag from the current default. Setting to false is not allowed — "
+            "designate another department as default instead. "
+            "Requires departments:set-default permission (org admins / superusers only)."
+        ),
     )
 
 
@@ -344,3 +361,38 @@ def get_department_filters(
         status=status or [],
         search=search.strip() if search else None,
     )
+
+
+# ── Department creation ───────────────────────────────────────────────────
+
+
+class CreateDepartmentRequest(BaseModel):
+    """Request body for POST /organizations/{org}/departments/.
+
+    Creates a new department within an organization. The slug must be unique
+    within the organization (enforced by DB constraint ``uq_org_dept_slug``).
+    """
+
+    slug: str = Field(
+        ...,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+        description="URL-safe lowercase slug (unique per org, e.g. 'engineering')",
+        examples=["engineering"],
+    )
+    description: str | None = Field(None, max_length=500)
+
+
+# ── Organization creation response (includes default department) ──────────
+
+
+class OrganizationCreateResponse(OrganizationResponse):
+    """Response for POST /organizations/ (includes auto-created default department).
+
+    Extends OrganizationResponse with the default department that is
+    automatically created alongside the organization. This gives the caller
+    immediate visibility into the department without a follow-up GET.
+    """
+
+    default_department: DepartmentResponse
