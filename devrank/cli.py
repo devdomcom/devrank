@@ -253,6 +253,38 @@ def rbac_init():
     typer.echo("RBAC initialized.")
 
 
+# ── Roles subcommand (sync YAML roles to DB) ───────────────────────────────
+roles_app = typer.Typer(help="Sync impact role YAML files to the database.")
+cli.add_typer(roles_app, name="roles")
+
+
+@roles_app.command("sync")
+def roles_sync(
+    roles_path: list[str] = typer.Option(
+        None,
+        "--roles-path",
+        help=(
+            "Role YAML file or directory path. Repeatable. "
+            "Defaults to impact/config/roles if omitted."
+        ),
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview changes without writing to the database",
+    ),
+):
+    """Insert/update roles in the database from YAML configs."""
+    from impact.config.role_metrics import load_role_yaml_configs
+    from scripts.sync_roles import sync_roles_from_yaml
+
+    configs = load_role_yaml_configs(roles_path)
+    result = sync_roles_from_yaml(configs, dry_run=dry_run)
+    typer.echo(
+        f"Roles synced (created={result['created']}, updated={result['updated']}, skipped={result['skipped']})."
+    )
+
+
 # ── Report subcommand (impact/scripts/generate_report) ─────────────────────
 report_app = typer.Typer(help="Generate impact reports.")
 cli.add_typer(report_app, name="report")

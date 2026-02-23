@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from db.models.department import DepartmentStatus
 from db.models.organization import OrganizationStatus
 from db.models.position import PositionStatus
+from db.models.role import RoleStatus
 
 
 class HealthResponse(BaseModel):
@@ -422,6 +423,56 @@ class PositionResponse(BaseModel):
     deleted_at: datetime | None = None
 
 
+class PositionDeletedResponse(BaseModel):
+    """Response for DELETE /organizations/{org}/positions/{position} (soft-delete).
+
+    Confirms soft-deletion with minimal detail (no full position dump for safety).
+    """
+
+    id: uuid.UUID
+    slug: str
+    org_id: uuid.UUID
+    status: PositionStatus
+    deleted_at: datetime
+
+
+class UpdatePositionRequest(BaseModel):
+    """Request body for PATCH /organizations/{org}/positions/{position}.
+
+    All fields optional — only fields present are applied. Null values are
+    meaningful for nullable fields (e.g. description, dept_id_or_slug).
+
+    ``status`` accepts DRAFT or PUBLISHED; DELETED is rejected (use DELETE endpoint).
+    """
+
+    slug: str | None = Field(
+        None,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+        description="URL-safe lowercase slug (globally unique).",
+        examples=["acme-senior-eng-2025"],
+    )
+    role_id_or_slug: str | None = Field(
+        None,
+        description="Role identifier or slug for the domain role.",
+        examples=["9f9a4c2c-0e53-4a0f-9a3b-1c1d2e3f4a5b", "senior-engineer"],
+    )
+    dept_id_or_slug: str | None = Field(
+        None,
+        description=(
+            "Department identifier or slug within the organization. "
+            "Set to null to make the position org-wide."
+        ),
+        examples=["7e61b0b1-3c52-4bb4-8b88-4b6e21e25a5e", "engineering"],
+    )
+    description: str | None = Field(None, max_length=500)
+    status: PositionStatus | None = Field(
+        None,
+        description="Lifecycle status (DRAFT or PUBLISHED). Use DELETE endpoint for DELETED.",
+    )
+
+
 class CreatePositionRequest(BaseModel):
     """Request body for POST /organizations/{org}/positions/.
 
@@ -578,5 +629,100 @@ def get_position_filters(
     return PositionFilterParams(
         status=status or [],
         depts=depts or [],
+        search=search.strip() if search else None,
+    )
+
+
+# ── Role schemas ───────────────────────────────────────────────────────────
+
+
+class RoleListItem(BaseModel):
+    """Summary view of a global role (for list endpoint; excludes heavy rels).
+
+    Only global roles (``global_role=True``, ``org_id=None``) are returned by
+    the list endpoint — these are the platform-wide defaults available to every
+    organization for use with positions and assessments.
+
+    ``published_at`` is set when the role transitions to PUBLISHED.
+    ``deleted_at`` is nullable — present only for soft-deleted roles (visible
+    to system admins). Non-deleted roles return ``null``.
+    ``config`` holds the JSON metric/threshold configuration for the role.
+    """
+
+    id: uuid.UUID
+    slug: str
+    description: str | None = None
+    global_role: bool
+    status: RoleStatus
+    version: int
+    created_at: datetime
+    updated_at: datetime
+    published_at: datetime | None = None
+    deleted_at: datetime | None = None
+
+
+class RolesCursorPage(BaseModel):
+    """Cursor-paginated response for GET /roles/.
+
+    Follows DRY pagination pattern (reusable cursor approach from organizations,
+    departments, and positions). Implements opaque cursor best practices (2026):
+    - Base64-encoded ID for security/opacity (prevents enumeration)
+    - ORDER BY id (indexed PK), WHERE id > decoded_cursor
+    - items + next_cursor (None at end); limit in response for client echo
+    - No total_count (avoids expensive COUNT(*) on large tables)
+    - limit=20 default, <=100 to prevent abuse
+    """
+
+    items: list[RoleListItem]
+    next_cursor: str | None = None
+    limit: int = Field(default=20, le=100, description="Page size")
+
+
+class RoleFilterParams(BaseModel):
+    """Query-parameter filter bag for GET /roles/ (extensible).
+
+    Designed for future expansion without breaking the endpoint signature.
+    Currently supports status filtering and free-text search on slug/description.
+    All fields optional — omitting them returns all non-deleted global roles.
+    """
+
+    status: list[RoleStatus] = Field(default_factory=list)
+    search: str | None = Field(
+        None,
+        description=(
+            "Case-insensitive search term matched against slug and description "
+            "(contains-match on both)."
+        ),
+    )
+
+
+def get_role_filters(
+    status: list[RoleStatus] | None = Query(
+        None,
+        description=(
+            "Filter by role status(es). Repeatable: ?status=PUBLISHED&status=DRAFT. "
+            "Omit to return all non-deleted global roles."
+        ),
+        examples=["PUBLISHED"],
+    ),
+    search: str | None = Query(
+        None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "Search roles by slug or description (contains-match, case-insensitive). "
+            "Example: ?search=senior"
+        ),
+        examples=["senior"],
+    ),
+) -> RoleFilterParams:
+    """FastAPI dependency for global role list filters.
+
+    DRY extraction + validation; extensible for future params.
+    Strips whitespace from search to normalize user input.
+    Returns a typed filter bag for the pagination layer.
+    """
+    return RoleFilterParams(
+        status=status or [],
         search=search.strip() if search else None,
     )

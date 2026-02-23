@@ -33,6 +33,12 @@
 #   review_impact: 0.5           # de-emphasize if candidates lack review activity
 #   review_effectiveness: 0.5
 
+slug: senior_dev
+description: Senior Software Engineer role (platform defaults)
+status: PUBLISHED
+global_role: true
+version: 1
+
 metrics:
 
   # ── Delivery & Velocity ────────────────────────────────────────────────────

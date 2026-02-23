@@ -293,21 +293,21 @@ class TestCompareMetrics:
 
 class TestRoles:
     def test_list_roles(self, client):
-        resp = client.get("/api/v1/roles")
+        resp = client.get("/api/v1/impact/roles")
         assert resp.status_code == 200
         names = [r["name"] for r in resp.json()]
         assert "senior_dev" in names
         assert "default" not in names
 
     def test_get_role_ok(self, client):
-        resp = client.get("/api/v1/roles/senior_dev")
+        resp = client.get("/api/v1/impact/roles/senior_dev")
         assert resp.status_code == 200
         data = resp.json()
         assert data["name"] == "senior_dev"
         assert "metrics" in data["config"]
 
     def test_get_role_not_found(self, client):
-        resp = client.get("/api/v1/roles/nonexistent")
+        resp = client.get("/api/v1/impact/roles/nonexistent")
         assert resp.status_code == 404
 
 

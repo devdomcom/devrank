@@ -6,7 +6,7 @@ from api.auth.dependencies import require_permission
 from impact.api.schemas import RoleListItem, RoleResponse
 from impact.config.role_metrics import get_available_roles, get_role_config
 
-router = APIRouter(tags=["roles"], prefix="/roles")
+router = APIRouter(tags=["impact-roles"], prefix="/impact/roles")
 
 # Cache roles list (static; avoid re-scan per request; follows metrics metadata cache pattern)
 _ROLES_CACHE: list[RoleListItem] | None = None

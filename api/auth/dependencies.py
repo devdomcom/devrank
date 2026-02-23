@@ -19,6 +19,7 @@ from db.models import (
     Department,
     Organization,
     Permission,
+    Position,
     RolePermission,
     SystemRole,
     User,
@@ -460,6 +461,105 @@ def _resolve_department(
     return dept
 
 
+def _resolve_position(
+    position_id_or_slug: str,
+    org: Organization,
+    db: Session,
+    *,
+    allow_deleted: bool = False,
+) -> Position:
+    """Resolve position by UUID or slug within a specific organization.
+
+    Positions are scoped to an org by ``org_id`` but have globally unique slugs,
+    so we still scope lookups to the org for safety.
+    """
+    position = None
+    try:
+        position_id = UUID(position_id_or_slug)
+        position = db.execute(
+            select(Position).where(
+                Position.id == position_id,
+                Position.org_id == org.id,
+            )
+        ).scalar_one_or_none()
+    except ValueError:
+        position = db.execute(
+            select(Position).where(
+                Position.slug == position_id_or_slug,
+                Position.org_id == org.id,
+            )
+        ).scalar_one_or_none()
+
+    if not position:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Position '{position_id_or_slug}' not found in organization '{org.slug}'",
+        )
+    if position.deleted_at and not allow_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Position '{position_id_or_slug}' not found in organization '{org.slug}'",
+        )
+    return position
+
+
+def _check_position_access(
+    current_user: AuthContext,
+    position: Position,
+    db: Session,
+    permission_slug: str,
+) -> None:
+    """Verify position access for a permission via org OR dept scope.
+
+    Mirrors department access rules: org admins can manage any position in the org;
+    dept admins can manage positions in their own department.
+    """
+    if "superuser" in current_user.roles:
+        return
+
+    org_access = db.execute(
+        select(UserRoleAssignment)
+        .join(
+            RolePermission,
+            (RolePermission.role_id == UserRoleAssignment.role_id)
+            & (RolePermission.role_type == UserRoleAssignment.role_type),
+        )
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(
+            UserRoleAssignment.user_id == current_user.user_id,
+            UserRoleAssignment.org_id == position.org_id,
+            UserRoleAssignment.dept_id.is_(None),
+            UserRoleAssignment.role_type == RoleType.APP,
+            UserRoleAssignment.status == AssignmentStatus.ACTIVE,
+            Permission.slug == permission_slug,
+        )
+    ).first()
+
+    dept_access = None
+    if position.dept_id is not None:
+        dept_access = db.execute(
+            select(UserRoleAssignment)
+            .join(
+                RolePermission,
+                (RolePermission.role_id == UserRoleAssignment.role_id)
+                & (RolePermission.role_type == UserRoleAssignment.role_type),
+            )
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .where(
+                UserRoleAssignment.user_id == current_user.user_id,
+                UserRoleAssignment.dept_id == position.dept_id,
+                UserRoleAssignment.role_type == RoleType.APP,
+                UserRoleAssignment.status == AssignmentStatus.ACTIVE,
+                Permission.slug == permission_slug,
+            )
+        ).first()
+
+    if not (org_access or dept_access):
+        raise AuthorizationError(
+            f"Not authorized to manage position '{position.slug}' in organization '{position.org_id}'"
+        )
+
+
 def get_department_with_access(
     dept_id_or_slug: str,
     org: Organization = Depends(get_organization_with_access),
@@ -537,3 +637,47 @@ def get_department_with_delete_access(
     dept = _resolve_department(dept_id_or_slug, org, db, allow_deleted=True)
     _check_dept_scoped_permission(current_user, dept, "departments:delete", db)
     return dept
+
+
+def get_position_with_delete_access(
+    position_id_or_slug: str,
+    org: Organization = Depends(get_organization_with_access),
+    current_user: AuthContext = Depends(require_permission("positions:delete")),
+    db: Session = Depends(get_db),
+) -> Position:
+    """Resolve position by ID/slug within org AND enforce delete access.
+
+    Used by DELETE /organizations/{org}/positions/{position} for tenancy RBAC.
+
+    Access rules:
+    - Requires org access (organizations:read) plus positions:delete permission.
+    - Org admins (org-scoped) or dept admins (dept-scoped) are allowed.
+    - Superusers bypass scope checks.
+
+    ``allow_deleted=True`` so the route can return 409 for already-deleted positions.
+    """
+    position = _resolve_position(position_id_or_slug, org, db, allow_deleted=True)
+    _check_position_access(current_user, position, db, "positions:delete")
+    return position
+
+
+def get_position_with_update_access(
+    position_id_or_slug: str,
+    org: Organization = Depends(get_organization_with_access),
+    current_user: AuthContext = Depends(require_permission("positions:update")),
+    db: Session = Depends(get_db),
+) -> Position:
+    """Resolve position by ID/slug within org AND enforce update access.
+
+    Used by PATCH /organizations/{org}/positions/{position} for tenancy RBAC.
+
+    Access rules:
+    - Requires org access (organizations:read) plus positions:update permission.
+    - Org admins (org-scoped) or dept admins (dept-scoped) are allowed.
+    - Superusers bypass scope checks.
+
+    Soft-deleted positions are not editable.
+    """
+    position = _resolve_position(position_id_or_slug, org, db, allow_deleted=False)
+    _check_position_access(current_user, position, db, "positions:update")
+    return position

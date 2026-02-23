@@ -9,6 +9,11 @@ Endpoints:
 Positions represent open roles within an organization (and optionally a
 specific department). They follow a DRAFT → PUBLISHED → DELETED lifecycle.
 
+Endpoints:
+- GET    /organizations/{org_id_or_slug}/positions/ — list positions
+- POST   /organizations/{org_id_or_slug}/positions/ — create a new position
+- DELETE /organizations/{org_id_or_slug}/positions/{position_id_or_slug} — soft-delete
+
 Access model (create):
 - ``positions:create`` permission required.
 - Org admins: can create positions for any department in their org, or org-wide.
@@ -29,6 +34,8 @@ from api.auth.dependencies import (
     get_db,
     get_organization_with_create_position_access,
     get_organization_with_positions_access,
+    get_position_with_delete_access,
+    get_position_with_update_access,
     require_permission,
 )
 from api.auth.schemas import AuthContext
@@ -36,9 +43,11 @@ from api.exceptions import AuthorizationError
 from api.pagination import get_cursor_params, paginate_positions
 from api.schemas import (
     CreatePositionRequest,
+    PositionDeletedResponse,
     PositionFilterParams,
     PositionResponse,
     PositionsCursorPage,
+    UpdatePositionRequest,
     get_position_filters,
 )
 from db.models import Department, Organization
@@ -293,3 +302,228 @@ def create_position(
     db.refresh(position)
 
     return PositionResponse.model_validate(position, from_attributes=True)
+
+
+@router.patch(
+    "/{position_id_or_slug}",
+    summary="Partially update a position",
+    response_model=PositionResponse,
+)
+def update_position(
+    body: UpdatePositionRequest,
+    position: Position = Depends(get_position_with_update_access),
+    auth: AuthContext = Depends(require_permission("positions:update")),
+    db: Session = Depends(get_db),
+) -> PositionResponse:
+    """Partially update a position's properties.
+
+    Only fields present in the request body are applied (true PATCH semantics).
+    Null values are meaningful for nullable fields; slug/status cannot be null.
+
+    DELETED status is rejected — use the DELETE endpoint instead.
+    """
+    sent_fields = body.model_fields_set
+    if not sent_fields:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No fields provided for update",
+        )
+
+    # Slug uniqueness (global) if changing slug
+    if "slug" in sent_fields:
+        if body.slug is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="slug cannot be null",
+            )
+        if body.slug != position.slug:
+            existing = db.execute(
+                select(Position).where(Position.slug == body.slug)
+            ).scalar_one_or_none()
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Position with slug '{body.slug}' already exists",
+                )
+            position.slug = body.slug
+
+    # Resolve dept if provided; null means org-wide
+    if "dept_id_or_slug" in sent_fields:
+        dept_id: uuid.UUID | None = None
+        dept: Department | None = None
+        if body.dept_id_or_slug is not None:
+            try:
+                dept_uuid = uuid.UUID(body.dept_id_or_slug)
+                dept = db.execute(
+                    select(Department).where(
+                        Department.id == dept_uuid,
+                        Department.org_id == position.org_id,
+                    )
+                ).scalar_one_or_none()
+            except ValueError:
+                dept = db.execute(
+                    select(Department).where(
+                        Department.slug == body.dept_id_or_slug,
+                        Department.org_id == position.org_id,
+                    )
+                ).scalar_one_or_none()
+
+            if not dept:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=(
+                        f"Department '{body.dept_id_or_slug}' not found in organization "
+                        f"'{position.organization.slug}'"
+                    ),
+                )
+            if dept.deleted_at is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Department '{dept.slug}' is deleted; cannot assign this position",
+                )
+            dept_id = dept.id
+
+        # Dept-admin scope guard
+        if not auth.is_system_admin and "org_admin" not in auth.roles:
+            org_level_access = db.execute(
+                select(UserRoleAssignment).where(
+                    UserRoleAssignment.user_id == auth.user_id,
+                    UserRoleAssignment.org_id == position.org_id,
+                    UserRoleAssignment.dept_id.is_(None),
+                )
+            ).first()
+
+            if not org_level_access:
+                dept_assignments = db.scalars(
+                    select(UserRoleAssignment).where(
+                        UserRoleAssignment.user_id == auth.user_id,
+                        UserRoleAssignment.org_id == position.org_id,
+                        UserRoleAssignment.dept_id.isnot(None),
+                    )
+                ).all()
+                allowed_dept_ids = {a.dept_id for a in dept_assignments}
+
+                if dept_id is None:
+                    raise AuthorizationError(
+                        "Department admins cannot assign org-wide positions; "
+                        "specify a dept_id_or_slug matching your department"
+                    )
+                if dept_id not in allowed_dept_ids:
+                    raise AuthorizationError(
+                        f"Not authorized to update positions in department '{dept_id}'"
+                    )
+
+        position.dept_id = dept_id
+
+    # Resolve role if provided
+    if "role_id_or_slug" in sent_fields:
+        if body.role_id_or_slug is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="role_id_or_slug cannot be null",
+            )
+        role: Role | None = None
+        try:
+            role_uuid = uuid.UUID(body.role_id_or_slug)
+            role = db.get(Role, role_uuid)
+        except ValueError:
+            role = db.execute(
+                select(Role).where(Role.slug == body.role_id_or_slug)
+            ).scalar_one_or_none()
+
+        if not role:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Role '{body.role_id_or_slug}' not found",
+            )
+        position.role_id = role.id
+
+    if "description" in sent_fields:
+        position.description = body.description
+
+    if "status" in sent_fields:
+        if body.status is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="status cannot be null",
+            )
+        if body.status == PositionStatus.DELETED:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Cannot set status to DELETED via PATCH; use the DELETE endpoint",
+            )
+        if body.status != position.status:
+            position.status = body.status
+            if body.status == PositionStatus.PUBLISHED and position.published_at is None:
+                position.published_at = datetime.now(timezone.utc)
+            if body.status == PositionStatus.DRAFT:
+                position.published_at = None
+
+    # If dept or role changed, ensure the org/dept/role triplet stays unique
+    if {"dept_id_or_slug", "role_id_or_slug"}.intersection(sent_fields):
+        dept_clause = (
+            Position.dept_id.is_(None)
+            if position.dept_id is None
+            else Position.dept_id == position.dept_id
+        )
+        existing_triplet = db.execute(
+            select(Position).where(
+                Position.org_id == position.org_id,
+                dept_clause,
+                Position.role_id == position.role_id,
+                Position.id != position.id,
+            )
+        ).scalar_one_or_none()
+        if existing_triplet:
+            dept_label = str(position.dept_id) if position.dept_id else "org-wide"
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"A position for role '{position.role_id}' already exists in "
+                    f"org '{position.organization.slug}' / dept '{dept_label}'"
+                ),
+            )
+
+    position.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(position)
+
+    return PositionResponse.model_validate(position, from_attributes=True)
+
+
+@router.delete(
+    "/{position_id_or_slug}",
+    summary="Soft-delete a position",
+    response_model=PositionDeletedResponse,
+)
+def delete_position(
+    position: Position = Depends(get_position_with_delete_access),
+    db: Session = Depends(get_db),
+) -> PositionDeletedResponse:
+    """Soft-delete a position (sets status=DELETED and deleted_at timestamp).
+
+    Idempotency: returns 409 if the position is already soft-deleted.
+    The position record is preserved for auditing; hard-delete is not supported.
+
+    Access requires org_admin (org-level) OR dept_admin (dept-level) permissions.
+    """
+    if position.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Position '{position.slug}' is already deleted",
+        )
+
+    now = datetime.now(timezone.utc)
+    position.status = PositionStatus.DELETED
+    position.deleted_at = now
+
+    db.commit()
+    db.refresh(position)
+
+    return PositionDeletedResponse(
+        id=position.id,
+        slug=position.slug,
+        org_id=position.org_id,
+        status=position.status,
+        deleted_at=position.deleted_at,
+    )

@@ -44,10 +44,14 @@ from api.schemas import (
     PositionFilterParams,
     PositionListItem,
     PositionsCursorPage,
+    RoleFilterParams,
+    RoleListItem,
+    RolesCursorPage,
 )
 from db.models.department import Department
 from db.models.organization import Organization
 from db.models.position import Position
+from db.models.role import Role
 
 
 def _escape_like(term: str) -> str:
@@ -370,3 +374,84 @@ def paginate_positions(
     ]
 
     return PositionsCursorPage(items=items, next_cursor=next_cursor, limit=limit)
+
+
+def paginate_roles(
+    db: Session,
+    cursor: str | None = None,
+    limit: int = 20,
+    *,
+    filters: RoleFilterParams | None = None,
+    include_deleted: bool = False,
+) -> RolesCursorPage:
+    """Fetch paginated global roles using cursor.
+
+    Only returns roles where ``global_role=True`` AND ``org_id IS NULL`` — these
+    are the platform-wide defaults usable by every organization. Org-specific
+    roles (``org_id`` set) are always excluded regardless of caller permissions.
+
+    - Soft-delete filter: ``include_deleted=False`` (default) hides DELETED roles;
+      ``True`` (system admins) includes them. Explicit status filters override
+      this when DELETED is explicitly requested.
+    - Status filter: narrows to specific RoleStatus values when provided.
+    - Search filter: case-insensitive contains-match on slug and description.
+      User-supplied wildcards are escaped for safety.
+    - ORDER BY id (PK index ensures efficient range scan, no offset)
+    - Fetches limit+1 to peek for next_cursor (standard technique)
+    - Maps ORM to RoleListItem via Pydantic (from_attributes=True)
+    """
+    from db.models.role import RoleStatus  # local import avoids top-level circular
+
+    # Base query: global roles only (no org assignment), sorted by ID
+    query = (
+        select(Role)
+        .where(
+            Role.global_role.is_(True),
+            Role.org_id.is_(None),
+        )
+        .order_by(Role.id)
+    )
+
+    # ── Status filter ──────────────────────────────────────────────────────
+    if filters and filters.status:
+        # Explicit status filter — caller controls which statuses to include.
+        query = query.where(Role.status.in_(filters.status))
+    elif not include_deleted:
+        # Default: hide DELETED roles from non-system-admin callers.
+        query = query.where(Role.status != RoleStatus.DELETED)
+
+    # ── Search filter ──────────────────────────────────────────────────────
+    if filters and filters.search:
+        safe_term = _escape_like(filters.search)
+        query = query.where(
+            or_(
+                Role.slug.ilike(f"%{safe_term}%"),
+                Role.description.ilike(f"%{safe_term}%"),
+            )
+        )
+
+    # ── Cursor filter ──────────────────────────────────────────────────────
+    if cursor:
+        try:
+            last_id = decode_cursor(cursor)
+        except ValueError as e:
+            raise ValueError("Invalid pagination cursor") from e
+        query = query.where(Role.id > last_id)
+
+    # +1 peek for has_next (don't expose to client)
+    results = db.scalars(query.limit(limit + 1)).all()
+    has_next = len(results) > limit
+    page_roles = results[:limit]
+
+    # Compute next_cursor from last item in page (if there is a next page)
+    next_cursor = (
+        encode_cursor(page_roles[-1].id) if has_next and page_roles else None
+    )
+
+    # Convert ORM instances to Pydantic schema items (v2, from_attributes)
+    items = [
+        RoleListItem.model_validate(role, from_attributes=True)
+        for role in page_roles
+    ]
+
+    return RolesCursorPage(items=items, next_cursor=next_cursor, limit=limit)

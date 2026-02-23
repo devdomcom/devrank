@@ -6,10 +6,13 @@ from .health import router as infra_health_router
 from .organizations import router as organizations_router
 # Positions router (org-scoped; open positions list with dept filtering)
 from .positions import router as positions_router
+# Global roles router (platform-wide default roles; no org assignment)
+from .roles import router as global_roles_router
 
 __all__ = [
     "auth_router",
     "departments_router",
+    "global_roles_router",
     "infra_health_router",
     "organizations_router",
     "positions_router",
