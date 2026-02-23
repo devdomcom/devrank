@@ -558,6 +558,9 @@ def upgrade() -> None:
     )
     op.create_index("ix_positions_org_id", "positions", ["org_id"])
     op.create_index("ix_positions_slug", "positions", ["slug"], unique=True)
+    # dept_id index: mirrors Position.dept_id(index=True) in ORM model; supports
+    # efficient department-filter queries in the list-positions endpoint.
+    op.create_index("ix_positions_dept_id", "positions", ["dept_id"])
 
     # Evaluations (results for assessment)
     op.create_table(

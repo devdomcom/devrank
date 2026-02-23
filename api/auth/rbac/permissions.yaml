@@ -46,6 +46,10 @@ permissions:
     description: Designate a department as the org default, transferring the flag from the current default (org admins / superusers only)
   departments:delete:
     description: Soft-delete a department (org admins / dept admins / superusers)
+  positions:list:
+    description: List positions within an organization (org members / dept members / superusers)
+  positions:create:
+    description: Create a new position within an organization (org admins / dept admins / superusers)
 
 roles:
   # ── System roles (platform-wide, not org-scoped) ────────────────────
@@ -76,6 +80,7 @@ roles:
       - roles:read
       - departments:list
       - departments:read
+      - positions:list
 
   org_admin:
     type: app
@@ -92,6 +97,8 @@ roles:
       - departments:set-default
       - departments:update
       - departments:delete
+      - positions:list
+      - positions:create
 
   dept_admin:
     type: app
@@ -102,3 +109,5 @@ roles:
       - departments:read
       - departments:update
       - departments:delete
+      - positions:list
+      - positions:create

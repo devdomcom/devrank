@@ -22,6 +22,7 @@ Example usage in router:
     params: tuple[str | None, int] = Depends(get_cursor_params)
     page = paginate_organizations(db, *params, filters=filters, include_deleted=auth.is_system_admin)
     page = paginate_departments(db, org_id, *params, filters=filters, include_deleted=auth.is_system_admin)
+    page = paginate_positions(db, org_id, *params, filters=filters, include_deleted=auth.is_system_admin)
 """
 from __future__ import annotations
 
@@ -40,9 +41,13 @@ from api.schemas import (
     OrganizationFilterParams,
     OrganizationListItem,
     OrganizationsCursorPage,
+    PositionFilterParams,
+    PositionListItem,
+    PositionsCursorPage,
 )
 from db.models.department import Department
 from db.models.organization import Organization
+from db.models.position import Position
 
 
 def _escape_like(term: str) -> str:
@@ -248,3 +253,120 @@ def paginate_departments(
     ]
 
     return DepartmentsCursorPage(items=items, next_cursor=next_cursor, limit=limit)
+
+
+def paginate_positions(
+    db: Session,
+    org_id: uuid.UUID,
+    cursor: str | None = None,
+    limit: int = 20,
+    *,
+    filters: PositionFilterParams | None = None,
+    include_deleted: bool = False,
+) -> PositionsCursorPage:
+    """Fetch paginated open (PUBLISHED) positions for an organization using cursor.
+
+    - Scoped to ``org_id`` (FK filter; enforces tenancy at query level).
+    - Default behaviour: only PUBLISHED positions are returned (the "open"
+      positions visible to external callers). System admins can override via
+      explicit ``status`` filters or by passing ``include_deleted=True``.
+    - Soft-delete filter: ``include_deleted=False`` (default) hides deleted
+      positions; ``True`` (system admins) includes them unless an explicit
+      status filter is provided.
+    - Department filter: ``dept_ids`` and/or ``dept_slugs`` narrow results to
+      positions whose ``dept_id`` matches. Slugs are resolved to UUIDs scoped
+      to ``org_id`` at query time. Both lists are OR-combined.
+    - Search filter: case-insensitive contains-match on slug and description.
+      User-supplied wildcards are escaped for safety.
+    - ORDER BY id (PK index ensures efficient range scan, no offset)
+    - Fetches limit+1 to peek for next_cursor (standard technique)
+    - Maps ORM to PositionListItem via Pydantic (from_attributes=True)
+
+    Enforces tenancy patterns; positions are always scoped to an org.
+    """
+    # Base query: scoped to org, sorted by ID for cursor stability
+    query = (
+        select(Position)
+        .where(Position.org_id == org_id)
+        .order_by(Position.id)
+    )
+
+    # ── Status filter ──────────────────────────────────────────────────────
+    if filters and filters.status:
+        # Explicit status filter overrides the default PUBLISHED-only behaviour.
+        query = query.where(Position.status.in_(filters.status))
+    elif include_deleted:
+        # System admin with no explicit filter: show PUBLISHED + DELETED so
+        # admins can audit soft-deleted positions without forcing a ?status= param.
+        from db.models.position import PositionStatus  # local import avoids top-level circular
+        query = query.where(
+            Position.status.in_([PositionStatus.PUBLISHED, PositionStatus.DELETED])
+        )
+    else:
+        # Default (non-admin, no explicit filter): only PUBLISHED (open) positions.
+        # This is the "open positions" view for external callers.
+        from db.models.position import PositionStatus  # local import avoids top-level circular
+        query = query.where(Position.status == PositionStatus.PUBLISHED)
+
+    # ── Department filter ──────────────────────────────────────────────────
+    # Resolve the mixed depts list (UUIDs or slugs) to UUIDs scoped to org.
+    resolved_dept_ids: list[uuid.UUID] = []
+
+    if filters and filters.depts:
+        dept_slugs: list[str] = []
+        for entry in filters.depts:
+            try:
+                resolved_dept_ids.append(uuid.UUID(entry))
+            except (ValueError, TypeError):
+                if entry:
+                    dept_slugs.append(entry)
+
+        if dept_slugs:
+            slug_rows = db.execute(
+                select(Department.id).where(
+                    Department.org_id == org_id,
+                    Department.slug.in_(dept_slugs),
+                )
+            ).scalars().all()
+            resolved_dept_ids.extend(slug_rows)
+
+    if resolved_dept_ids:
+        # Deduplicate to avoid redundant IN values
+        unique_dept_ids = list(dict.fromkeys(resolved_dept_ids))
+        query = query.where(Position.dept_id.in_(unique_dept_ids))
+
+    # ── Search filter ──────────────────────────────────────────────────────
+    if filters and filters.search:
+        safe_term = _escape_like(filters.search)
+        query = query.where(
+            or_(
+                Position.slug.ilike(f"%{safe_term}%"),
+                Position.description.ilike(f"%{safe_term}%"),
+            )
+        )
+
+    # ── Cursor filter ──────────────────────────────────────────────────────
+    if cursor:
+        try:
+            last_id = decode_cursor(cursor)
+        except ValueError as e:
+            raise ValueError("Invalid pagination cursor") from e
+        query = query.where(Position.id > last_id)
+
+    # +1 peek for has_next (don't expose to client)
+    results = db.scalars(query.limit(limit + 1)).all()
+    has_next = len(results) > limit
+    page_positions = results[:limit]
+
+    # Compute next_cursor from last item in page (if exists next)
+    next_cursor = (
+        encode_cursor(page_positions[-1].id) if has_next and page_positions else None
+    )
+
+    # Convert ORM instances to Pydantic schema items (v2, from_attributes)
+    items = [
+        PositionListItem.model_validate(pos, from_attributes=True)
+        for pos in page_positions
+    ]
+
+    return PositionsCursorPage(items=items, next_cursor=next_cursor, limit=limit)

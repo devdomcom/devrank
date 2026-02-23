@@ -2,15 +2,18 @@
 """Generic sample data loader for dev/testing (extensible artifacts).
 
 Loads parametrized sample data into DB for objects like organizations, roles,
-assessments, etc. Organizations is the first implemented artifact (self-contained,
-varied statuses/timestamps for tenancy/endpoint testing).
+assessments, positions, etc. Organizations is the first implemented artifact
+(self-contained, varied statuses/timestamps for tenancy/endpoint testing).
 
 CLI:
-    # Default: seed organizations (variations)
+    # Default: seed all registered artifacts
     PYTHONPATH=. python scripts/load_sample_data.py
 
     # Specific objects
     PYTHONPATH=. python scripts/load_sample_data.py --objects organizations,roles
+
+    # Include positions (requires orgs + depts + domain roles to exist first)
+    PYTHONPATH=. python scripts/load_sample_data.py --objects organizations,departments,positions
 
     # Drop first (artifact-specific; cascades where defined)
     PYTHONPATH=. python scripts/load_sample_data.py --drop --objects organizations
@@ -39,6 +42,7 @@ from sqlalchemy.orm import Session
 from db.engine import SyncSessionLocal
 # Core models for seedable artifacts (start with orgs; extend registry)
 from db.models import Department, DepartmentStatus, Organization, OrganizationStatus
+from db.models.position import PositionStatus
 # Import others on-demand in seeders (avoid heavy if unused)
 
 # Registry for artifacts: artifact -> (seeder_func, drop_func, sample_data_key)
@@ -118,7 +122,7 @@ def _load_samples_for_artifact(
         with open(config_path) as f:
             data = yaml.safe_load(f) or {}
         samples = data.get(artifact, defaults)
-        # Parse dates
+        # Parse dates (all timestamp fields used across all artifact types)
         for sample in samples:
             for date_key in [
                 "created_at",
@@ -127,6 +131,7 @@ def _load_samples_for_artifact(
                 "deactivated_at",
                 "banned_at",
                 "deleted_at",
+                "published_at",  # positions + roles lifecycle
             ]:
                 sample[date_key] = _parse_datetime(sample.get(date_key))
         return samples
@@ -398,6 +403,513 @@ SEED_REGISTRY["roles"] = (seed_roles, drop_roles, "roles")
 
 # TODO: Add 'assessments' etc. (handle FKs e.g., User FK via prior admin seed; registry order)
 # Assessments stub would require created_by=admin_user.id for FK.
+
+
+# ── Positions seeder (org+dept-scoped; FK to orgs/depts/domain roles) ────────
+#
+# Positions represent open roles in an org/department (e.g. "Senior Engineer
+# in Engineering"). They have a lifecycle: DRAFT → PUBLISHED → DELETED.
+#
+# FK chain:  Position.org_id  → organizations.id
+#            Position.dept_id → departments.id   (nullable; org-wide if NULL)
+#            Position.role_id → roles.id          (domain role, not RBAC role)
+#
+# Strategy: seed a small set of domain Role records (global_role=True, no org
+# FK) so positions can reference them without depending on a specific user or
+# org. These "domain roles" are distinct from RBAC SystemRole/AppRole — they
+# live in the `roles` table and describe the *job role* a position is for
+# (e.g., "Senior Engineer", "Data Scientist").
+#
+# Uniqueness: the DB enforces uq_org_dept_role (org_id, dept_id, role_id).
+# Samples are designed so each (org, dept, role) triplet is unique.
+#
+# Variety coverage:
+#   - All three statuses: DRAFT, PUBLISHED, DELETED
+#   - Org-wide positions (dept_id=NULL) and dept-scoped positions
+#   - Multiple orgs (sample-acme-corp, sample-beta-inc)
+#   - Multiple departments per org (engineering, product, data-science)
+#   - Multiple role types (senior-engineer, staff-engineer, engineering-manager,
+#     product-manager, data-scientist, data-engineer, tech-lead, devops-engineer)
+#   - Realistic descriptions reflecting actual hiring contexts
+
+# Domain roles seeded as prerequisites for positions.
+# global_role=True, org_id=None → usable across all orgs.
+_DOMAIN_ROLE_SAMPLES: list[dict[str, Any]] = [
+    {
+        "slug": "sample-role-senior-engineer",
+        "description": "Senior Software Engineer — IC track, 5+ years",
+        "config": {"level": "senior", "track": "ic"},
+    },
+    {
+        "slug": "sample-role-staff-engineer",
+        "description": "Staff Engineer — IC track, 8+ years, cross-team scope",
+        "config": {"level": "staff", "track": "ic"},
+    },
+    {
+        "slug": "sample-role-engineering-manager",
+        "description": "Engineering Manager — people manager, 2–8 direct reports",
+        "config": {"level": "manager", "track": "management"},
+    },
+    {
+        "slug": "sample-role-product-manager",
+        "description": "Product Manager — roadmap ownership, stakeholder alignment",
+        "config": {"level": "mid", "track": "product"},
+    },
+    {
+        "slug": "sample-role-data-scientist",
+        "description": "Data Scientist — ML modelling, experimentation",
+        "config": {"level": "mid", "track": "data"},
+    },
+    {
+        "slug": "sample-role-data-engineer",
+        "description": "Data Engineer — pipelines, warehouse, data infra",
+        "config": {"level": "mid", "track": "data"},
+    },
+    {
+        "slug": "sample-role-tech-lead",
+        "description": "Tech Lead — technical direction for a squad",
+        "config": {"level": "lead", "track": "ic"},
+    },
+    {
+        "slug": "sample-role-devops-engineer",
+        "description": "DevOps / Platform Engineer — CI/CD, infra, SRE",
+        "config": {"level": "mid", "track": "platform"},
+    },
+]
+
+
+def _ensure_domain_roles(db: Session) -> dict[str, Any]:
+    """Idempotently create domain Role records needed by position samples.
+
+    Returns a slug→Role mapping for FK resolution.
+    Domain roles are global (global_role=True, org_id=None, creator=None).
+    Uses RoleStatus.PUBLISHED so they are immediately usable.
+    """
+    from db.models import Role, RoleStatus
+
+    role_map: dict[str, Any] = {}
+    for spec in _DOMAIN_ROLE_SAMPLES:
+        slug = spec["slug"]
+        role = db.execute(
+            select(Role).where(Role.slug == slug)
+        ).scalar_one_or_none()
+        if not role:
+            role = Role(
+                slug=slug,
+                description=spec["description"],
+                config=spec["config"],
+                global_role=True,
+                status=RoleStatus.PUBLISHED,
+                published_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                updated_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            )
+            db.add(role)
+            db.flush()
+            db.commit()
+            db.refresh(role)
+            print(f"  Created domain role: {slug}")
+        role_map[slug] = role
+    return role_map
+
+
+# Position sample definitions.
+# Fields:
+#   slug        — globally unique (positions.slug UNIQUE constraint)
+#   org_slug    — resolved to org_id at seed time
+#   dept_slug   — resolved to dept_id at seed time (None → org-wide position)
+#   role_slug   — resolved to role_id via _ensure_domain_roles()
+#   description — human-readable context
+#   status      — DRAFT | PUBLISHED | DELETED
+#   created_at, published_at, deleted_at — lifecycle timestamps
+#
+# The set deliberately covers:
+#   ✓ All three statuses (DRAFT, PUBLISHED, DELETED)
+#   ✓ Org-wide positions (dept_slug=None)
+#   ✓ Dept-scoped positions (engineering, product, data-science)
+#   ✓ Two orgs (acme-corp active, beta-inc deactivated)
+#   ✓ Eight distinct role types
+#   ✓ Realistic descriptions
+POSITION_DEFAULT_SAMPLES: list[dict[str, Any]] = [
+    # ── Acme Corp / Engineering dept ─────────────────────────────────────
+    {
+        "slug": "sample-acme-eng-senior-engineer",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": "sample-engineering",
+        "role_slug": "sample-role-senior-engineer",
+        "description": (
+            "Senior Software Engineer for the core platform team. "
+            "Own backend services, mentor juniors, drive technical design."
+        ),
+        "status": PositionStatus.PUBLISHED,
+        "created_at": datetime(2025, 2, 1, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 2, 5, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-acme-eng-staff-engineer",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": "sample-engineering",
+        "role_slug": "sample-role-staff-engineer",
+        "description": (
+            "Staff Engineer — cross-team technical leadership, architecture "
+            "decisions, and engineering excellence initiatives."
+        ),
+        "status": PositionStatus.PUBLISHED,
+        "created_at": datetime(2025, 2, 10, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 2, 12, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-acme-eng-tech-lead",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": "sample-engineering",
+        "role_slug": "sample-role-tech-lead",
+        "description": (
+            "Tech Lead for the growth squad. Drive sprint planning, "
+            "code quality, and delivery velocity."
+        ),
+        "status": PositionStatus.DRAFT,
+        "created_at": datetime(2025, 3, 1, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-acme-eng-devops-engineer",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": "sample-engineering",
+        "role_slug": "sample-role-devops-engineer",
+        "description": (
+            "DevOps Engineer — own CI/CD pipelines, Kubernetes clusters, "
+            "and on-call runbooks."
+        ),
+        "status": PositionStatus.PUBLISHED,
+        "created_at": datetime(2025, 1, 20, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 1, 22, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-acme-eng-eng-manager",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": "sample-engineering",
+        "role_slug": "sample-role-engineering-manager",
+        "description": (
+            "Engineering Manager for the platform pod. "
+            "Hire, grow, and retain a team of 4–6 engineers."
+        ),
+        "status": PositionStatus.DELETED,
+        "created_at": datetime(2024, 11, 1, tzinfo=timezone.utc),
+        "published_at": datetime(2024, 11, 5, tzinfo=timezone.utc),
+        "deleted_at": datetime(2025, 1, 10, tzinfo=timezone.utc),
+    },
+    # ── Acme Corp / Product dept ──────────────────────────────────────────
+    {
+        "slug": "sample-acme-product-pm",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": "sample-product",
+        "role_slug": "sample-role-product-manager",
+        "description": (
+            "Product Manager for developer tooling. Define the roadmap, "
+            "work closely with engineering and design."
+        ),
+        "status": PositionStatus.PUBLISHED,
+        "created_at": datetime(2025, 2, 15, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 2, 18, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-acme-product-tech-lead",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": "sample-product",
+        "role_slug": "sample-role-tech-lead",
+        "description": (
+            "Tech Lead embedded in the product team — bridge between "
+            "product vision and engineering execution."
+        ),
+        "status": PositionStatus.DRAFT,
+        "created_at": datetime(2025, 3, 10, tzinfo=timezone.utc),
+    },
+    # ── Acme Corp / Data Science dept ─────────────────────────────────────
+    {
+        "slug": "sample-acme-ds-data-scientist",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": "sample-data-science",
+        "role_slug": "sample-role-data-scientist",
+        "description": (
+            "Data Scientist — build recommendation models and A/B test "
+            "frameworks for the growth team."
+        ),
+        "status": PositionStatus.PUBLISHED,
+        "created_at": datetime(2025, 2, 20, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 2, 22, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-acme-ds-data-engineer",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": "sample-data-science",
+        "role_slug": "sample-role-data-engineer",
+        "description": (
+            "Data Engineer — design and maintain the event streaming "
+            "pipeline and data warehouse."
+        ),
+        "status": PositionStatus.PUBLISHED,
+        "created_at": datetime(2025, 2, 25, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 2, 28, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-acme-ds-staff-engineer",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": "sample-data-science",
+        "role_slug": "sample-role-staff-engineer",
+        "description": (
+            "Staff Engineer in Data Science — define the technical "
+            "direction for ML infrastructure and data platform."
+        ),
+        "status": PositionStatus.DRAFT,
+        "created_at": datetime(2025, 3, 5, tzinfo=timezone.utc),
+    },
+    # ── Acme Corp / Org-wide (no department) ─────────────────────────────
+    {
+        "slug": "sample-acme-orgwide-senior-engineer",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": None,  # org-wide — not tied to a specific department
+        "role_slug": "sample-role-senior-engineer",
+        "description": (
+            "Senior Engineer — org-wide open position. "
+            "Team placement determined after interviews."
+        ),
+        "status": PositionStatus.PUBLISHED,
+        "created_at": datetime(2025, 3, 1, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 3, 3, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-acme-orgwide-eng-manager",
+        "org_slug": "sample-acme-corp",
+        "dept_slug": None,
+        "role_slug": "sample-role-engineering-manager",
+        "description": (
+            "Engineering Manager — org-wide search. "
+            "Will lead one of the product engineering squads."
+        ),
+        "status": PositionStatus.DRAFT,
+        "created_at": datetime(2025, 3, 12, tzinfo=timezone.utc),
+    },
+    # ── Beta Inc / Legacy Ops dept ────────────────────────────────────────
+    # Beta Inc is deactivated; positions here exercise cross-status tenancy.
+    {
+        "slug": "sample-beta-legacyops-devops-engineer",
+        "org_slug": "sample-beta-inc",
+        "dept_slug": "sample-legacy-ops",
+        "role_slug": "sample-role-devops-engineer",
+        "description": (
+            "DevOps Engineer for legacy infrastructure migration. "
+            "Short-term contract role."
+        ),
+        "status": PositionStatus.PUBLISHED,
+        "created_at": datetime(2024, 8, 1, tzinfo=timezone.utc),
+        "published_at": datetime(2024, 8, 5, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-beta-legacyops-tech-lead",
+        "org_slug": "sample-beta-inc",
+        "dept_slug": "sample-legacy-ops",
+        "role_slug": "sample-role-tech-lead",
+        "description": (
+            "Tech Lead for the legacy ops migration project. "
+            "Role closed after project wrap-up."
+        ),
+        "status": PositionStatus.DELETED,
+        "created_at": datetime(2024, 7, 1, tzinfo=timezone.utc),
+        "published_at": datetime(2024, 7, 10, tzinfo=timezone.utc),
+        "deleted_at": datetime(2024, 12, 31, tzinfo=timezone.utc),
+    },
+    # ── Beta Inc / Org-wide ───────────────────────────────────────────────
+    {
+        "slug": "sample-beta-orgwide-senior-engineer",
+        "org_slug": "sample-beta-inc",
+        "dept_slug": None,
+        "role_slug": "sample-role-senior-engineer",
+        "description": (
+            "Senior Engineer — org-wide position at Beta Inc. "
+            "On hold pending reactivation."
+        ),
+        "status": PositionStatus.DRAFT,
+        "created_at": datetime(2025, 1, 5, tzinfo=timezone.utc),
+    },
+]
+
+_ARTIFACT_DEFAULTS["positions"] = POSITION_DEFAULT_SAMPLES
+
+
+def seed_positions(
+    db: Session, config_path: str | None = None
+) -> int:
+    """Seeder for positions artifact (idempotent, org+dept-scoped).
+
+    Dependency order:
+    1. Ensure domain Role records exist (seeded inline; global_role=True).
+    2. Resolve org by slug → org_id.
+    3. Resolve dept by slug within that org → dept_id (None for org-wide).
+    4. Resolve role by slug → role_id.
+    5. Skip if position slug already exists (global unique).
+    6. Skip if (org_id, dept_id, role_id) triplet already exists (uq_org_dept_role).
+    7. Insert with correct status/timestamps.
+
+    Covers: all three statuses, org-wide + dept-scoped, multiple orgs/depts/roles.
+    """
+    from db.models import Position, PositionStatus
+
+    # Step 1: ensure domain roles exist and build slug→role map
+    print("  Ensuring domain roles exist...")
+    role_map = _ensure_domain_roles(db)
+
+    samples = _load_samples_for_artifact("positions", config_path)
+    created = 0
+
+    for sample in samples:
+        slug = sample["slug"]
+        org_slug = sample.get("org_slug", "")
+        dept_slug = sample.get("dept_slug")  # None = org-wide
+        role_slug = sample.get("role_slug", "")
+
+        # Step 2: resolve org
+        org = db.execute(
+            select(Organization).where(Organization.slug == org_slug)
+        ).scalar_one_or_none()
+        if not org:
+            print(f"  Position '{slug}': parent org '{org_slug}' not found; skipping.")
+            continue
+
+        # Step 3: resolve dept (optional)
+        dept_id = None
+        if dept_slug is not None:
+            from db.models import Department
+            dept = db.execute(
+                select(Department).where(
+                    Department.org_id == org.id,
+                    Department.slug == dept_slug,
+                )
+            ).scalar_one_or_none()
+            if not dept:
+                print(
+                    f"  Position '{slug}': dept '{dept_slug}' not found in org "
+                    f"'{org_slug}'; skipping."
+                )
+                continue
+            dept_id = dept.id
+
+        # Step 4: resolve domain role
+        role = role_map.get(role_slug)
+        if not role:
+            # Fallback: look up in DB (e.g., loaded from YAML with custom slug)
+            from db.models import Role
+            role = db.execute(
+                select(Role).where(Role.slug == role_slug)
+            ).scalar_one_or_none()
+        if not role:
+            print(f"  Position '{slug}': role '{role_slug}' not found; skipping.")
+            continue
+
+        # Step 5: skip if slug already exists (globally unique)
+        existing_by_slug = db.execute(
+            select(Position).where(Position.slug == slug)
+        ).scalar_one_or_none()
+        if existing_by_slug:
+            print(f"  Position '{slug}' exists; skipping.")
+            continue
+
+        # Step 6: skip if (org, dept, role) triplet already exists.
+        # dept_id may be None (org-wide); use is_(None) so SQLAlchemy emits
+        # "IS NULL" instead of "= NULL" (which never matches in SQL).
+        dept_clause = (
+            Position.dept_id.is_(None)
+            if dept_id is None
+            else Position.dept_id == dept_id
+        )
+        existing_triplet = db.execute(
+            select(Position).where(
+                Position.org_id == org.id,
+                dept_clause,
+                Position.role_id == role.id,
+            )
+        ).scalar_one_or_none()
+        if existing_triplet:
+            print(
+                f"  Position triplet (org={org_slug}, dept={dept_slug}, "
+                f"role={role_slug}) already exists; skipping."
+            )
+            continue
+
+        # Step 7: resolve status from string (YAML) or enum (defaults)
+        pos_status = sample.get("status", PositionStatus.DRAFT)
+        if isinstance(pos_status, str):
+            pos_status = PositionStatus(pos_status)
+
+        now = datetime.now(timezone.utc)
+        position = Position(
+            org_id=org.id,
+            dept_id=dept_id,
+            role_id=role.id,
+            slug=slug,
+            description=sample.get("description"),
+            status=pos_status,
+            created_at=sample.get("created_at", now - timedelta(days=30)),
+            updated_at=now,
+            published_at=sample.get("published_at"),
+            deleted_at=sample.get("deleted_at"),
+        )
+        db.add(position)
+        db.flush()
+        db.commit()
+        db.refresh(position)
+
+        dept_label = dept_slug or "(org-wide)"
+        print(
+            f"  Created position: {slug} "
+            f"[org={org_slug}, dept={dept_label}, role={role_slug}, "
+            f"status={position.status.value}]"
+        )
+        created += 1
+
+    return created
+
+
+def drop_positions(
+    db: Session, slug_prefix: str = "sample-"
+) -> int:
+    """Dropper for positions (targeted by slug prefix; graceful).
+
+    Also drops the domain Role records seeded as prerequisites (those with
+    the same prefix), since they are only used by sample positions.
+    """
+    from db.models import Position, Role
+
+    # Drop positions first (FK to roles via RESTRICT; must go before roles)
+    positions = db.scalars(
+        select(Position).where(Position.slug.like(f"{slug_prefix}%"))
+    ).all()
+    pos_count = len(positions)
+    for p in positions:
+        db.delete(p)
+    if pos_count:
+        db.flush()
+
+    # Drop domain roles seeded by this script
+    domain_roles = db.scalars(
+        select(Role).where(Role.slug.like(f"{slug_prefix}role-%"))
+    ).all()
+    role_count = len(domain_roles)
+    for r in domain_roles:
+        db.delete(r)
+
+    db.commit()
+
+    if pos_count == 0 and role_count == 0:
+        print(f"No sample positions or domain roles (prefix '{slug_prefix}') to drop.")
+    else:
+        if pos_count:
+            print(f"Dropped {pos_count} positions.")
+        if role_count:
+            print(f"Dropped {role_count} domain roles.")
+    return pos_count
+
+
+# Register positions (after departments; FK order: orgs → depts → positions)
+SEED_REGISTRY["positions"] = (seed_positions, drop_positions, "positions")
 
 
 def load_sample_data(

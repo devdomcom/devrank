@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 # (e.g., impact/api/schemas.py, api/routes/auth.py).
 from db.models.department import DepartmentStatus
 from db.models.organization import OrganizationStatus
+from db.models.position import PositionStatus
 
 
 class HealthResponse(BaseModel):
@@ -396,3 +397,186 @@ class OrganizationCreateResponse(OrganizationResponse):
     """
 
     default_department: DepartmentResponse
+
+
+# ── Position schemas ───────────────────────────────────────────────────────
+
+
+class PositionResponse(BaseModel):
+    """Full detail for a single position (create response / future GET by ID).
+
+    Mirrors all Position model fields for API safety.
+    Returned by POST /organizations/{org}/positions/ on successful creation.
+    """
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    dept_id: uuid.UUID | None = None
+    role_id: uuid.UUID
+    slug: str
+    description: str | None = None
+    status: PositionStatus
+    created_at: datetime
+    updated_at: datetime
+    published_at: datetime | None = None
+    deleted_at: datetime | None = None
+
+
+class CreatePositionRequest(BaseModel):
+    """Request body for POST /organizations/{org}/positions/.
+
+    Creates a new position within an organization. The slug must be globally
+    unique (positions.slug has a UNIQUE constraint). The (org_id, dept_id,
+    role_id) triplet must also be unique (enforced by uq_org_dept_role).
+
+    ``dept_id_or_slug`` is optional — omit or set to null for an org-wide
+    position not tied to a specific department. When provided it must resolve
+    to a department in the same organization.
+
+    ``role_id_or_slug`` must resolve to an existing role in the ``roles`` table.
+
+    ``status`` defaults to DRAFT. Pass PUBLISHED to immediately open the
+    position (sets published_at to the current timestamp server-side).
+    DELETED is not accepted on creation — use a future DELETE endpoint instead.
+    """
+
+    slug: str = Field(
+        ...,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+        description="URL-safe lowercase slug (globally unique, e.g. 'acme-senior-eng-2025')",
+        examples=["acme-senior-eng-2025"],
+    )
+    role_id_or_slug: str = Field(
+        ...,
+        description=(
+            "Role identifier or slug for the domain role this position is for. "
+            "Examples: '9f9a4c2c-...' or 'senior-engineer'."
+        ),
+        examples=["9f9a4c2c-0e53-4a0f-9a3b-1c1d2e3f4a5b", "senior-engineer"],
+    )
+    dept_id_or_slug: str | None = Field(
+        None,
+        description=(
+            "Department identifier or slug within the organization. "
+            "Omit or null for an org-wide position."
+        ),
+        examples=["7e61b0b1-3c52-4bb4-8b88-4b6e21e25a5e", "engineering"],
+    )
+    description: str | None = Field(None, max_length=500)
+    status: PositionStatus = Field(
+        PositionStatus.DRAFT,
+        description=(
+            "Initial lifecycle status. DRAFT (default) or PUBLISHED (opens immediately). "
+            "DELETED is not accepted on creation."
+        ),
+    )
+
+
+class PositionListItem(BaseModel):
+    """Summary view of a position (for list endpoint; excludes heavy rels).
+
+    Mirrors core fields from db/models/position.py (status, timestamps)
+    for API safety. Used in cursor pagination response.
+
+    ``dept_id`` is nullable — positions may be org-wide (no department).
+    ``deleted_at`` is nullable — present only for soft-deleted positions
+    (visible to system admins). Non-deleted positions return ``null``.
+    ``published_at`` is set when the position transitions to PUBLISHED.
+    """
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    dept_id: uuid.UUID | None = None
+    role_id: uuid.UUID
+    slug: str
+    description: str | None = None
+    status: PositionStatus
+    created_at: datetime
+    updated_at: datetime
+    published_at: datetime | None = None
+    deleted_at: datetime | None = None
+
+
+class PositionsCursorPage(BaseModel):
+    """Cursor-paginated response for GET /organizations/{org}/positions/.
+
+    Follows DRY pagination pattern (reusable cursor approach from organizations
+    and departments). Implements opaque cursor best practices (2026 FastAPI):
+    - Base64-encoded ID for security/opacity (prevents enumeration)
+    - ORDER BY id (indexed PK), WHERE id > decoded_cursor
+    - items + next_cursor (None at end); limit in response for client echo
+    - No total_count (avoids expensive COUNT(*) on large tenants)
+    - limit=20 default, <=100 to prevent abuse
+    """
+
+    items: list[PositionListItem]
+    next_cursor: str | None = None
+    limit: int = Field(default=20, le=100, description="Page size")
+
+
+class PositionFilterParams(BaseModel):
+    """Query-parameter filter bag for GET /organizations/{org}/positions/ (extensible).
+
+    Designed for future expansion without breaking the endpoint signature.
+    Supports:
+    - ``status`` — filter by one or more PositionStatus values (repeatable).
+    - ``depts`` — filter by one or more department identifiers or slugs.
+      Each entry can be a UUID or a slug (resolved to UUIDs at query time).
+    - ``search`` — case-insensitive contains-match on slug and description.
+
+    ``depts`` is OR-combined: a position matches if its ``dept_id`` is in the
+    resolved set. All fields optional — omitting them returns all (within
+    visibility rules).
+    """
+
+    status: list[PositionStatus] = Field(default_factory=list)
+    depts: list[str] = Field(default_factory=list)
+    search: str | None = Field(
+        None,
+        description=(
+            "Case-insensitive search term matched against slug and description "
+            "(contains-match on both)."
+        ),
+    )
+
+
+def get_position_filters(
+    status: list[PositionStatus] | None = Query(
+        None,
+        description=(
+            "Filter by position status(es). Repeatable: ?status=PUBLISHED&status=DRAFT. "
+            "Omit to return all statuses visible to the caller."
+        ),
+        examples=["PUBLISHED"],
+    ),
+    depts: list[str] | None = Query(
+        None,
+        description=(
+            "Filter by department identifiers or slugs. Repeatable: "
+            "?depts=<uuid>&depts=engineering. Each entry can be a UUID or a slug."
+        ),
+    ),
+    search: str | None = Query(
+        None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "Search positions by slug or description (contains-match, case-insensitive). "
+            "Example: ?search=senior"
+        ),
+        examples=["senior"],
+    ),
+) -> PositionFilterParams:
+    """FastAPI dependency for position list filters.
+
+    DRY extraction + validation; extensible for future params.
+    Strips whitespace from search to normalize user input.
+    Returns a typed filter bag for the pagination layer.
+    """
+    return PositionFilterParams(
+        status=status or [],
+        depts=depts or [],
+        search=search.strip() if search else None,
+    )

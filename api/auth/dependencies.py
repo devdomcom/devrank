@@ -360,6 +360,57 @@ def get_organization_with_create_dept_access(
     return org
 
 
+def get_organization_with_create_position_access(
+    org_id_or_slug: str,
+    current_user: AuthContext = Depends(require_permission("positions:create")),
+    db: Session = Depends(get_db),
+) -> Organization:
+    """Resolve org by ID/slug AND enforce position-create access.
+
+    Used by POST /organizations/{org}/positions/ for tenancy RBAC.
+
+    Access is granted to:
+    - Superusers (system-wide bypass).
+    - Org admins (``positions:create`` scoped to the org).
+    - Dept admins (``positions:create`` scoped to a dept within the org).
+
+    The org-level RBAC check covers both org_admin (org_id match) and dept_admin
+    (dept_id match within the org). The route handler performs an additional
+    dept-ownership guard when ``dept_id`` is supplied: dept_admin callers may
+    only create positions for their own department.
+
+    - Soft-deleted orgs cannot have positions created — ``allow_deleted=False``
+      ensures a 404 for any deleted org.
+    - Raises 404 if org not found or soft-deleted; 403 if no create access.
+    """
+    org = _resolve_organization(org_id_or_slug, db, allow_deleted=False)
+    _check_org_scoped_permission(current_user, org, "positions:create", db)
+    return org
+
+
+def get_organization_with_positions_access(
+    org_id_or_slug: str,
+    current_user: AuthContext = Depends(require_permission("positions:list")),
+    db: Session = Depends(get_db),
+) -> Organization:
+    """Resolve org by ID/slug AND enforce positions-list access (org-scoped RBAC).
+
+    Used by GET /organizations/{org}/positions/ for tenancy RBAC.
+
+    - System roles (e.g., superuser) bypass scope AND can see soft-deleted orgs.
+    - App roles (e.g., org_admin, analyst) must have ``positions:list`` perm
+      scoped to the org via UserRoleAssignment.
+    - Raises 404 if org not found or soft-deleted (for non-system-admins);
+      403 if no positions:list access.
+    DRY: reuses _resolve_organization + _check_org_scoped_permission with list perm.
+    """
+    org = _resolve_organization(
+        org_id_or_slug, db, allow_deleted=current_user.is_system_admin
+    )
+    _check_org_scoped_permission(current_user, org, "positions:list", db)
+    return org
+
+
 # ── Department-scoped dependencies ─────────────────────────────────────────
 
 

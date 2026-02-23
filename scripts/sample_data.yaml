@@ -33,12 +33,37 @@ departments:
     created_at: 2025-03-15T00:00:00+00:00
     activated_at: 2025-03-15T00:00:00+00:00
 
-# Example for other artifacts (unimplemented seeders stubbed in registry):
-# roles:
-#   - slug: custom-analyst
-#     ...
-# assessments:
-#   - slug: q1-eval
-#     ...
+positions:
+  # Custom positions for YAML-driven seeding (mirrors default samples pattern).
+  # Fields: slug, org_slug, dept_slug (omit or null = org-wide), role_slug,
+  #         description, status (DRAFT|PUBLISHED|DELETED),
+  #         created_at, published_at, deleted_at (ISO timestamps).
+  # role_slug must match a slug in the `roles` table (domain roles seeded by
+  # the positions seeder are prefixed "sample-role-*").
+  - slug: custom-acme-eng-senior-engineer
+    org_slug: custom-acme
+    dept_slug: custom-engineering
+    role_slug: sample-role-senior-engineer
+    description: Senior Engineer for custom Acme engineering team (YAML-driven sample)
+    status: PUBLISHED
+    created_at: 2025-03-05T00:00:00+00:00
+    published_at: 2025-03-07T00:00:00+00:00
+
+  - slug: custom-acme-ds-data-scientist
+    org_slug: custom-acme
+    dept_slug: custom-data-science
+    role_slug: sample-role-data-scientist
+    description: Data Scientist for custom Acme data science team (YAML-driven sample)
+    status: DRAFT
+    created_at: 2025-03-10T00:00:00+00:00
+
+  - slug: custom-acme-orgwide-devops
+    org_slug: custom-acme
+    # dept_slug omitted → org-wide position (dept_id = NULL)
+    role_slug: sample-role-devops-engineer
+    description: DevOps Engineer — org-wide open search at custom Acme
+    status: PUBLISHED
+    created_at: 2025-03-12T00:00:00+00:00
+    published_at: 2025-03-14T00:00:00+00:00
 
 # Slugs/unique keys must be unique per artifact. Dates in ISO; parsed by script.
