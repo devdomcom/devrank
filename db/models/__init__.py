@@ -21,6 +21,7 @@ from .oauth import OAuthAccount, OAuthProvider
 from .organization import Organization, OrganizationStatus
 from .position import Position, PositionStatus
 from .role import Role, RoleStatus
+from .scenario import Scenario, ScenarioStatus, ScenarioTool
 from .submission import Submission, SubmissionStatus
 from .user import Gender, User, UserRole, UserStatus
 from .user_org_department import UserOrgDepartment, UserOrgDeptStatus
@@ -49,6 +50,9 @@ __all__ = [
     "PositionStatus",
     "Role",
     "RoleStatus",
+    "Scenario",
+    "ScenarioStatus",
+    "ScenarioTool",
     "Submission",
     "SubmissionStatus",
     "User",

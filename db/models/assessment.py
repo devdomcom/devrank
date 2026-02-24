@@ -28,6 +28,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import Base, enum_values
+from .scenario import Scenario
 
 
 class AssessmentStatus(str, Enum):
@@ -42,6 +43,7 @@ class Assessment(Base):
     """Core Assessment entity - engineering impact/quality eval.
 
     Proposal-aligned: title/slug/desc, role FK (future), creator FK to User.
+    Now 1:N scenarios (user completes all for assessment done); submissions per-scenario.
     Supports self-eval (via creator) + org/team assessments for multi-tenancy.
     """
 
@@ -138,6 +140,13 @@ class Assessment(Base):
         lazy="selectin",
     )
     # role: Mapped["Role"] = relationship(...)  # once Role model exists
+    # scenarios: 1:N (assessment composed of multiple scenarios; user completes all)
+    scenarios: Mapped[list[Scenario]] = relationship(
+        "Scenario",
+        back_populates="assessment",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     # Table constraints
     __table_args__ = (

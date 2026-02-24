@@ -3,6 +3,7 @@
 Endpoints:
 - GET  /organizations/{org_id_or_slug}/positions/ — cursor-paginated list of
   open (PUBLISHED) positions, filterable by department slugs or IDs.
+- GET  /organizations/{org_id_or_slug}/positions/{position_id_or_slug} — single position detail
 - POST /organizations/{org_id_or_slug}/positions/ — create a new position
   (org admins, dept admins, or users with positions:create permission).
 
@@ -10,8 +11,10 @@ Positions represent open roles within an organization (and optionally a
 specific department). They follow a DRAFT → PUBLISHED → DELETED lifecycle.
 
 Endpoints:
-- GET    /organizations/{org_id_or_slug}/positions/ — list positions
+- GET    /organizations/{org_id_or_slug}/positions/ — cursor-paginated list
+- GET    /organizations/{org_id_or_slug}/positions/{position_id_or_slug} — single position detail
 - POST   /organizations/{org_id_or_slug}/positions/ — create a new position
+- PATCH  /organizations/{org_id_or_slug}/positions/{position_id_or_slug} — partial update
 - DELETE /organizations/{org_id_or_slug}/positions/{position_id_or_slug} — soft-delete
 
 Access model (create):
@@ -34,6 +37,7 @@ from api.auth.dependencies import (
     get_db,
     get_organization_with_create_position_access,
     get_organization_with_positions_access,
+    get_position_with_access,
     get_position_with_delete_access,
     get_position_with_update_access,
     require_permission,
@@ -122,6 +126,25 @@ def list_positions(
         filters=filters,
         include_deleted=auth.is_system_admin,
     )
+
+
+@router.get(
+    "/{position_id_or_slug}",
+    summary="Get position by ID or slug within an organization",
+    response_model=PositionResponse,
+)
+def get_position(
+    position: Position = Depends(get_position_with_access),
+) -> PositionResponse:
+    """Return full detail for a single position.
+
+    Organization access is verified via ``get_organization_with_access``
+    (embedded in ``get_position_with_access``). Position permission
+    checked via ``positions:read``. System admins can see soft-deleted
+    positions; regular users get 404 for deleted ones (consistent with
+    departments/orgs).
+    """
+    return PositionResponse.model_validate(position, from_attributes=True)
 
 
 @router.post(

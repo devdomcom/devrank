@@ -8,7 +8,7 @@ As of 2026 FastAPI/SQLAlchemy best practices:
 - Timestamps with timezone awareness
 - Unique constraints + indexes on email
 - Optional password for SSO/OAuth flows (hash via passlib[bcrypt] in auth layer)
-- Relationships: 1:N OAuthAccounts (multi-provider), 1:N created_assessments,
+- Relationships: 1:N OAuthAccounts (multi-provider), 1:N created_assessments, 1:N created_scenarios,
   1:N submissions (assessments taken), org memberships (many-to-many via
   user_org_departments), RBAC roles (via user_role_assignments for system/org/dept
   perms mapping - prod-grade, supports standard users w/o orgs)
@@ -35,6 +35,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import Base, enum_values
+from .scenario import Scenario
 
 
 class Gender(str, Enum):
@@ -218,6 +219,13 @@ class User(Base):
     created_assessments: Mapped[list[Assessment]] = relationship(
         "Assessment",
         back_populates="creator",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    # created_scenarios: 1:N (users create org/global scenarios)
+    created_scenarios: Mapped[list[Scenario]] = relationship(
+        "Scenario",
+        back_populates="creator_user",
         cascade="all, delete-orphan",
         lazy="selectin",
     )

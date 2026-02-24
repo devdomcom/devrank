@@ -74,6 +74,30 @@ def _start_local_infra() -> None:
     typer.echo("      Redis started (daemonized).")
 
 
+def _run_alembic(command: str, revision: str = "head", extra_args: list[str] | None = None) -> None:
+    """DRY Alembic runner (used by init + new db upgrade/downgrade).
+
+    - Uses -m alembic (editable install safe).
+    - project_root cwd.
+    - Handles errors → typer.Exit(1).
+    """
+    import subprocess
+
+    cwd = Path.cwd()
+    args = [sys.executable, "-m", "alembic", command]
+    if revision:
+        args.append(revision)
+    if extra_args:
+        args.extend(extra_args)
+
+    typer.echo(f"Running: alembic {command} {revision}")
+    result = subprocess.run(args, cwd=str(cwd))
+    if result.returncode != 0:
+        typer.echo(f"Alembic {command} failed.", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"✅ alembic {command} completed.")
+
+
 @cli.command("init")
 def init(
     admin_email: str = typer.Option(
@@ -128,13 +152,7 @@ def init(
 
     # 2. Run migrations
     typer.echo("[2/5] Running database migrations ...")
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=str(project_root),
-    )
-    if result.returncode != 0:
-        typer.echo("Migrations failed.", err=True)
-        raise typer.Exit(1)
+    _run_alembic("upgrade", "head")
 
     # 3. Seed RBAC
     typer.echo("[3/5] Seeding RBAC permissions and roles ...")
@@ -188,7 +206,7 @@ cli.add_typer(seed_app, name="seed")
 @seed_app.command("load")
 def seed_load(
     objects: Optional[str] = typer.Option(
-        None, "--objects", "-o", help="Comma-separated artifacts (e.g., organizations,roles)"
+        None, "--objects", "-o", help="Comma-separated artifacts (e.g., organizations,departments,roles,positions,assessments,scenarios,submissions,evaluations)"
     ),
     config: Optional[str] = typer.Option(
         None, "--config", "-c", help="YAML config for samples (e.g., scripts/sample_data.yaml)"
@@ -205,7 +223,7 @@ def seed_load(
 @seed_app.command("drop")
 def seed_drop(
     objects: Optional[str] = typer.Option(
-        None, "--objects", "-o", help="Artifacts to drop (e.g., organizations)"
+        None, "--objects", "-o", help="Artifacts to drop (e.g., organizations,assessments,scenarios)"
     ),
 ):
     """Drop sample data (delegates to load_sample_data.py)."""
@@ -351,6 +369,60 @@ def api_test(
     else:
         typer.echo("API tests failed.")
         raise typer.Exit(1)
+
+
+# ── DB subcommand (destroy for testing migration mismatches) ─────────────────
+db_app = typer.Typer(help="Database utilities (drop tables, etc.).")
+cli.add_typer(db_app, name="db")
+
+
+@db_app.command("destroy")
+def db_destroy(
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation (DANGEROUS)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Auto-confirm"),
+):
+    """DANGER: Drop ALL tables in public schema (bypass Alembic for mismatch testing).
+
+    Always prompts confirmation unless --force or --yes.
+    Recreates empty public schema after drop.
+    """
+    if not force and not yes:
+        if not typer.confirm(
+            "⚠️  This will DROP ALL TABLES in the database!\n"
+            "    Data will be lost permanently. Continue?",
+            default=False,
+        ):
+            typer.echo("Aborted.")
+            raise typer.Exit(0)
+
+    from sqlalchemy import text
+    from db.engine import SyncSessionLocal
+
+    db = SyncSessionLocal()
+    try:
+        typer.echo("Dropping public schema (all tables)...")
+        db.execute(text("DROP SCHEMA public CASCADE;"))
+        db.execute(text("CREATE SCHEMA public;"))
+        db.commit()
+        typer.echo("✅ Database tables destroyed and schema recreated (empty).")
+    finally:
+        db.close()
+
+
+@db_app.command("upgrade")
+def db_upgrade(
+    revision: str = typer.Option("head", "--revision", "-r", help="Target revision (default: head)"),
+):
+    """Run Alembic upgrade (delegates to _run_alembic helper)."""
+    _run_alembic("upgrade", revision)
+
+
+@db_app.command("downgrade")
+def db_downgrade(
+    revision: str = typer.Option("-1", "--revision", "-r", help="Target revision (e.g. -1, base, hash)"),
+):
+    """Run Alembic downgrade (delegates to _run_alembic helper)."""
+    _run_alembic("downgrade", revision)
 
 
 # Root entry

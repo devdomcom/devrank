@@ -4,12 +4,11 @@ Revision ID: ad29913efe04
 Revises: 
 Create Date: 2026-02-16 16:40:20.200201
 
-All-in-one migration (per task: no real/prod DB yet, no incremental needed - continue
-here for RBAC tables as specified). Table rename: users (plural).
+All-in-one migration (per task: no real/prod DB yet, no incremental allowed - all changes consolidated here incl. Scenario full table + FKs/additional fields on existing tables). Table rename: users (plural).
 
 Changes:
 - OAuth separation: oauth_accounts for multi-provider (GitHub/GitLab/etc.).
-- is_self_evaluating REMOVED from users; dedicated assessments table/model instead
+- is_self_evaluating REMOVED; assessments table + Scenario (1:N) + FKs on submissions/evaluations + additional Scenario fields (files/system_prompt/personas/version/duration/tool)
   (proposal-aligned: title/slug/role_id/created_by/status etc.; supports self-eval/org).
 - RBAC tables added: system_roles (SaaS admin), app_roles (ORG/DEPT scoped), permissions
   (resource:action slugs e.g. org:read), role_permissions (polymorphic junction with
@@ -127,6 +126,21 @@ def upgrade() -> None:
         """
         CREATE TYPE position_status_enum AS ENUM (
             'DRAFT', 'PUBLISHED', 'DELETED'
+        )
+        """
+    )
+    # Scenario enums (full lifecycle + tool; after role/position patterns)
+    op.execute(
+        """
+        CREATE TYPE scenario_status_enum AS ENUM (
+            'DRAFT', 'PUBLISHED', 'DEACTIVATED', 'DELETED'
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE TYPE scenario_tool_enum AS ENUM (
+            'MEET', 'CHAT'
         )
         """
     )
@@ -667,6 +681,85 @@ def upgrade() -> None:
     op.create_index("ix_submissions_assessment_id", "submissions", ["assessment_id"])
     op.create_index("ix_submissions_position_id", "submissions", ["position_id"])
 
+    # Scenarios table (first: required before FKs to it from submissions)
+    # assessment_id required; files/personas JSON, system_prompt Text, version/duration/tool
+    op.create_table(
+        "scenarios",
+        sa.Column("id", sa.UUID(), primary_key=True, nullable=False, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("assessment_id", sa.UUID(), nullable=False),
+        sa.Column("title", sa.String(length=200), nullable=False),
+        sa.Column("slug", sa.String(length=100), nullable=False),
+        sa.Column("description", sa.String(length=1000), nullable=True),
+        sa.Column("org_id", sa.UUID(), nullable=True),
+        sa.Column("dept_id", sa.UUID(), nullable=True),
+        sa.Column("created_by", sa.UUID(), nullable=True),
+        sa.Column("global_scenario", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column("files", sa.JSON(), nullable=True),
+        sa.Column("system_prompt", sa.Text(), nullable=True),
+        sa.Column("personas", sa.JSON(), nullable=True),
+        sa.Column("version", sa.Integer(), server_default=sa.text("1"), nullable=False),
+        sa.Column("duration", sa.Integer(), nullable=True),
+        sa.Column(
+            "tool",
+            PGEnum(
+                "scenario_tool_enum",
+                name="scenario_tool_enum",
+                create_type=False,
+            ),
+            nullable=False,
+            server_default="CHAT",
+        ),
+        sa.Column(
+            "status",
+            PGEnum(
+                "scenario_status_enum",
+                name="scenario_status_enum",
+                create_type=False,
+            ),
+            nullable=False,
+            server_default="DRAFT",
+        ),
+        # Timestamps
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("deactivated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint("id"),
+        sa.ForeignKeyConstraint(["assessment_id"], ["assessments.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["org_id"], ["organizations.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["dept_id"], ["departments.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL"),
+        sa.UniqueConstraint("slug"),
+    )
+    op.create_index("ix_scenarios_assessment_id", "scenarios", ["assessment_id"])
+    op.create_index("ix_scenarios_org_id", "scenarios", ["org_id"])
+    op.create_index("ix_scenarios_dept_id", "scenarios", ["dept_id"])
+    op.create_index("ix_scenarios_slug", "scenarios", ["slug"], unique=True)
+
+    # Additional columns for existing tables (scenario_id, submission_id FKs; unique update)
+    # submissions: scenario_id (nullable)
+    op.add_column("submissions", sa.Column("scenario_id", sa.UUID(), nullable=True))
+    op.create_index("ix_submissions_scenario_id", "submissions", ["scenario_id"])
+    op.drop_constraint("uq_user_assessment_submission", "submissions", type_="unique")
+    op.create_unique_constraint("uq_user_assessment_scenario_submission", "submissions", ["user_id", "assessment_id", "scenario_id"])
+    op.create_foreign_key(None, "submissions", "scenarios", ["scenario_id"], ["id"], ondelete="SET NULL")
+
+    # evaluations: submission_id
+    op.add_column("evaluations", sa.Column("submission_id", sa.UUID(), nullable=True))
+    op.create_index("ix_evaluations_submission_id", "evaluations", ["submission_id"])
+
+
     # User-Org-Department membership (multi-tenancy join)
     op.execute(
         """
@@ -1085,6 +1178,13 @@ def downgrade() -> None:
     op.drop_table("permissions")
     # Existing chain (assessments before roles: assessments.role_id FK)
     op.drop_table("user_org_departments")
+    # Reverse scenario changes (drop table + restore columns/constraint)
+    op.drop_table("scenarios")
+    # submissions/evals restore
+    op.drop_column("submissions", "scenario_id")
+    op.drop_constraint("uq_user_assessment_scenario_submission", "submissions", type_="unique")
+    op.create_unique_constraint("uq_user_assessment_submission", "submissions", ["user_id", "assessment_id"])
+    op.drop_column("evaluations", "submission_id")
     op.drop_table("submissions")
     op.drop_table("evaluations")
     op.drop_table("assessments")
@@ -1115,5 +1215,7 @@ def downgrade() -> None:
     op.execute("DROP TYPE IF EXISTS department_status_enum")
     op.execute("DROP TYPE IF EXISTS role_status_enum")
     op.execute("DROP TYPE IF EXISTS position_status_enum")
+    op.execute("DROP TYPE IF EXISTS scenario_status_enum")
+    op.execute("DROP TYPE IF EXISTS scenario_tool_enum")
     op.execute("DROP TYPE IF EXISTS user_org_dept_status_enum")
     op.execute("DROP TYPE IF EXISTS org_role_enum")

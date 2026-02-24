@@ -43,6 +43,8 @@ from db.engine import SyncSessionLocal
 # Core models for seedable artifacts (start with orgs; extend registry)
 from db.models import Department, DepartmentStatus, Organization, OrganizationStatus
 from db.models.position import PositionStatus
+# New: assessments/scenarios chain (on-demand imports in seeders OK)
+from db.models import Assessment, AssessmentStatus, RoleStatus, Scenario, ScenarioStatus, ScenarioTool, Submission, SubmissionStatus, Evaluation
 # Import others on-demand in seeders (avoid heavy if unused)
 
 # Registry for artifacts: artifact -> (seeder_func, drop_func, sample_data_key)
@@ -338,71 +340,94 @@ SEED_REGISTRY["departments"] = (seed_departments, drop_departments, "departments
 
 
 def seed_roles(db: Session, config_path: str | None = None) -> int:
-    """Seeder stub for roles artifact (e.g., extra SystemRole samples).
+    """Self-contained domain Role seeder (no system_roles mix, no positions dep).
 
-    Idempotent by slug; variations for admin testing.
+    Idempotent by slug; full variety for domain roles (global/org-scoped, all statuses).
     """
-    # Minimal: import on-demand
-    from db.models import SystemRole, SystemRoleStatus
+    from db.models import Role, RoleStatus
 
-    samples = _load_samples_for_artifact("roles", config_path) or [
-        {
-            "slug": "sample-platform-admin",
-            "name": "Platform Admin",
-            "description": "Extra system role for dev",
-            "is_system_wide": True,
-            "status": SystemRoleStatus.ACTIVE,
-        }
-    ]
+    samples = _load_samples_for_artifact("roles", config_path) or ROLE_DEFAULT_SAMPLES
     created = 0
     for sample in samples:
         slug = sample["slug"]
         existing = db.execute(
-            select(SystemRole).where(SystemRole.slug == slug)
+            select(Role).where(Role.slug == slug)
         ).scalar_one_or_none()
         if existing:
             print(f"Role '{slug}' exists; skipping.")
             continue
-        role = SystemRole(
+
+        status = sample.get("status", RoleStatus.PUBLISHED)
+        if isinstance(status, str):
+            status = RoleStatus(status)
+
+        role = Role(
             slug=slug,
-            name=sample.get("name", slug),
-            description=sample.get("description"),
-            is_system_wide=sample.get("is_system_wide", True),
-            status=sample.get("status", SystemRoleStatus.ACTIVE),
+            description=sample.get("description", ""),
+            global_role=sample.get("global_role", True),
+            status=status,
+            version=sample.get("version", 1),
+            org_id=None,  # resolved if org_slug
+            creator=sample.get("created_by", None),
+            created_at=sample.get("created_at", datetime.now(timezone.utc)),
+            updated_at=datetime.now(timezone.utc),
+            published_at=sample.get("published_at"),
+            deleted_at=sample.get("deleted_at"),
         )
         db.add(role)
         db.flush()
         db.commit()
         db.refresh(role)
-        print(f"Created role: {slug} (system-wide={role.is_system_wide})")
+        print(f"Created domain role: {slug} [global={role.global_role}, status={role.status.value}]")
         created += 1
     return created
 
 
-def drop_roles(db: Session, slug_prefix: str = "sample-") -> int:
-    """Dropper for roles artifact."""
-    # Import on-demand
-    from db.models import SystemRole
+ROLE_DEFAULT_SAMPLES = [
+    {
+        "slug": "sample-role-senior-engineer",
+        "description": "Senior software engineer role (global default)",
+        "global_role": True,
+        "status": RoleStatus.PUBLISHED,
+        "version": 1,
+        "created_at": datetime(2025, 1, 10, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 1, 15, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-role-data-scientist",
+        "description": "Data scientist (global)",
+        "global_role": True,
+        "status": RoleStatus.DRAFT,
+        "version": 1,
+        "created_at": datetime(2025, 2, 1, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-role-devops-engineer",
+        "description": "DevOps role (org-scoped)",
+        "global_role": False,
+        "status": RoleStatus.PUBLISHED,
+        "version": 2,
+        "created_at": datetime(2025, 3, 1, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 3, 5, tzinfo=timezone.utc),
+    },
+    {
+        "slug": "sample-role-qa-engineer",
+        "description": "QA role (DELETED state)",
+        "global_role": True,
+        "status": RoleStatus.DELETED,
+        "version": 1,
+        "created_at": datetime(2024, 12, 1, tzinfo=timezone.utc),
+        "deleted_at": datetime(2025, 2, 20, tzinfo=timezone.utc),
+    },
+]
 
-    roles = db.scalars(
-        select(SystemRole).where(SystemRole.slug.like(f"{slug_prefix}%"))
-    ).all()
-    count = len(roles)
-    if count == 0:
-        print(f"No sample roles (prefix '{slug_prefix}') to drop.")
-        return 0
-    for r in roles:
-        db.delete(r)
-    db.commit()
-    print(f"Dropped {count} roles.")
-    return count
 
 
-# Register roles (demo extension)
+
+
+
+# Register roles (self-contained domain roles)
 SEED_REGISTRY["roles"] = (seed_roles, drop_roles, "roles")
-
-# TODO: Add 'assessments' etc. (handle FKs e.g., User FK via prior admin seed; registry order)
-# Assessments stub would require created_by=admin_user.id for FK.
 
 
 # ── Positions seeder (org+dept-scoped; FK to orgs/depts/domain roles) ────────
@@ -910,6 +935,258 @@ def drop_positions(
 
 # Register positions (after departments; FK order: orgs → depts → positions)
 SEED_REGISTRY["positions"] = (seed_positions, drop_positions, "positions")
+
+
+# ── Assessments seeder (after roles/orgs) ─────────────────────────────────────
+def seed_assessments(
+    db: Session,
+    config_path: str | None = None,
+) -> int:
+    """Seed assessments (variety of statuses; resolve role_slug/org_slug)."""
+    from db.models import Assessment, Role
+
+    samples = _load_samples_for_artifact("assessments", config_path) or ASSESSMENT_DEFAULT_SAMPLES
+    created = 0
+
+    for sample in samples:
+        slug = sample["slug"]
+        role_slug = sample.get("role_slug")
+        org_slug = sample.get("org_slug")  # optional
+
+        # Resolve role
+        role = None
+        if role_slug:
+            role = db.execute(
+                select(Role).where(Role.slug == role_slug)
+            ).scalar_one_or_none()
+        if not role:
+            print(f"  Assessment '{slug}': role '{role_slug}' not found; skipping.")
+            continue
+
+        # Resolve org if provided
+        org_id = None
+        if org_slug:
+            from db.models import Organization
+            org = db.execute(
+                select(Organization).where(Organization.slug == org_slug)
+            ).scalar_one_or_none()
+            if org:
+                org_id = org.id
+
+        # created_by required non-null FK: use first user or create dummy
+        from db.models import User
+        user = db.execute(select(User)).scalar_one_or_none()
+        if not user:
+            # Minimal dummy user for seeding
+            dummy = User(
+                email="seed@devrank.local",
+                name="Seed",
+                surname="User",
+                status="ACTIVE",
+            )
+            db.add(dummy)
+            db.commit()
+            db.refresh(dummy)
+            user = dummy
+        created_by = user.id
+
+        # Idempotent by slug
+        existing = db.execute(
+            select(Assessment).where(Assessment.slug == slug)
+        ).scalar_one_or_none()
+        if existing:
+            print(f"  Assessment '{slug}' exists; skipping.")
+            continue
+
+        status = sample.get("status", AssessmentStatus.DRAFT)
+        if isinstance(status, str):
+            status = AssessmentStatus(status)
+
+        now = datetime.now(timezone.utc)
+        assessment = Assessment(
+            title=sample["title"],
+            slug=slug,
+            description=sample.get("description"),
+            role_id=role.id,
+            created_by=created_by,
+            status=status,
+            created_at=sample.get("created_at", now - timedelta(days=30)),
+            updated_at=now,
+            published_at=sample.get("published_at"),
+            deleted_at=sample.get("deleted_at"),
+        )
+        db.add(assessment)
+        db.commit()
+        db.refresh(assessment)
+        print(f"  Created assessment: {slug} [role={role_slug}, status={status.value}]")
+        created += 1
+
+    return created
+
+
+ASSESSMENT_DEFAULT_SAMPLES = [
+    {
+        "title": "Senior Engineer Q1 Impact",
+        "slug": "senior-eng-q1-2026",
+        "description": "Default sample assessment for senior engineer",
+        "role_slug": "sample-role-senior-engineer",
+        "status": AssessmentStatus.PUBLISHED,
+        "created_at": datetime(2025, 1, 20, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 1, 25, tzinfo=timezone.utc),
+    },
+    {
+        "title": "Data Science Self-Eval",
+        "slug": "ds-self-eval-2026",
+        "role_slug": "sample-role-data-scientist",
+        "status": AssessmentStatus.DRAFT,
+        "created_at": datetime(2025, 2, 15, tzinfo=timezone.utc),
+    },
+]
+
+
+def drop_assessments(db: Session, slug_prefix: str = "sample-") -> int:
+    """Dropper for assessments (slug prefix)."""
+    from db.models import Assessment
+    assessments = db.scalars(
+        select(Assessment).where(
+            Assessment.slug.like(f"{slug_prefix}%") |
+            Assessment.slug.like("senior-eng-q1%") |
+            Assessment.slug.like("ds-%") |
+            Assessment.slug.like("legacy-%")
+        )
+    ).all()
+    count = len(assessments)
+    for a in assessments:
+        db.delete(a)
+    if count:
+        db.commit()
+        print(f"Dropped {count} assessments.")
+    return count
+
+
+SEED_REGISTRY["assessments"] = (seed_assessments, drop_assessments, "assessments")
+
+
+# ── Scenarios seeder (depends on assessments) ───────────────────────────────
+def seed_scenarios(
+    db: Session,
+    config_path: str | None = None,
+) -> int:
+    """Seed scenarios (linked to assessments; all tool/statuses)."""
+    from db.models import Assessment, Scenario
+
+    samples = _load_samples_for_artifact("scenarios", config_path) or SCENARIO_DEFAULT_SAMPLES
+    created = 0
+
+    for sample in samples:
+        slug = sample["slug"]
+        assessment_slug = sample.get("assessment_slug")
+
+        assessment = None
+        if assessment_slug:
+            assessment = db.execute(
+                select(Assessment).where(Assessment.slug == assessment_slug)
+            ).scalar_one_or_none()
+        if not assessment:
+            print(f"  Scenario '{slug}': assessment '{assessment_slug}' not found; skipping.")
+            continue
+
+        # Idempotent slug
+        existing = db.execute(
+            select(Scenario).where(Scenario.slug == slug)
+        ).scalar_one_or_none()
+        if existing:
+            print(f"  Scenario '{slug}' exists; skipping.")
+            continue
+
+        tool = sample.get("tool", ScenarioTool.CHAT)
+        if isinstance(tool, str):
+            tool = ScenarioTool(tool)
+
+        status = sample.get("status", ScenarioStatus.DRAFT)
+        if isinstance(status, str):
+            status = ScenarioStatus(status)
+
+        now = datetime.now(timezone.utc)
+        scenario = Scenario(
+            title=sample["title"],
+            slug=slug,
+            description=sample.get("description"),
+            assessment_id=assessment.id,
+            org_id=None,  # resolved from assessment if needed
+            dept_id=None,
+            global_scenario=True,
+            created_by=None,
+            tool=tool,
+            duration=sample.get("duration"),
+            version=sample.get("version", 1),
+            status=status,
+            created_at=sample.get("created_at", now - timedelta(days=30)),
+            updated_at=now,
+            published_at=sample.get("published_at"),
+            deactivated_at=sample.get("deactivated_at"),
+            deleted_at=sample.get("deleted_at"),
+            files=sample.get("files"),
+            system_prompt=sample.get("system_prompt"),
+            personas=sample.get("personas"),
+        )
+        db.add(scenario)
+        db.commit()
+        db.refresh(scenario)
+        print(f"  Created scenario: {slug} [assessment={assessment_slug}, tool={tool.value}, status={status.value}]")
+        created += 1
+
+    return created
+
+
+SCENARIO_DEFAULT_SAMPLES = [
+    {
+        "title": "Live Coding Challenge",
+        "slug": "live-coding-challenge",
+        "assessment_slug": "senior-eng-q1-2026",
+        "description": "Real-time LeetCode-style coding interview",
+        "tool": ScenarioTool.CHAT,
+        "duration": 1800,
+        "version": 1,
+        "status": ScenarioStatus.PUBLISHED,
+        "created_at": datetime(2025, 1, 20, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 1, 25, tzinfo=timezone.utc),
+    },
+    {
+        "title": "System Design Deep Dive",
+        "slug": "system-design-deep-dive",
+        "assessment_slug": "senior-eng-q1-2026",
+        "tool": ScenarioTool.MEET,
+        "duration": 3600,
+        "version": 1,
+        "status": ScenarioStatus.PUBLISHED,
+        "created_at": datetime(2025, 1, 21, tzinfo=timezone.utc),
+        "published_at": datetime(2025, 1, 25, tzinfo=timezone.utc),
+    },
+]
+
+
+def drop_scenarios(db: Session, slug_prefix: str = "sample-") -> int:
+    from db.models import Scenario
+    scenarios = db.scalars(
+        select(Scenario).where(
+            Scenario.slug.like(f"{slug_prefix}%") |
+            Scenario.slug.like("live-coding%") |
+            Scenario.slug.like("system-design%") |
+            Scenario.slug.like("data-pipeline%") |
+            Scenario.slug.like("legacy-scenario%")
+        )
+    ).all()
+    count = len(scenarios)
+    for s in scenarios:
+        db.delete(s)
+    if count:
+        db.commit()
+        print(f"Dropped {count} scenarios.")
+    return count
+
+
+SEED_REGISTRY["scenarios"] = (seed_scenarios, drop_scenarios, "scenarios")
 
 
 def load_sample_data(

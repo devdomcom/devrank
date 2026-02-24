@@ -2,6 +2,7 @@
 
 Connects users to assessments they took (self-eval or org-assigned via position_id).
 Handles lifecycle (status, timestamps for start/complete/abandon/delete).
+Supports 1 scenario per submission (assessment can have multiple; user completes all).
 
 FastAPI/SQLAlchemy 2026 best practices (DRY, modular SaaS):
 - Dedicated file (model-heavy; avoids bloated User/Assessment).
@@ -28,6 +29,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import Base, enum_values
+# Scenario/ScenarioStatus via string annotations to avoid cycle (assessment <-> scenario <-> submission)
 
 
 class SubmissionStatus(str, Enum):
@@ -42,9 +44,8 @@ class SubmissionStatus(str, Enum):
 class Submission(Base):
     """Submission entity - User participation in an Assessment.
 
-    Proposal-aligned: FKs to assessment/user/eval, status, position_id (nullable
-    for self-assess), full timestamps (start/complete/abandon/delete).
-    Enables tracking self-eval vs. org role (position_id).
+    Proposal-aligned: FKs to assessment/user/eval/scenario/position, status, timestamps.
+    Enables per-scenario submissions (assessment 1:N scenarios; one scenario per submission).
     """
 
     __tablename__ = "submissions"
@@ -83,6 +84,14 @@ class Submission(Base):
         nullable=True,
         index=True,
         doc="FK to Position (NULL = self-assessment; org role otherwise)",
+    )
+    # scenario_id: FK to Scenario (nullable for backward compat; required for new multi-scenario flows)
+    # Per spec: each submission now tied to exactly one scenario
+    scenario_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("scenarios.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        doc="FK to Scenario taken (assessment 1:N scenarios)",
     )
 
     # Status + timestamps (audit trail; soft-delete via status/deleted_at)
@@ -132,18 +141,24 @@ class Submission(Base):
     assessment: Mapped[Assessment] = relationship(
         "Assessment", back_populates="submissions"
     )
-    # evaluation: Mapped["Evaluation"] = ...  # future
+    evaluation: Mapped["Evaluation | None"] = relationship(
+        "Evaluation", back_populates="submission", foreign_keys=[evaluation_id], uselist=False
+    )
     # position: Mapped["Position"] = ...  # future
+    scenario: Mapped["Scenario | None"] = relationship(
+        "Scenario", back_populates="submissions", foreign_keys=[scenario_id]
+    )
 
-    # Constraints (prevent dups: one submission per user/assessment)
+    # Constraints (prevent dups: now one submission per user+assessment+scenario)
     __table_args__ = (
-        # Unique per user+assessment (one take per eval)
-        UniqueConstraint("user_id", "assessment_id", name="uq_user_assessment_submission"),
+        # Unique per user+assessment+scenario (enforces one take per scenario; backward compat via nullable)
+        UniqueConstraint("user_id", "assessment_id", "scenario_id", name="uq_user_assessment_scenario_submission"),
     )
 
     def __repr__(self) -> str:
         """DRY repr."""
         return (
             f"<Submission(id={self.id}, user_id={self.user_id}, "
-            f"assessment_id={self.assessment_id}, status={self.status})>"
+            f"assessment_id={self.assessment_id}, scenario_id={self.scenario_id}, "
+            f"status={self.status})>"
         )

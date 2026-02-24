@@ -50,6 +50,12 @@ permissions:
     description: List positions within an organization (org members / dept members / superusers)
   positions:create:
     description: Create a new position within an organization (org admins / dept admins / superusers)
+  positions:read:
+    description: Read specific position details by ID or slug within an organization
+  positions:update:
+    description: Update a position (org admins / dept admins / superusers)
+  positions:delete:
+    description: Soft-delete a position (org admins / dept admins / superusers)
 
 roles:
   # ── System roles (platform-wide, not org-scoped) ────────────────────
@@ -81,6 +87,7 @@ roles:
       - departments:list
       - departments:read
       - positions:list
+      - positions:read
 
   org_admin:
     type: app
@@ -98,7 +105,10 @@ roles:
       - departments:update
       - departments:delete
       - positions:list
+      - positions:read
       - positions:create
+      - positions:update
+      - positions:delete
 
   dept_admin:
     type: app
@@ -110,4 +120,7 @@ roles:
       - departments:update
       - departments:delete
       - positions:list
+      - positions:read
       - positions:create
+      - positions:update
+      - positions:delete

@@ -639,6 +639,33 @@ def get_department_with_delete_access(
     return dept
 
 
+def get_position_with_access(
+    position_id_or_slug: str,
+    org: Organization = Depends(get_organization_with_access),
+    current_user: AuthContext = Depends(require_permission("positions:read")),
+    db: Session = Depends(get_db),
+) -> Position:
+    """Resolve position by ID/slug within org AND enforce read access.
+
+    Used by GET /organizations/{org}/positions/{position} for tenancy RBAC.
+
+    Access rules:
+    - Requires org access (organizations:read) plus positions:read permission
+      (which analysts, org_admins, dept_admins have).
+    - Org admins (org-scoped) or dept admins (dept-scoped) are allowed for read.
+    - Superusers bypass scope checks.
+    - System admins can see soft-deleted positions; others get 404.
+
+    Mirrors get_department_with_access pattern (DRY).
+    """
+    position = _resolve_position(
+        position_id_or_slug, org, db, allow_deleted=current_user.is_system_admin
+    )
+    # For read, no extra _check_position_access needed beyond the list/read perm
+    # (the org-scoped check in get_organization_with_access + permission covers it)
+    return position
+
+
 def get_position_with_delete_access(
     position_id_or_slug: str,
     org: Organization = Depends(get_organization_with_access),
