@@ -297,7 +297,12 @@ def update_user(
     auth: AuthContext = Depends(require_permission("users:update")),
     db: Session = Depends(get_db),
 ) -> UserResponse:
-    """Update an existing user account.
+    """Partially update an existing user account.
+
+    Only fields present in the request body are applied (true PATCH semantics).
+    Uses Pydantic v2 ``model_fields_set`` to distinguish "not sent" from
+    "explicitly sent as null" — e.g., sending ``{"nickname": null}`` clears
+    the nickname, while omitting it leaves it unchanged.
 
     **System admin only.** Requires ``users:update`` permission.
 
@@ -308,10 +313,19 @@ def update_user(
     - Status (managed via separate endpoint)
 
     **Validation:**
+    - Rejects empty body (no fields to update)
+    - Email and password cannot be set to null
     - Email must be unique if changed
     - Gender must be a valid enum value
     - Password is hashed if changed
     """
+    sent_fields = body.model_fields_set
+    if not sent_fields:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No fields provided for update",
+        )
+
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(
@@ -320,51 +334,62 @@ def update_user(
         )
 
     # 1. Email uniqueness check (if changing)
-    if body.email is not None and body.email != user.email:
-        existing = db.execute(
-            select(User).where(User.email == body.email)
-        ).scalar_one_or_none()
-        if existing:
+    if "email" in sent_fields:
+        if body.email is None:
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"User with email '{body.email}' already exists",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="email cannot be null",
             )
-        user.email = body.email
+        if body.email != user.email:
+            existing = db.execute(
+                select(User).where(User.email == body.email)
+            ).scalar_one_or_none()
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"User with email '{body.email}' already exists",
+                )
+            user.email = body.email
 
-    # 2. Update simple fields
-    if body.name is not None:
+    # 2. Update simple fields (true PATCH: only sent fields are applied)
+    if "name" in sent_fields:
         user.name = body.name
-    if body.surname is not None:
+    if "surname" in sent_fields:
         user.surname = body.surname
-    if body.nickname is not None:
+    if "nickname" in sent_fields:
         user.nickname = body.nickname
-    if body.country is not None:
+    if "country" in sent_fields:
         user.country = body.country
-    if body.timezone is not None:
+    if "timezone" in sent_fields:
         user.timezone = body.timezone
-    if body.locale is not None:
+    if "locale" in sent_fields:
         user.locale = body.locale
-    if body.avatar is not None:
+    if "avatar" in sent_fields:
         user.avatar = body.avatar
-    if body.dob is not None:
+    if "dob" in sent_fields:
         user.dob = body.dob
-    if body.address is not None:
+    if "address" in sent_fields:
         user.address = body.address
-    if body.zip is not None:
+    if "zip" in sent_fields:
         user.zip = body.zip
-    if body.phone is not None:
+    if "phone" in sent_fields:
         user.phone = body.phone
-    if body.is_verified is not None:
+    if "is_verified" in sent_fields:
         user.is_verified = body.is_verified
-    if body.is_kyc_verified is not None:
+    if "is_kyc_verified" in sent_fields:
         user.is_kyc_verified = body.is_kyc_verified
 
     # 3. Handle password update
-    if body.password is not None:
+    if "password" in sent_fields:
+        if body.password is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="password cannot be null",
+            )
         user.hashed_password = _pwd_context.hash(body.password)
 
     # 4. Handle gender update
-    if body.gender is not None:
+    if "gender" in sent_fields and body.gender is not None:
         try:
             user.gender = Gender(body.gender)
         except ValueError:
