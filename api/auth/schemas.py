@@ -9,8 +9,8 @@ from pydantic import BaseModel, Field
 class LoginRequest(BaseModel):
     """Email/password login request."""
 
-    email: str = Field(..., examples=["admin@example.com"])
-    password: str = Field(..., min_length=1)
+    email: str = Field(..., examples=["admin@devrank.local"])
+    password: str = Field(..., min_length=1, examples=["admin"])
 
 
 class Token(BaseModel):

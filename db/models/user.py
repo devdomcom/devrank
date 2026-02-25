@@ -117,7 +117,7 @@ class User(Base):
         doc="Unique email - used for auth, tenant invites",
     )
     gender: Mapped[Gender] = mapped_column(
-        SAEnum(Gender, values_callable=enum_values, name="gender_enum", create_constraint=True, native_enum=True),
+        SAEnum(Gender, values_callable=enum_values, name="user_gender_enum", create_constraint=True, native_enum=True),
         nullable=False,
         server_default=text("'prefer_not_to_say'"),
         doc="Gender enum - inclusive defaults",
@@ -139,11 +139,13 @@ class User(Base):
     )
 
     # Compliance & verification
-    verified: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, doc="Email verified?"
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=text("false"),
+        doc="Email verified?",
     )
-    kyc: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, doc="KYC/identity verified (for paid tiers)"
+    is_kyc_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=text("false"),
+        doc="KYC/identity verified (for paid tiers)",
     )
 
     # Auth - core credential (password for non-OAuth fallback)
@@ -169,10 +171,12 @@ class User(Base):
 
     # Preferences / audit
     timezone: Mapped[str] = mapped_column(
-        String(50), default="UTC", nullable=False, doc="IANA tz for reports/dates"
+        String(50), default="UTC", nullable=False, server_default=text("'UTC'"),
+        doc="IANA tz for reports/dates",
     )
     locale: Mapped[str] = mapped_column(
-        String(10), default="en", nullable=False, doc="BCP-47 locale"
+        String(10), default="en", nullable=False, server_default=text("'en'"),
+        doc="BCP-47 locale",
     )
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, doc="Last successful auth timestamp"
@@ -219,14 +223,12 @@ class User(Base):
     created_assessments: Mapped[list[Assessment]] = relationship(
         "Assessment",
         back_populates="creator",
-        cascade="all, delete-orphan",
         lazy="selectin",
     )
     # created_scenarios: 1:N (users create org/global scenarios)
     created_scenarios: Mapped[list[Scenario]] = relationship(
         "Scenario",
         back_populates="creator_user",
-        cascade="all, delete-orphan",
         lazy="selectin",
     )
     # submissions: 1:N to Submission (assessments taken; self-eval or org role)
@@ -234,7 +236,6 @@ class User(Base):
     submissions: Mapped[list[Submission]] = relationship(
         "Submission",
         back_populates="user",
-        cascade="all, delete-orphan",
         lazy="selectin",
     )
     # org_dept_memberships: 1:N to UserOrgDepartment for multi-org/dept tenancy

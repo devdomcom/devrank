@@ -56,7 +56,7 @@ def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
     op.execute(
         """
-        CREATE TYPE gender_enum AS ENUM (
+        CREATE TYPE user_gender_enum AS ENUM (
             'm', 'f', 'other', 'prefer_not_to_say'
         )
         """
@@ -183,7 +183,7 @@ def upgrade() -> None:
                 "f",
                 "other",
                 "prefer_not_to_say",
-                name="gender_enum",
+                name="user_gender_enum",
                 create_type=False,  # already created above
             ),
             nullable=False,
@@ -196,10 +196,10 @@ def upgrade() -> None:
         sa.Column("phone", sa.String(length=30), nullable=True),
         # Compliance
         sa.Column(
-            "verified", sa.Boolean(), nullable=False, server_default=sa.text("false")
+            "is_verified", sa.Boolean(), nullable=False, server_default=sa.text("false")
         ),
         sa.Column(
-            "kyc", sa.Boolean(), nullable=False, server_default=sa.text("false")
+            "is_kyc_verified", sa.Boolean(), nullable=False, server_default=sa.text("false")
         ),
         # Auth core (SSO fallback; multi-OAuth in separate table)
         sa.Column("hashed_password", sa.String(length=255), nullable=True),
@@ -378,6 +378,7 @@ def upgrade() -> None:
             "id", sa.UUID(), primary_key=True, nullable=False, server_default=sa.text("gen_random_uuid()")
         ),
         sa.Column("org_id", sa.UUID(), nullable=False),
+        sa.Column("name", sa.String(length=200), nullable=False),
         sa.Column("slug", sa.String(length=100), nullable=False),
         sa.Column("description", sa.String(length=500), nullable=True),
         sa.Column(
@@ -428,7 +429,7 @@ def upgrade() -> None:
         sa.Column("version", sa.Integer(), nullable=False, server_default=sa.text("1")),
         sa.Column("creator", sa.UUID(), nullable=True),
         sa.Column("org_id", sa.UUID(), nullable=True),  # NULL=global
-        sa.Column("global_role", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column("is_global", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column(
             "status",
             PGEnum(
@@ -480,10 +481,11 @@ def upgrade() -> None:
         sa.Column("title", sa.String(length=200), nullable=False),
         sa.Column("slug", sa.String(length=100), nullable=False),
         sa.Column("description", sa.String(length=1000), nullable=True),
-        # FKs (role_id UUID fixed)
+        # FKs
         sa.Column("role_id", sa.UUID(), nullable=True),  # to roles.id
-        # created_by: to users.id (CASCADE; matches model)
-        sa.Column("created_by", sa.UUID(), nullable=False),
+        sa.Column("created_by", sa.UUID(), nullable=True),  # to users.id
+        sa.Column("org_id", sa.UUID(), nullable=True),  # to organizations.id
+        sa.Column("position_id", sa.UUID(), nullable=True),  # to positions.id
         # Status
         sa.Column(
             "status",
@@ -509,23 +511,30 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
+        sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         # Constraints/FKs/indexes
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("slug"),  # Per proposal
         # FKs explicit
         sa.ForeignKeyConstraint(
-            ["created_by"], ["users.id"], ondelete="CASCADE"
+            ["created_by"], ["users.id"], ondelete="SET NULL"
         ),
         # role_id FK (to roles.id; now after roles table)
         sa.ForeignKeyConstraint(
             ["role_id"], ["roles.id"], ondelete="SET NULL"
         ),
+        sa.ForeignKeyConstraint(
+            ["org_id"], ["organizations.id"], ondelete="CASCADE"
+        ),
+        # position_id FK deferred: positions table created after assessments
     )
 
     # Indexes for perf/unique
     op.create_index("ix_assessments_slug", "assessments", ["slug"], unique=True)
-    op.create_index("ix_assessments_created_by", "assessments", ["created_by"])  # creator
+    op.create_index("ix_assessments_created_by", "assessments", ["created_by"])
     op.create_index("ix_assessments_role_id", "assessments", ["role_id"])
+    op.create_index("ix_assessments_org_id", "assessments", ["org_id"])
 
     # Positions (role in dept/org)
     op.create_table(
@@ -575,6 +584,13 @@ def upgrade() -> None:
     # dept_id index: mirrors Position.dept_id(index=True) in ORM model; supports
     # efficient department-filter queries in the list-positions endpoint.
     op.create_index("ix_positions_dept_id", "positions", ["dept_id"])
+
+    # Deferred FK: assessments.position_id → positions.id (positions created after assessments)
+    op.create_foreign_key(
+        "fk_assessments_position_id", "assessments", "positions",
+        ["position_id"], ["id"], ondelete="SET NULL",
+    )
+    op.create_index("ix_assessments_position_id", "assessments", ["position_id"])
 
     # Evaluations (results for assessment)
     op.create_table(
@@ -693,7 +709,7 @@ def upgrade() -> None:
         sa.Column("org_id", sa.UUID(), nullable=True),
         sa.Column("dept_id", sa.UUID(), nullable=True),
         sa.Column("created_by", sa.UUID(), nullable=True),
-        sa.Column("global_scenario", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column("is_global", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.Column("files", sa.JSON(), nullable=True),
         sa.Column("system_prompt", sa.Text(), nullable=True),
         sa.Column("personas", sa.JSON(), nullable=True),
@@ -1178,15 +1194,10 @@ def downgrade() -> None:
     op.drop_table("permissions")
     # Existing chain (assessments before roles: assessments.role_id FK)
     op.drop_table("user_org_departments")
-    # Reverse scenario changes (drop table + restore columns/constraint)
-    op.drop_table("scenarios")
-    # submissions/evals restore
-    op.drop_column("submissions", "scenario_id")
-    op.drop_constraint("uq_user_assessment_scenario_submission", "submissions", type_="unique")
-    op.create_unique_constraint("uq_user_assessment_submission", "submissions", ["user_id", "assessment_id"])
-    op.drop_column("evaluations", "submission_id")
+    # Drop submissions/evaluations before scenarios (submissions FK → scenarios)
     op.drop_table("submissions")
     op.drop_table("evaluations")
+    op.drop_table("scenarios")
     op.drop_table("assessments")
     op.drop_table("positions")
     op.drop_table("roles")
@@ -1205,7 +1216,7 @@ def downgrade() -> None:
     op.execute("DROP TYPE IF EXISTS scope_level_enum")
     op.execute("DROP TYPE IF EXISTS assignment_status_enum")
     # Existing enums
-    op.execute("DROP TYPE IF EXISTS gender_enum")
+    op.execute("DROP TYPE IF EXISTS user_gender_enum")
     op.execute("DROP TYPE IF EXISTS user_status_enum")
     op.execute("DROP TYPE IF EXISTS user_role_enum")
     op.execute("DROP TYPE IF EXISTS oauth_provider_enum")

@@ -142,6 +142,7 @@ def create_department(
     # 2. Create department
     dept = Department(
         org_id=org.id,
+        name=body.name,
         slug=body.slug,
         description=body.description,
     )
@@ -276,6 +277,14 @@ def update_department(
             )
 
     # Apply each sent field granularly
+    if "name" in sent_fields:
+        if body.name is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="name cannot be null",
+            )
+        dept.name = body.name
+
     if "slug" in sent_fields:
         if body.slug is None:
             raise HTTPException(

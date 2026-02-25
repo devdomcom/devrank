@@ -288,30 +288,6 @@ class TestCompareMetrics:
 
 
 # ---------------------------------------------------------------------------
-# Roles endpoints
-# ---------------------------------------------------------------------------
-
-class TestRoles:
-    def test_list_roles(self, client):
-        resp = client.get("/api/v1/impact/roles")
-        assert resp.status_code == 200
-        names = [r["name"] for r in resp.json()]
-        assert "senior_dev" in names
-        assert "default" not in names
-
-    def test_get_role_ok(self, client):
-        resp = client.get("/api/v1/impact/roles/senior_dev")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["name"] == "senior_dev"
-        assert "metrics" in data["config"]
-
-    def test_get_role_not_found(self, client):
-        resp = client.get("/api/v1/impact/roles/nonexistent")
-        assert resp.status_code == 404
-
-
-# ---------------------------------------------------------------------------
 # Continuous score presence
 # ---------------------------------------------------------------------------
 
@@ -1163,6 +1139,7 @@ class TestGetDepartment:
         return Department(
             id=uuid.uuid4(),
             org_id=org_for_dept.id,
+            name="Engineering",
             slug="sample-engineering",
             description="Engineering department",
             is_default=False,
@@ -1296,6 +1273,7 @@ class TestUpdateDepartment:
         return Department(
             id=uuid.uuid4(),
             org_id=org_for_patch.id,
+            name="Patch Test",
             slug="patch-test-dept",
             description="Original dept description",
             is_default=False,
@@ -1369,7 +1347,7 @@ class TestUpdateDepartment:
         mock_session = MagicMock(spec=Session)
         mock_result = MagicMock()
         existing_dept = Department(
-            id=uuid.uuid4(), org_id=org_for_patch.id, slug="taken-slug"
+            id=uuid.uuid4(), org_id=org_for_patch.id, name="Taken", slug="taken-slug"
         )
         mock_result.scalar_one_or_none.return_value = existing_dept
         mock_session.execute.return_value = mock_result
@@ -1583,6 +1561,7 @@ class TestDeleteDepartment:
         return Department(
             id=uuid.uuid4(),
             org_id=org_for_delete.id,
+            name="Delete Test",
             slug="delete-test-dept",
             description="Department to be deleted",
             is_default=False,
@@ -1600,6 +1579,7 @@ class TestDeleteDepartment:
         return Department(
             id=uuid.uuid4(),
             org_id=org_for_delete.id,
+            name="Already Deleted",
             slug="already-deleted-dept",
             description="Already deleted department",
             is_default=False,

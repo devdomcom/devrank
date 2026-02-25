@@ -208,6 +208,7 @@ SEED_REGISTRY["organizations"] = (seed_organizations, drop_organizations, "organ
 # Each dept references an org by slug (resolved at seed time).
 DEPT_DEFAULT_SAMPLES: list[dict[str, Any]] = [
     {
+        "name": "Engineering",
         "slug": "sample-engineering",
         "org_slug": "sample-acme-corp",
         "description": "Engineering department (core dev team)",
@@ -216,6 +217,7 @@ DEPT_DEFAULT_SAMPLES: list[dict[str, Any]] = [
         "activated_at": datetime(2025, 1, 20, tzinfo=timezone.utc),
     },
     {
+        "name": "Product",
         "slug": "sample-product",
         "org_slug": "sample-acme-corp",
         "description": "Product management department",
@@ -224,6 +226,7 @@ DEPT_DEFAULT_SAMPLES: list[dict[str, Any]] = [
         "activated_at": datetime(2025, 1, 25, tzinfo=timezone.utc),
     },
     {
+        "name": "Data Science",
         "slug": "sample-data-science",
         "org_slug": "sample-acme-corp",
         "description": "Data science and analytics",
@@ -232,6 +235,7 @@ DEPT_DEFAULT_SAMPLES: list[dict[str, Any]] = [
         "activated_at": datetime(2025, 2, 1, tzinfo=timezone.utc),
     },
     {
+        "name": "Legacy Ops",
         "slug": "sample-legacy-ops",
         "org_slug": "sample-beta-inc",
         "description": "Legacy operations (deactivated dept for status testing)",
@@ -240,6 +244,7 @@ DEPT_DEFAULT_SAMPLES: list[dict[str, Any]] = [
         "deactivated_at": datetime(2025, 2, 1, tzinfo=timezone.utc),
     },
     {
+        "name": "Old Team",
         "slug": "sample-old-team",
         "org_slug": "sample-beta-inc",
         "description": "Old team (soft-deleted dept for filter testing)",
@@ -292,6 +297,7 @@ def seed_departments(
 
         dept = Department(
             org_id=org.id,
+            name=sample.get("name", slug),
             slug=slug,
             description=sample.get("description"),
             status=dept_status,
@@ -364,13 +370,13 @@ def seed_roles(db: Session, config_path: str | None = None) -> int:
         role = Role(
             slug=slug,
             description=sample.get("description", ""),
-            global_role=sample.get("global_role", True),
+            config=sample.get("config", {}),
+            is_global=sample.get("is_global", True),
             status=status,
             version=sample.get("version", 1),
             org_id=None,  # resolved if org_slug
             creator=sample.get("created_by", None),
             created_at=sample.get("created_at", datetime.now(timezone.utc)),
-            updated_at=datetime.now(timezone.utc),
             published_at=sample.get("published_at"),
             deleted_at=sample.get("deleted_at"),
         )
@@ -378,7 +384,7 @@ def seed_roles(db: Session, config_path: str | None = None) -> int:
         db.flush()
         db.commit()
         db.refresh(role)
-        print(f"Created domain role: {slug} [global={role.global_role}, status={role.status.value}]")
+        print(f"Created domain role: {slug} [global={role.is_global}, status={role.status.value}]")
         created += 1
     return created
 
@@ -387,7 +393,8 @@ ROLE_DEFAULT_SAMPLES = [
     {
         "slug": "sample-role-senior-engineer",
         "description": "Senior software engineer role (global default)",
-        "global_role": True,
+        "config": {"level": "senior", "track": "ic"},
+        "is_global": True,
         "status": RoleStatus.PUBLISHED,
         "version": 1,
         "created_at": datetime(2025, 1, 10, tzinfo=timezone.utc),
@@ -396,7 +403,8 @@ ROLE_DEFAULT_SAMPLES = [
     {
         "slug": "sample-role-data-scientist",
         "description": "Data scientist (global)",
-        "global_role": True,
+        "config": {"level": "mid", "track": "data"},
+        "is_global": True,
         "status": RoleStatus.DRAFT,
         "version": 1,
         "created_at": datetime(2025, 2, 1, tzinfo=timezone.utc),
@@ -404,7 +412,8 @@ ROLE_DEFAULT_SAMPLES = [
     {
         "slug": "sample-role-devops-engineer",
         "description": "DevOps role (org-scoped)",
-        "global_role": False,
+        "config": {"level": "mid", "track": "platform"},
+        "is_global": False,
         "status": RoleStatus.PUBLISHED,
         "version": 2,
         "created_at": datetime(2025, 3, 1, tzinfo=timezone.utc),
@@ -413,7 +422,8 @@ ROLE_DEFAULT_SAMPLES = [
     {
         "slug": "sample-role-qa-engineer",
         "description": "QA role (DELETED state)",
-        "global_role": True,
+        "config": {"level": "mid", "track": "quality"},
+        "is_global": True,
         "status": RoleStatus.DELETED,
         "version": 1,
         "created_at": datetime(2024, 12, 1, tzinfo=timezone.utc),
@@ -424,6 +434,22 @@ ROLE_DEFAULT_SAMPLES = [
 
 
 
+def drop_roles(db: Session, slug_prefix: str = "sample-") -> int:
+    """Dropper for domain roles (targeted by slug prefix; graceful)."""
+    from db.models import Role
+
+    roles = db.scalars(
+        select(Role).where(Role.slug.like(f"{slug_prefix}role-%"))
+    ).all()
+    count = len(roles)
+    if count == 0:
+        print(f"No sample roles (prefix '{slug_prefix}role-') to drop.")
+        return 0
+    for r in roles:
+        db.delete(r)
+    db.commit()
+    print(f"Dropped {count} domain roles.")
+    return count
 
 
 # Register roles (self-contained domain roles)
@@ -439,7 +465,7 @@ SEED_REGISTRY["roles"] = (seed_roles, drop_roles, "roles")
 #            Position.dept_id → departments.id   (nullable; org-wide if NULL)
 #            Position.role_id → roles.id          (domain role, not RBAC role)
 #
-# Strategy: seed a small set of domain Role records (global_role=True, no org
+# Strategy: seed a small set of domain Role records (is_global=True, no org
 # FK) so positions can reference them without depending on a specific user or
 # org. These "domain roles" are distinct from RBAC SystemRole/AppRole — they
 # live in the `roles` table and describe the *job role* a position is for
@@ -458,7 +484,7 @@ SEED_REGISTRY["roles"] = (seed_roles, drop_roles, "roles")
 #   - Realistic descriptions reflecting actual hiring contexts
 
 # Domain roles seeded as prerequisites for positions.
-# global_role=True, org_id=None → usable across all orgs.
+# is_global=True, org_id=None → usable across all orgs.
 _DOMAIN_ROLE_SAMPLES: list[dict[str, Any]] = [
     {
         "slug": "sample-role-senior-engineer",
@@ -507,7 +533,7 @@ def _ensure_domain_roles(db: Session) -> dict[str, Any]:
     """Idempotently create domain Role records needed by position samples.
 
     Returns a slug→Role mapping for FK resolution.
-    Domain roles are global (global_role=True, org_id=None, creator=None).
+    Domain roles are global (is_global=True, org_id=None, creator=None).
     Uses RoleStatus.PUBLISHED so they are immediately usable.
     """
     from db.models import Role, RoleStatus
@@ -523,7 +549,7 @@ def _ensure_domain_roles(db: Session) -> dict[str, Any]:
                 slug=slug,
                 description=spec["description"],
                 config=spec["config"],
-                global_role=True,
+                is_global=True,
                 status=RoleStatus.PUBLISHED,
                 published_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
                 created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
@@ -766,7 +792,7 @@ def seed_positions(
     """Seeder for positions artifact (idempotent, org+dept-scoped).
 
     Dependency order:
-    1. Ensure domain Role records exist (seeded inline; global_role=True).
+    1. Ensure domain Role records exist (seeded inline; is_global=True).
     2. Resolve org by slug → org_id.
     3. Resolve dept by slug within that org → dept_id (None for org-wide).
     4. Resolve role by slug → role_id.
@@ -973,9 +999,9 @@ def seed_assessments(
             if org:
                 org_id = org.id
 
-        # created_by required non-null FK: use first user or create dummy
+        # created_by: use first available user or create dummy
         from db.models import User
-        user = db.execute(select(User)).scalar_one_or_none()
+        user = db.scalars(select(User).limit(1)).first()
         if not user:
             # Minimal dummy user for seeding
             dummy = User(
@@ -1115,7 +1141,7 @@ def seed_scenarios(
             assessment_id=assessment.id,
             org_id=None,  # resolved from assessment if needed
             dept_id=None,
-            global_scenario=True,
+            is_global=True,
             created_by=None,
             tool=tool,
             duration=sample.get("duration"),

@@ -34,6 +34,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.auth.dependencies import (
+    check_dept_admin_scope,
+    get_current_user,
     get_db,
     get_organization_with_create_position_access,
     get_organization_with_positions_access,
@@ -43,7 +45,6 @@ from api.auth.dependencies import (
     require_permission,
 )
 from api.auth.schemas import AuthContext
-from api.exceptions import AuthorizationError
 from api.pagination import get_cursor_params, paginate_positions
 from api.schemas import (
     CreatePositionRequest,
@@ -57,7 +58,6 @@ from api.schemas import (
 from db.models import Department, Organization
 from db.models.position import Position, PositionStatus
 from db.models.role import Role
-from db.models.user_role_assignment import UserRoleAssignment
 
 router = APIRouter(
     prefix="/organizations/{org_id_or_slug}/positions",
@@ -156,7 +156,7 @@ def get_position(
 def create_position(
     body: CreatePositionRequest,
     org: Organization = Depends(get_organization_with_create_position_access),
-    auth: AuthContext = Depends(require_permission("positions:create")),
+    auth: AuthContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PositionResponse:
     """Create a new position within an organization.
@@ -224,37 +224,7 @@ def create_position(
         dept_id = dept.id
 
     # ── 3. Dept-admin scope guard ──────────────────────────────────────────
-    # Dept admins may only create positions scoped to their own department.
-    # Org admins and superusers are unrestricted.
-    if not auth.is_system_admin and "org_admin" not in auth.roles:
-        org_level_access = db.execute(
-            select(UserRoleAssignment).where(
-                UserRoleAssignment.user_id == auth.user_id,
-                UserRoleAssignment.org_id == org.id,
-                UserRoleAssignment.dept_id.is_(None),  # org-scoped (not dept-specific)
-            )
-        ).first()
-
-        if not org_level_access:
-            # Caller has only dept-scoped access: find their dept assignments for this org
-            dept_assignments = db.scalars(
-                select(UserRoleAssignment).where(
-                    UserRoleAssignment.user_id == auth.user_id,
-                    UserRoleAssignment.org_id == org.id,
-                    UserRoleAssignment.dept_id.isnot(None),
-                )
-            ).all()
-            allowed_dept_ids = {a.dept_id for a in dept_assignments}
-
-            if dept_id is None:
-                raise AuthorizationError(
-                    "Department admins cannot create org-wide positions; "
-                    "specify a dept_id_or_slug matching your department"
-                )
-            if dept_id not in allowed_dept_ids:
-                raise AuthorizationError(
-                    f"Not authorized to create positions in department '{dept_id}'"
-                )
+    check_dept_admin_scope(auth, org.id, dept_id, db)
 
     # ── 4. Resolve role_id_or_slug ─────────────────────────────────────────
     role: Role | None = None
@@ -316,8 +286,6 @@ def create_position(
         slug=body.slug,
         description=body.description,
         status=body.status,
-        created_at=now,
-        updated_at=now,
         published_at=published_at,
     )
     db.add(position)
@@ -335,7 +303,7 @@ def create_position(
 def update_position(
     body: UpdatePositionRequest,
     position: Position = Depends(get_position_with_update_access),
-    auth: AuthContext = Depends(require_permission("positions:update")),
+    auth: AuthContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PositionResponse:
     """Partially update a position's properties.
@@ -407,34 +375,7 @@ def update_position(
             dept_id = dept.id
 
         # Dept-admin scope guard
-        if not auth.is_system_admin and "org_admin" not in auth.roles:
-            org_level_access = db.execute(
-                select(UserRoleAssignment).where(
-                    UserRoleAssignment.user_id == auth.user_id,
-                    UserRoleAssignment.org_id == position.org_id,
-                    UserRoleAssignment.dept_id.is_(None),
-                )
-            ).first()
-
-            if not org_level_access:
-                dept_assignments = db.scalars(
-                    select(UserRoleAssignment).where(
-                        UserRoleAssignment.user_id == auth.user_id,
-                        UserRoleAssignment.org_id == position.org_id,
-                        UserRoleAssignment.dept_id.isnot(None),
-                    )
-                ).all()
-                allowed_dept_ids = {a.dept_id for a in dept_assignments}
-
-                if dept_id is None:
-                    raise AuthorizationError(
-                        "Department admins cannot assign org-wide positions; "
-                        "specify a dept_id_or_slug matching your department"
-                    )
-                if dept_id not in allowed_dept_ids:
-                    raise AuthorizationError(
-                        f"Not authorized to update positions in department '{dept_id}'"
-                    )
+        check_dept_admin_scope(auth, position.org_id, dept_id, db)
 
         position.dept_id = dept_id
 
@@ -507,7 +448,6 @@ def update_position(
                 ),
             )
 
-    position.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(position)
 

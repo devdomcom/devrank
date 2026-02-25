@@ -43,6 +43,9 @@ class Department(Base):
     org_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    name: Mapped[str] = mapped_column(
+        String(200), nullable=False
+    )
     slug: Mapped[str] = mapped_column(
         String(100), nullable=False, index=True  # unique per org (not global)
     )
@@ -97,4 +100,4 @@ class Department(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Department(id={self.id}, slug={self.slug}, org_id={self.org_id})>"
+        return f"<Department(id={self.id}, name={self.name}, slug={self.slug}, org_id={self.org_id})>"

@@ -57,7 +57,7 @@ def _start_local_infra() -> None:
     """
     import subprocess
 
-    typer.echo("[1/5] Starting local infrastructure (no Docker) ...")
+    typer.echo("[1/6] Starting local infrastructure (no Docker) ...")
 
     pg_result = subprocess.run(
         ["su", "postgres", "-c", "pg_ctlcluster 15 main start"],
@@ -131,13 +131,13 @@ def init(
     elif not skip_infra:
         if shutil.which("docker") is None:
             typer.echo(
-                "[1/5] Docker not found — skipping infrastructure.\n"
+                "[1/6] Docker not found — skipping infrastructure.\n"
                 "      If Postgres/Redis are already running (e.g. container sidecar),\n"
                 "      set DEVRANK_DATABASE_URL and DEVRANK_REDIS_URL env vars.\n"
                 "      You can also pass --skip-infra explicitly to silence this."
             )
         else:
-            typer.echo("[1/5] Starting infrastructure ...")
+            typer.echo("[1/6] Starting infrastructure ...")
             result = subprocess.run(
                 ["bash", str(project_root / "scripts" / "dev-infra.sh"), "start"],
                 cwd=str(project_root),
@@ -148,25 +148,36 @@ def init(
             typer.echo("      Waiting for services ...")
             time.sleep(3)
     else:
-        typer.echo("[1/5] Skipping infrastructure (--skip-infra)")
+        typer.echo("[1/6] Skipping infrastructure (--skip-infra)")
 
     # 2. Run migrations
-    typer.echo("[2/5] Running database migrations ...")
+    typer.echo("[2/6] Running database migrations ...")
     _run_alembic("upgrade", "head")
 
     # 3. Seed RBAC
-    typer.echo("[3/5] Seeding RBAC permissions and roles ...")
+    typer.echo("[3/6] Seeding RBAC permissions and roles ...")
     from scripts.init_rbac import main as rbac_main
     rbac_main()
 
-    # 4. Load sample data
-    typer.echo("[4/5] Loading sample data ...")
+    # 4. Sync role configs from YAML → DB
+    typer.echo("[4/6] Syncing role configs from YAML ...")
+    from impact.config.role_metrics import load_role_yaml_configs
+    from scripts.sync_roles import sync_roles_from_yaml
+    configs = load_role_yaml_configs()
+    result = sync_roles_from_yaml(configs)
+    typer.echo(
+        f"      Roles synced (created={result['created']}, "
+        f"updated={result['updated']}, skipped={result['skipped']})"
+    )
+
+    # 5. Load sample data
+    typer.echo("[5/6] Loading sample data ...")
     from scripts.load_sample_data import load_sample_data
     results = load_sample_data()
     typer.echo(f"      Loaded: {results}")
 
-    # 5. Create admin if none exists
-    typer.echo("[5/5] Checking for admin user ...")
+    # 6. Create admin if none exists
+    typer.echo("[6/6] Checking for admin user ...")
     from sqlalchemy import select
     from db.engine import SyncSessionLocal
     from db.models import SystemRole, UserRoleAssignment, RoleType

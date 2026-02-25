@@ -1,27 +1,31 @@
 """Global roles routes.
 
 Endpoints:
-- GET /roles/ — cursor-paginated list of global roles (global_role=True,
-  org_id=NULL). These are the platform-wide default roles available to every
-  organization for use with positions and assessments. Org-specific roles
-  (created by individual organizations) are always excluded.
+- GET /roles/          — cursor-paginated list of global roles (is_global=True,
+                         org_id=NULL). Platform-wide defaults for positions/assessments.
+- GET /roles/{id_or_slug} — single role detail including JSON config (metric
+                            thresholds synced from YAML via ``devrank roles sync``).
 
 Access model:
-- Authenticated users with ``roles:list`` permission can list global roles.
+- ``roles:list``  → list endpoint.
+- ``roles:read``  → detail endpoint.
 - System admins (superuser) see all statuses including DELETED.
 - Regular callers see DRAFT and PUBLISHED roles only (DELETED hidden).
 """
 from __future__ import annotations
 
+import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Path, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.auth.dependencies import get_db, require_permission
 from api.auth.schemas import AuthContext
 from api.pagination import get_cursor_params, paginate_roles
-from api.schemas import RoleFilterParams, RolesCursorPage, get_role_filters
+from api.schemas import RoleFilterParams, RoleResponse, RolesCursorPage, get_role_filters
+from db.models.role import Role, RoleStatus
 
 router = APIRouter(
     prefix="/roles",
@@ -42,7 +46,7 @@ def list_global_roles(
 ) -> RolesCursorPage:
     """List all platform-wide global roles.
 
-    Returns a cursor-paginated list of roles where ``global_role=True`` and
+    Returns a cursor-paginated list of roles where ``is_global=True`` and
     ``org_id=null``. These are the default roles defined for the entire
     platform that any organization can reference when creating positions or
     running assessments. Org-specific roles (created by individual organizations
@@ -82,3 +86,55 @@ def list_global_roles(
         filters=filters,
         include_deleted=auth.is_system_admin,
     )
+
+
+@router.get(
+    "/{id_or_slug}",
+    summary="Get a global role by ID or slug (includes config)",
+    response_model=RoleResponse,
+)
+def get_global_role(
+    id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-role-senior-engineer"}}),
+    auth: AuthContext = Depends(require_permission("roles:read")),
+    db: Session = Depends(get_db),
+) -> RoleResponse:
+    """Fetch a single global role by UUID or slug.
+
+    Returns the full role including the JSON ``config`` column containing
+    metric thresholds and configuration synced from YAML via
+    ``devrank roles sync``.
+
+    Only global roles (``is_global=True``, ``org_id=None``) are returned.
+    Soft-deleted roles are visible only to system admins.
+    """
+    try:
+        role_id = uuid.UUID(id_or_slug)
+        role = db.execute(
+            select(Role).where(
+                Role.id == role_id,
+                Role.is_global.is_(True),
+                Role.org_id.is_(None),
+            )
+        ).scalar_one_or_none()
+    except ValueError:
+        role = db.execute(
+            select(Role).where(
+                Role.slug == id_or_slug,
+                Role.is_global.is_(True),
+                Role.org_id.is_(None),
+            )
+        ).scalar_one_or_none()
+
+    if role is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Global role '{id_or_slug}' not found",
+        )
+
+    if role.status == RoleStatus.DELETED and not auth.is_system_admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Global role '{id_or_slug}' not found",
+        )
+
+    return RoleResponse.model_validate(role, from_attributes=True)

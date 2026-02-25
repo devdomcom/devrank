@@ -12,7 +12,7 @@ from api.handlers import register_exception_handlers
 # Root app routes now include organizations + departments (platform tenancy)
 from api.routes import auth_router, departments_router, global_roles_router, infra_health_router, organizations_router, positions_router
 from config import settings
-from impact.api.routes import dumps_router, metrics_router, roles_router
+from impact.api.routes import dumps_router, metrics_router
 
 API_V1_PREFIX = "/api/v1"
 
@@ -49,7 +49,6 @@ def create_app() -> FastAPI:
     v1.include_router(global_roles_router)
     # Impact domain
     v1.include_router(metrics_router)
-    v1.include_router(roles_router)
     v1.include_router(dumps_router)
     application.include_router(v1)
 

@@ -4,7 +4,7 @@ Provides get_db, get_current_user, and require_permission.
 """
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Path, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,7 +26,6 @@ from db.models import (
     UserRoleAssignment,
 )
 from db.models.role_permission import RoleType
-from sqlalchemy import select
 from uuid import UUID
 
 
@@ -259,7 +258,7 @@ def _check_dept_scoped_permission(
 
 
 def get_organization_with_access(
-    org_id_or_slug: str,
+    org_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-acme-corp"}}),
     current_user: AuthContext = Depends(require_permission("organizations:read")),
     db: Session = Depends(get_db),
 ) -> Organization:
@@ -281,7 +280,7 @@ def get_organization_with_access(
 
 
 def get_organization_with_update_access(
-    org_id_or_slug: str,
+    org_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-acme-corp"}}),
     current_user: AuthContext = Depends(require_permission("organizations:update")),
     db: Session = Depends(get_db),
 ) -> Organization:
@@ -303,7 +302,7 @@ def get_organization_with_update_access(
 
 
 def get_organization_with_delete_access(
-    org_id_or_slug: str,
+    org_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-acme-corp"}}),
     current_user: AuthContext = Depends(require_permission("organizations:delete")),
     db: Session = Depends(get_db),
 ) -> Organization:
@@ -341,7 +340,7 @@ def check_set_default_permission(
 
 
 def get_organization_with_create_dept_access(
-    org_id_or_slug: str,
+    org_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-acme-corp"}}),
     current_user: AuthContext = Depends(require_permission("departments:create")),
     db: Session = Depends(get_db),
 ) -> Organization:
@@ -362,7 +361,7 @@ def get_organization_with_create_dept_access(
 
 
 def get_organization_with_create_position_access(
-    org_id_or_slug: str,
+    org_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-acme-corp"}}),
     current_user: AuthContext = Depends(require_permission("positions:create")),
     db: Session = Depends(get_db),
 ) -> Organization:
@@ -390,7 +389,7 @@ def get_organization_with_create_position_access(
 
 
 def get_organization_with_positions_access(
-    org_id_or_slug: str,
+    org_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-acme-corp"}}),
     current_user: AuthContext = Depends(require_permission("positions:list")),
     db: Session = Depends(get_db),
 ) -> Organization:
@@ -410,6 +409,58 @@ def get_organization_with_positions_access(
     )
     _check_org_scoped_permission(current_user, org, "positions:list", db)
     return org
+
+
+def check_dept_admin_scope(
+    auth: AuthContext,
+    org_id: UUID,
+    dept_id: UUID | None,
+    db: Session,
+) -> None:
+    """Verify that dept-admin callers may only act within their own department.
+
+    Org admins and superusers are unrestricted. Dept admins must have a
+    UserRoleAssignment matching the target ``dept_id``; they cannot act on
+    org-wide resources (``dept_id=None``) or on departments outside their
+    scope.
+
+    Raises HTTPException(403) on scope violation.
+    """
+    if auth.is_system_admin or "org_admin" in auth.roles:
+        return
+
+    org_level_access = db.execute(
+        select(UserRoleAssignment).where(
+            UserRoleAssignment.user_id == auth.user_id,
+            UserRoleAssignment.org_id == org_id,
+            UserRoleAssignment.dept_id.is_(None),  # org-scoped (not dept-specific)
+        )
+    ).first()
+
+    if org_level_access:
+        return
+
+    # Caller has only dept-scoped access
+    dept_assignments = db.scalars(
+        select(UserRoleAssignment).where(
+            UserRoleAssignment.user_id == auth.user_id,
+            UserRoleAssignment.org_id == org_id,
+            UserRoleAssignment.dept_id.isnot(None),
+        )
+    ).all()
+    allowed_dept_ids = {a.dept_id for a in dept_assignments}
+
+    if dept_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Department admins cannot manage org-wide resources; "
+            "specify a department matching your scope",
+        )
+    if dept_id not in allowed_dept_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Not authorized to manage resources in department '{dept_id}'",
+        )
 
 
 # ── Department-scoped dependencies ─────────────────────────────────────────
@@ -561,7 +612,7 @@ def _check_position_access(
 
 
 def get_department_with_access(
-    dept_id_or_slug: str,
+    dept_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-engineering"}}),
     org: Organization = Depends(get_organization_with_access),
     current_user: AuthContext = Depends(require_permission("departments:read")),
     db: Session = Depends(get_db),
@@ -586,7 +637,7 @@ def get_department_with_access(
 
 
 def get_department_with_update_access(
-    dept_id_or_slug: str,
+    dept_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-engineering"}}),
     org: Organization = Depends(get_organization_with_access),
     current_user: AuthContext = Depends(require_permission("departments:update")),
     db: Session = Depends(get_db),
@@ -613,7 +664,7 @@ def get_department_with_update_access(
 
 
 def get_department_with_delete_access(
-    dept_id_or_slug: str,
+    dept_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-engineering"}}),
     org: Organization = Depends(get_organization_with_access),
     current_user: AuthContext = Depends(require_permission("departments:delete")),
     db: Session = Depends(get_db),
@@ -640,7 +691,7 @@ def get_department_with_delete_access(
 
 
 def get_position_with_access(
-    position_id_or_slug: str,
+    position_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-acme-eng-senior-engineer"}}),
     org: Organization = Depends(get_organization_with_access),
     current_user: AuthContext = Depends(require_permission("positions:read")),
     db: Session = Depends(get_db),
@@ -667,7 +718,7 @@ def get_position_with_access(
 
 
 def get_position_with_delete_access(
-    position_id_or_slug: str,
+    position_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-acme-eng-senior-engineer"}}),
     org: Organization = Depends(get_organization_with_access),
     current_user: AuthContext = Depends(require_permission("positions:delete")),
     db: Session = Depends(get_db),
@@ -689,7 +740,7 @@ def get_position_with_delete_access(
 
 
 def get_position_with_update_access(
-    position_id_or_slug: str,
+    position_id_or_slug: str = Path(openapi_examples={"default": {"value": "sample-acme-eng-senior-engineer"}}),
     org: Organization = Depends(get_organization_with_access),
     current_user: AuthContext = Depends(require_permission("positions:update")),
     db: Session = Depends(get_db),

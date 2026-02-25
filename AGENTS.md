@@ -41,7 +41,7 @@ DevRank is built as a modular Python application that fetches, processes, and an
 7. **Database & Persistence Agent** (`db/`)
    - **Base** (`db/base.py`): SQLAlchemy `DeclarativeBase` — all ORM models inherit from this.
    - **Engine** (`db/engine.py`): Dual-driver setup — async (asyncpg for FastAPI) + sync (psycopg2 for Alembic/Celery).
-   - **Models** (`db/models.py`): ORM model definitions (sample table for now; real schemas to follow).
+   - **Models** (`db/models/`): 17 ORM models across dedicated files. See `ARCHITECTURE.md` for how they relate.
    - **Migrations** (`db/migrations/`): Alembic migration pipeline. Config in `alembic.ini`; env.py reads `settings.database_url_sync` from refactored `config.py` (now Pydantic Settings for validation/DRY).
    - **Filesystem** (`impact/persistence/filesystem.py`): `FileSystemDumpWriter` for JSONL dump output.
    - **DinD Compatible**: `scripts/dev-infra.sh` auto-detects Docker-in-Docker, substitutes `postgres`/`redis` hostnames. Alembic works both from host and inside worker container.
@@ -72,6 +72,7 @@ DevRank is built as a modular Python application that fetches, processes, and an
 - **Logging**: Structured logging throughout.
 - **Error Handling**: Graceful failure with informative messages.
 - **Performance**: In-memory processing for speed; async fetching for scale.
+- **Keep `ARCHITECTURE.md` in sync**: When adding, removing, or changing ORM models, relationships, or domain constraints in `db/models/`, update `ARCHITECTURE.md` to reflect the change. It is the plain-English source of truth for how entities relate.
 
 ## General Best Practices
 

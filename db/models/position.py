@@ -80,7 +80,7 @@ class Position(Base):
     organization: Mapped[Organization] = relationship(
         "Organization", back_populates="positions"
     )
-    department: Mapped[Department | None] = relationship("Department")
+    department: Mapped[Department | None] = relationship("Department", back_populates="positions")
     role: Mapped[Role] = relationship("Role")
     # submissions: Mapped[list["Submission"]] = ...  # via position_id
 

@@ -56,7 +56,7 @@ class Role(Base):
         nullable=True,  # NULL=global
         index=True,
     )
-    global_role: Mapped[bool] = mapped_column(
+    is_global: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false"), doc="Usable across orgs"
     )
     status: Mapped[RoleStatus] = mapped_column(
@@ -93,4 +93,4 @@ class Role(Base):
     # positions, submissions etc. backrefs
 
     def __repr__(self) -> str:
-        return f"<Role(id={self.id}, slug={self.slug}, global={self.global_role})>"
+        return f"<Role(id={self.id}, slug={self.slug}, global={self.is_global})>"

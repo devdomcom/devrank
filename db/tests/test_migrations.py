@@ -125,8 +125,8 @@ class TestMigrationUpgrade:
             "address",
             "zip",
             "phone",
-            "verified",
-            "kyc",
+            "is_verified",
+            "is_kyc_verified",
             "hashed_password",
             "role",
             "timezone",
@@ -154,7 +154,7 @@ class TestMigrationUpgrade:
         # Includes multi-tenancy enums (org/dept/role_status/user_org etc.) + RBAC
         # Assert subset to stay robust to additions; follows original pattern
         assert {
-            "gender_enum",
+            "user_gender_enum",
             "user_status_enum",
             "user_role_enum",
             "oauth_provider_enum",
@@ -224,15 +224,19 @@ class TestMigrationUpgrade:
             "description",
             "role_id",
             "created_by",
+            "org_id",
+            "position_id",
             "status",
             "created_at",
             "updated_at",
+            "published_at",
+            "deleted_at",
         }
         assert cols == expected
 
         # Constraints/FKs/indexes
         fks = {fk["referred_table"] for fk in insp.get_foreign_keys("assessments")}
-        assert {"users", "roles"} <= fks  # roles placeholder OK
+        assert {"users", "roles", "organizations", "positions"} <= fks
         constraints = {c.get("name") for c in insp.get_unique_constraints("assessments") if c.get("name")}
         assert "assessments_slug_key" in constraints or "uq_assessments_slug" in constraints  # Alembic/PG naming
         # Indexes
@@ -254,6 +258,7 @@ class TestMigrationUpgrade:
         expected = {
             "id",
             "assessment_id",
+            "scenario_id",
             "user_id",
             "evaluation_id",
             "position_id",
@@ -269,9 +274,9 @@ class TestMigrationUpgrade:
 
         # Constraints/FKs/indexes
         fks = {fk["referred_table"] for fk in insp.get_foreign_keys("submissions")}
-        assert {"users", "assessments", "evaluations", "positions"} <= fks  # placeholders OK
+        assert {"users", "assessments", "evaluations", "positions", "scenarios"} <= fks
         constraints = {c.get("name") for c in insp.get_unique_constraints("submissions") if c.get("name")}
-        assert "uq_user_assessment_submission" in constraints
+        assert "uq_user_assessment_scenario_submission" in constraints
         # Indexes
         indexes = {i["name"] for i in insp.get_indexes("submissions")}
         assert {
@@ -449,7 +454,7 @@ class TestMigrationDowngrade:
         # No remaining enums after base downgrade
         assert not {
             # Original
-            "gender_enum",
+            "user_gender_enum",
             "user_status_enum",
             "user_role_enum",
             "oauth_provider_enum",
@@ -538,7 +543,7 @@ class TestUserModelUsable:
             assert queried.email == "test@example.com"
             assert queried.role == UserRole.ENGINEER
             assert queried.status == UserStatus.ACTIVE
-            assert queried.verified is False  # default
+            assert queried.is_verified is False  # default
             assert queried.nickname is None
             # OAuth/assessment rels empty by default (multi-ready)
             assert len(queried.oauth_accounts) == 0

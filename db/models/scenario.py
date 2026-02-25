@@ -79,7 +79,7 @@ class Scenario(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    global_scenario: Mapped[bool] = mapped_column(
+    is_global: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false"),
         doc="True if reusable across all orgs (ignores org_id/dept_id)"
     )
@@ -143,7 +143,7 @@ class Scenario(Base):
     )
 
     # Rels (forward refs; back_populates from Assessment/Submission/User)
-    creator_user: Mapped["User"] = relationship("User")
+    creator_user: Mapped["User"] = relationship("User", back_populates="created_scenarios")
     organization: Mapped["Organization | None"] = relationship("Organization")
     department: Mapped["Department | None"] = relationship("Department")
     assessment: Mapped["Assessment"] = relationship(
@@ -155,4 +155,4 @@ class Scenario(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Scenario(id={self.id}, slug={self.slug}, global={self.global_scenario}, status={self.status})>"
+        return f"<Scenario(id={self.id}, slug={self.slug}, global={self.is_global}, status={self.status})>"

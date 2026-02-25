@@ -222,11 +222,12 @@ def paginate_departments(
         # No explicit status filter: hide soft-deleted for non-system-admins
         query = query.where(Department.deleted_at.is_(None))
 
-    # Apply search filter (slug/description contains, case-insensitive)
+    # Apply search filter (name/slug/description contains, case-insensitive)
     if filters and filters.search:
         safe_term = _escape_like(filters.search)
         query = query.where(
             or_(
+                Department.name.ilike(f"%{safe_term}%"),
                 Department.slug.ilike(f"%{safe_term}%"),
                 Department.description.ilike(f"%{safe_term}%"),
             )
@@ -386,7 +387,7 @@ def paginate_roles(
 ) -> RolesCursorPage:
     """Fetch paginated global roles using cursor.
 
-    Only returns roles where ``global_role=True`` AND ``org_id IS NULL`` — these
+    Only returns roles where ``is_global=True`` AND ``org_id IS NULL`` — these
     are the platform-wide defaults usable by every organization. Org-specific
     roles (``org_id`` set) are always excluded regardless of caller permissions.
 
@@ -406,7 +407,7 @@ def paginate_roles(
     query = (
         select(Role)
         .where(
-            Role.global_role.is_(True),
+            Role.is_global.is_(True),
             Role.org_id.is_(None),
         )
         .order_by(Role.id)

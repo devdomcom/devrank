@@ -91,17 +91,6 @@ class CompareMetricsRequest(BaseModel):
     user_login: str | None = Field(None, examples=["msyavuz"])
 
 
-class RoleListItem(BaseModel):
-    """Summary for available role (used by GET /roles/)."""
-    name: str
-
-
-class RoleResponse(BaseModel):
-    """Full role with config (used by GET /roles/{name})."""
-    name: str
-    config: dict[str, Any]
-
-
 class MetricComparison(BaseModel):
     """Per-metric comparison (window1 vs window2 + score_delta)."""
     slug: str
@@ -136,8 +125,6 @@ __all__ = [
     "MetricResponse",
     "MetricsReport",
     "ComputeMetricsRequest",
-    "RoleListItem",
-    "RoleResponse",
     "TimeWindow",
     "CompareMetricsRequest",
     "MetricComparison",

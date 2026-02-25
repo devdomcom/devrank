@@ -9,9 +9,10 @@ from __future__ import annotations
 from datetime import datetime
 import uuid
 from enum import Enum  # for potential local enums; OrganizationStatus reused from model
+from typing import Any
 
 from fastapi import Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Reuses status enums from db/models for DRY (immutable str Enum;
 # compatible with Pydantic v2 model_validate/from_attributes).
@@ -105,8 +106,8 @@ class CreateOrganizationRequest(BaseModel):
         min_length=2,
         max_length=100,
         pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
-        description="URL-safe lowercase slug (e.g. 'acme-corp')",
-        examples=["acme-corp"],
+        description="URL-safe lowercase slug (e.g. 'sample-acme-corp')",
+        examples=["sample-acme-corp"],
     )
     description: str | None = Field(None, max_length=500)
 
@@ -136,14 +137,21 @@ class UpdateOrganizationRequest(BaseModel):
         min_length=2,
         max_length=100,
         pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
-        description="URL-safe lowercase slug (e.g. 'acme-corp')",
-        examples=["acme-corp"],
+        description="URL-safe lowercase slug (e.g. 'sample-acme-corp')",
+        examples=["sample-acme-corp"],
     )
     description: str | None = Field(None, max_length=500)
     status: OrganizationStatus | None = Field(
         None,
         description="Organization lifecycle status (ACTIVE, DEACTIVATED, BANNED, DELETED)",
     )
+
+    @model_validator(mode="after")
+    def _reject_null_required_fields(self) -> UpdateOrganizationRequest:
+        for field in ("name", "slug", "status"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
 
 
 class OrganizationDeletedResponse(BaseModel):
@@ -192,8 +200,8 @@ def get_organization_filters(
         min_length=1,
         max_length=100,
         description="Search organizations by name, slug, or description (contains-match, "
-        "case-insensitive). Example: ?search=acme",
-        examples=["acme"],
+        "case-insensitive). Example: ?search=sample-acme",
+        examples=["sample-acme"],
     ),
 ) -> OrganizationFilterParams:
     """FastAPI dependency for organization list filters.
@@ -226,6 +234,7 @@ class DepartmentListItem(BaseModel):
 
     id: uuid.UUID
     org_id: uuid.UUID
+    name: str
     slug: str
     description: str | None = None
     is_default: bool = False
@@ -263,13 +272,20 @@ class UpdateDepartmentRequest(BaseModel):
     Only one department per organization can be the default at any time.
     """
 
+    name: str | None = Field(
+        None,
+        min_length=1,
+        max_length=200,
+        description="Human-readable department name",
+        examples=["Engineering"],
+    )
     slug: str | None = Field(
         None,
         min_length=2,
         max_length=100,
         pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
-        description="URL-safe lowercase slug (unique per org, e.g. 'engineering')",
-        examples=["engineering"],
+        description="URL-safe lowercase slug (unique per org, e.g. 'sample-engineering')",
+        examples=["sample-engineering"],
     )
     description: str | None = Field(None, max_length=500)
     status: DepartmentStatus | None = Field(
@@ -286,6 +302,13 @@ class UpdateDepartmentRequest(BaseModel):
             "Requires departments:set-default permission (org admins / superusers only)."
         ),
     )
+
+    @model_validator(mode="after")
+    def _reject_null_required_fields(self) -> UpdateDepartmentRequest:
+        for field in ("name", "slug", "status"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
 
 
 class DepartmentDeletedResponse(BaseModel):
@@ -331,8 +354,8 @@ class DepartmentFilterParams(BaseModel):
     search: str | None = Field(
         None,
         description=(
-            "Case-insensitive search term matched against slug and description "
-            "(contains-match on both)."
+            "Case-insensitive search term matched against name, slug, and "
+            "description (contains-match)."
         ),
     )
 
@@ -348,9 +371,9 @@ def get_department_filters(
         None,
         min_length=1,
         max_length=100,
-        description="Search departments by slug or description (contains-match, "
-        "case-insensitive). Example: ?search=engineering",
-        examples=["engineering"],
+        description="Search departments by name, slug, or description (contains-match, "
+        "case-insensitive). Example: ?search=sample-engineering",
+        examples=["sample-engineering"],
     ),
 ) -> DepartmentFilterParams:
     """FastAPI dependency for department list filters.
@@ -375,13 +398,20 @@ class CreateDepartmentRequest(BaseModel):
     within the organization (enforced by DB constraint ``uq_org_dept_slug``).
     """
 
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Human-readable department name (e.g. 'Engineering')",
+        examples=["Engineering"],
+    )
     slug: str = Field(
         ...,
         min_length=2,
         max_length=100,
         pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
-        description="URL-safe lowercase slug (unique per org, e.g. 'engineering')",
-        examples=["engineering"],
+        description="URL-safe lowercase slug (unique per org, e.g. 'sample-engineering')",
+        examples=["sample-engineering"],
     )
     description: str | None = Field(None, max_length=500)
 
@@ -451,12 +481,12 @@ class UpdatePositionRequest(BaseModel):
         max_length=100,
         pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
         description="URL-safe lowercase slug (globally unique).",
-        examples=["acme-senior-eng-2025"],
+        examples=["sample-acme-eng-senior-engineer"],
     )
     role_id_or_slug: str | None = Field(
         None,
         description="Role identifier or slug for the domain role.",
-        examples=["9f9a4c2c-0e53-4a0f-9a3b-1c1d2e3f4a5b", "senior-engineer"],
+        examples=["sample-role-senior-engineer"],
     )
     dept_id_or_slug: str | None = Field(
         None,
@@ -464,13 +494,20 @@ class UpdatePositionRequest(BaseModel):
             "Department identifier or slug within the organization. "
             "Set to null to make the position org-wide."
         ),
-        examples=["7e61b0b1-3c52-4bb4-8b88-4b6e21e25a5e", "engineering"],
+        examples=["sample-engineering"],
     )
     description: str | None = Field(None, max_length=500)
     status: PositionStatus | None = Field(
         None,
         description="Lifecycle status (DRAFT or PUBLISHED). Use DELETE endpoint for DELETED.",
     )
+
+    @model_validator(mode="after")
+    def _reject_null_required_fields(self) -> UpdatePositionRequest:
+        for field in ("slug", "status", "role_id_or_slug"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
 
 
 class CreatePositionRequest(BaseModel):
@@ -496,16 +533,16 @@ class CreatePositionRequest(BaseModel):
         min_length=2,
         max_length=100,
         pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
-        description="URL-safe lowercase slug (globally unique, e.g. 'acme-senior-eng-2025')",
-        examples=["acme-senior-eng-2025"],
+        description="URL-safe lowercase slug (globally unique, e.g. 'sample-acme-eng-senior-engineer')",
+        examples=["sample-acme-eng-senior-engineer"],
     )
     role_id_or_slug: str = Field(
         ...,
         description=(
             "Role identifier or slug for the domain role this position is for. "
-            "Examples: '9f9a4c2c-...' or 'senior-engineer'."
+            "Examples: 'sample-role-senior-engineer'."
         ),
-        examples=["9f9a4c2c-0e53-4a0f-9a3b-1c1d2e3f4a5b", "senior-engineer"],
+        examples=["sample-role-senior-engineer"],
     )
     dept_id_or_slug: str | None = Field(
         None,
@@ -513,7 +550,7 @@ class CreatePositionRequest(BaseModel):
             "Department identifier or slug within the organization. "
             "Omit or null for an org-wide position."
         ),
-        examples=["7e61b0b1-3c52-4bb4-8b88-4b6e21e25a5e", "engineering"],
+        examples=["sample-engineering"],
     )
     description: str | None = Field(None, max_length=500)
     status: PositionStatus = Field(
@@ -615,9 +652,9 @@ def get_position_filters(
         max_length=100,
         description=(
             "Search positions by slug or description (contains-match, case-insensitive). "
-            "Example: ?search=senior"
+            "Example: ?search=sample-acme"
         ),
-        examples=["senior"],
+        examples=["sample-acme"],
     ),
 ) -> PositionFilterParams:
     """FastAPI dependency for position list filters.
@@ -639,7 +676,7 @@ def get_position_filters(
 class RoleListItem(BaseModel):
     """Summary view of a global role (for list endpoint; excludes heavy rels).
 
-    Only global roles (``global_role=True``, ``org_id=None``) are returned by
+    Only global roles (``is_global=True``, ``org_id=None``) are returned by
     the list endpoint — these are the platform-wide defaults available to every
     organization for use with positions and assessments.
 
@@ -652,13 +689,23 @@ class RoleListItem(BaseModel):
     id: uuid.UUID
     slug: str
     description: str | None = None
-    global_role: bool
+    is_global: bool
     status: RoleStatus
     version: int
     created_at: datetime
     updated_at: datetime
     published_at: datetime | None = None
     deleted_at: datetime | None = None
+
+
+class RoleResponse(RoleListItem):
+    """Full detail for a single role including JSON config.
+
+    Extends ``RoleListItem`` with the ``config`` column containing
+    metric/threshold configuration synced from YAML via ``devrank roles sync``.
+    """
+
+    config: dict[str, Any]
 
 
 class RolesCursorPage(BaseModel):
@@ -711,9 +758,9 @@ def get_role_filters(
         max_length=100,
         description=(
             "Search roles by slug or description (contains-match, case-insensitive). "
-            "Example: ?search=senior"
+            "Example: ?search=sample-role-senior"
         ),
-        examples=["senior"],
+        examples=["sample-role-senior"],
     ),
 ) -> RoleFilterParams:
     """FastAPI dependency for global role list filters.

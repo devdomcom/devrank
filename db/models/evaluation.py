@@ -58,7 +58,7 @@ class Evaluation(Base):
         "Assessment", back_populates="evaluations"
     )
     submission: Mapped["Submission | None"] = relationship(
-        "Submission", back_populates="evaluation", foreign_keys=[submission_id], uselist=False, remote_side="[Submission.evaluation_id]"
+        "Submission", foreign_keys=[submission_id], uselist=False
     )
 
     def __repr__(self) -> str:

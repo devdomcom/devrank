@@ -47,7 +47,7 @@ def sync_roles_from_yaml(
 
             description = config.get("description")
             status = _parse_status(config.get("status"))
-            global_role = bool(config.get("global_role", False))
+            is_global = bool(config.get("is_global", False))
             version = int(config.get("version", 1))
 
             role = db.execute(select(Role).where(Role.slug == slug)).scalar_one_or_none()
@@ -61,7 +61,7 @@ def sync_roles_from_yaml(
                         status=status,
                         config=config,
                         version=version,
-                        global_role=global_role,
+                        is_global=is_global,
                         created_at=now,
                         updated_at=now,
                         published_at=now if status == RoleStatus.PUBLISHED else None,
@@ -76,8 +76,8 @@ def sync_roles_from_yaml(
             if role.status != status:
                 updates["status"] = status
                 updates["published_at"] = now if status == RoleStatus.PUBLISHED else None
-            if role.global_role != global_role:
-                updates["global_role"] = global_role
+            if role.is_global != is_global:
+                updates["is_global"] = is_global
             if role.version != version:
                 updates["version"] = version
             if role.config != config:

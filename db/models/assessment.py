@@ -72,21 +72,30 @@ class Assessment(Base):
         String(1000), nullable=True, doc="Purpose/details (markdown OK)"
     )
 
-    # FKs (roles table future; User for creator)
-    # role_id: FK to Role.id (UUID; was int - fixed for consistency with UUID PKs)
+    # FKs
     role_id: Mapped[uuid.UUID | None] = mapped_column(
-        # Matches Role.id; nullable until full Role impl
-        ForeignKey("roles.id", ondelete="SET NULL"),  # Graceful if role deleted
+        ForeignKey("roles.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
-        doc="FK to Role (dedicated table; e.g., 'senior_dev' from impact/config)",
+        doc="FK to Role (e.g., 'senior_dev' from impact/config)",
     )
-    # created_by: links creator (User) - enables self-eval + collab assessments
-    created_by: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
-        doc="FK to User who created it (self-eval or org-assigned)",
+        doc="FK to User who created it (SET NULL preserves assessment on user deletion)",
+    )
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        doc="FK to Organization (org-scoped assessments; NULL for self-eval)",
+    )
+    position_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("positions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        doc="FK to Position being assessed (NULL for standalone assessments)",
     )
 
     # Status/workflow
@@ -116,10 +125,16 @@ class Assessment(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships (string annos for forward refs/modularity)
     # Creator rel: User.created_assessments (1:N)
-    creator: Mapped[User] = relationship(
+    creator: Mapped[User | None] = relationship(
         "User",
         back_populates="created_assessments",
         foreign_keys=[created_by],
@@ -139,7 +154,15 @@ class Assessment(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    # role: Mapped["Role"] = relationship(...)  # once Role model exists
+    role: Mapped["Role | None"] = relationship(
+        "Role", foreign_keys=[role_id]
+    )
+    organization: Mapped["Organization | None"] = relationship(
+        "Organization", foreign_keys=[org_id]
+    )
+    position: Mapped["Position | None"] = relationship(
+        "Position", foreign_keys=[position_id]
+    )
     # scenarios: 1:N (assessment composed of multiple scenarios; user completes all)
     scenarios: Mapped[list[Scenario]] = relationship(
         "Scenario",

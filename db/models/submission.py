@@ -142,7 +142,7 @@ class Submission(Base):
         "Assessment", back_populates="submissions"
     )
     evaluation: Mapped["Evaluation | None"] = relationship(
-        "Evaluation", back_populates="submission", foreign_keys=[evaluation_id], uselist=False
+        "Evaluation", foreign_keys=[evaluation_id], uselist=False
     )
     # position: Mapped["Position"] = ...  # future
     scenario: Mapped["Scenario | None"] = relationship(

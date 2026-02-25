@@ -130,6 +130,7 @@ def create_organization(
     now = datetime.now(timezone.utc)
     default_dept = Department(
         org_id=org.id,
+        name="General",
         slug="general",
         description="Default department",
         is_default=True,

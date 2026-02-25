@@ -27,7 +27,7 @@ def load_role_yaml_configs(paths: list[str] | None = None) -> list[dict]:
     """Load role YAML configs from directories or individual files.
 
     Returns a list of dicts with required metadata (slug, metrics) and optional
-    fields (description, status, global_role, version).
+    fields (description, status, is_global, version).
     """
     if not paths:
         targets = [Path(__file__).parent / "roles"]
