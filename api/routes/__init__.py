@@ -8,6 +8,8 @@ from .organizations import router as organizations_router
 from .positions import router as positions_router
 # Global roles router (platform-wide default roles; no org assignment)
 from .roles import router as global_roles_router
+# Users router (platform-wide user management; system admins only)
+from .users import router as users_router
 
 __all__ = [
     "auth_router",
@@ -16,4 +18,5 @@ __all__ = [
     "infra_health_router",
     "organizations_router",
     "positions_router",
+    "users_router",
 ]

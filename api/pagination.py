@@ -47,11 +47,15 @@ from api.schemas import (
     RoleFilterParams,
     RoleListItem,
     RolesCursorPage,
+    UserFilterParams,
+    UserListItem,
+    UsersCursorPage,
 )
 from db.models.department import Department
 from db.models.organization import Organization
 from db.models.position import Position
 from db.models.role import Role
+from db.models.user import User
 
 
 def _escape_like(term: str) -> str:
@@ -456,3 +460,67 @@ def paginate_roles(
     ]
 
     return RolesCursorPage(items=items, next_cursor=next_cursor, limit=limit)
+
+
+def paginate_users(
+    db: Session,
+    cursor: str | None = None,
+    limit: int = 20,
+    *,
+    filters: UserFilterParams | None = None,
+) -> UsersCursorPage:
+    """Fetch paginated users using cursor.
+
+    - Status filter: narrows to specific UserStatus values when provided.
+    - Search filter: case-insensitive contains-match on name, surname, email,
+      and nickname. User-supplied wildcards are escaped for safety.
+    - ORDER BY id (PK index ensures efficient range scan, no offset)
+    - Fetches limit+1 to peek for next_cursor (standard technique)
+    - Maps ORM to UserListItem via Pydantic (from_attributes=True)
+
+    This endpoint is restricted to system admins (superusers).
+    """
+    # Base query sorted by ID for cursor stability
+    query = select(User).order_by(User.id)
+
+    # Apply status filter if provided
+    if filters and filters.status:
+        query = query.where(User.status.in_(filters.status))
+
+    # Apply search filter (name/surname/email/nickname contains, case-insensitive)
+    if filters and filters.search:
+        safe_term = _escape_like(filters.search)
+        query = query.where(
+            or_(
+                User.name.ilike(f"%{safe_term}%"),
+                User.surname.ilike(f"%{safe_term}%"),
+                User.email.ilike(f"%{safe_term}%"),
+                User.nickname.ilike(f"%{safe_term}%"),
+            )
+        )
+
+    # Apply cursor filter if provided (id > last)
+    if cursor:
+        try:
+            last_id = decode_cursor(cursor)
+        except ValueError as e:
+            raise ValueError("Invalid pagination cursor") from e
+        query = query.where(User.id > last_id)
+
+    # +1 peek for has_next (don't expose to client)
+    results = db.scalars(query.limit(limit + 1)).all()
+    has_next = len(results) > limit
+    page_users = results[:limit]
+
+    # Compute next_cursor from last item in page (if exists next)
+    next_cursor = (
+        encode_cursor(page_users[-1].id) if has_next and page_users else None
+    )
+
+    # Convert ORM instances to Pydantic schema items (v2, from_attributes)
+    items = [
+        UserListItem.model_validate(user, from_attributes=True)
+        for user in page_users
+    ]
+
+    return UsersCursorPage(items=items, next_cursor=next_cursor, limit=limit)

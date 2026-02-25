@@ -56,6 +56,14 @@ permissions:
     description: Update a position (org admins / dept admins / superusers)
   positions:delete:
     description: Soft-delete a position (org admins / dept admins / superusers)
+  users:list:
+    description: List all users in the platform (system admins only)
+  users:read:
+    description: Read user details including org/department memberships (system admins see full info, users see their own)
+  users:create:
+    description: Create a new user account (system admins only)
+  users:update:
+    description: Update an existing user account (system admins only)
 
 roles:
   # ── System roles (platform-wide, not org-scoped) ────────────────────
@@ -71,6 +79,7 @@ roles:
     description: Default role assigned to every user on signup
     permissions:
       - organizations:create
+      - users:read
 
   # ── App roles (org/dept-scoped) ─────────────────────────────────────
   analyst:

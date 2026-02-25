@@ -6,7 +6,7 @@ Field validation, reuse of DB enums where possible for DRY.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 import uuid
 from enum import Enum  # for potential local enums; OrganizationStatus reused from model
 from typing import Any
@@ -22,6 +22,7 @@ from db.models.department import DepartmentStatus
 from db.models.organization import OrganizationStatus
 from db.models.position import PositionStatus
 from db.models.role import RoleStatus
+from db.models.user import UserStatus
 
 
 class HealthResponse(BaseModel):
@@ -772,4 +773,314 @@ def get_role_filters(
     return RoleFilterParams(
         status=status or [],
         search=search.strip() if search else None,
+    )
+
+
+# ── User schemas ───────────────────────────────────────────────────────────
+
+
+class UserListItem(BaseModel):
+    """Summary view of a user (for list endpoint; excludes sensitive fields).
+
+    Mirrors core fields from db/models/user.py (status, timestamps)
+    for API safety. Used in cursor pagination response.
+    """
+
+    id: uuid.UUID
+    email: str
+    name: str
+    surname: str
+    nickname: str | None = None
+    status: UserStatus
+    is_verified: bool
+    is_kyc_verified: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class UsersCursorPage(BaseModel):
+    """Cursor-paginated response for GET /users/.
+
+    Follows DRY pagination pattern (reusable cursor approach from organizations,
+    departments, positions, and roles). Implements opaque cursor best practices (2026):
+    - Base64-encoded ID for security/opacity (prevents enumeration)
+    - ORDER BY id (indexed PK), WHERE id > decoded_cursor
+    - items + next_cursor (None at end); limit in response for client echo
+    - No total_count (avoids expensive COUNT(*) on large tables)
+    - limit=20 default, <=100 to prevent abuse
+    """
+
+    items: list[UserListItem]
+    next_cursor: str | None = None
+    limit: int = Field(default=20, le=100, description="Page size")
+
+
+class UserFilterParams(BaseModel):
+    """Query-parameter filter bag for GET /users/ (extensible).
+
+    Designed for future expansion without breaking the endpoint signature.
+    Currently supports status filtering and free-text search on name/email.
+    All fields optional — omitting them returns all users.
+    """
+
+    status: list[UserStatus] = Field(default_factory=list)
+    search: str | None = Field(
+        None,
+        description=(
+            "Case-insensitive search term matched against name, surname, email, "
+            "and nickname (contains-match on all)."
+        ),
+    )
+
+
+def get_user_filters(
+    status: list[UserStatus] | None = Query(
+        None,
+        description=(
+            "Filter by user status(es). Repeatable: ?status=ACTIVE&status=DEACTIVATED. "
+            "Omit to return all users."
+        ),
+        examples=["ACTIVE"],
+    ),
+    search: str | None = Query(
+        None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "Search users by name, surname, email, or nickname (contains-match, "
+            "case-insensitive). Example: ?search=john"
+        ),
+        examples=["john"],
+    ),
+) -> UserFilterParams:
+    """FastAPI dependency for user list filters.
+
+    DRY extraction + validation; extensible for future params.
+    Strips whitespace from search to normalize user input.
+    Returns a typed filter bag for the pagination layer.
+    """
+    return UserFilterParams(
+        status=status or [],
+        search=search.strip() if search else None,
+    )
+
+
+class UserOrgMembership(BaseModel):
+    """Organization and department membership for a user.
+
+    Returned as part of UserResponse when viewed by system admins.
+    """
+
+    org_id: uuid.UUID
+    org_name: str
+    org_slug: str
+    dept_id: uuid.UUID | None = None
+    dept_name: str | None = None
+    dept_slug: str | None = None
+    status: str
+
+
+class UserResponse(BaseModel):
+    """Full user detail response.
+
+    Standard users see only basic info when viewing their own profile.
+    System admins see additional org/department membership information.
+
+    The ``memberships`` field is only populated for system admins; regular
+    users will see this as null.
+    """
+
+    id: uuid.UUID
+    email: str
+    name: str
+    surname: str
+    nickname: str | None = None
+    avatar: str | None = None
+    dob: date | None = None
+    address: str | None = None
+    zip: str | None = None
+    phone: str | None = None
+    gender: str | None = None
+    country: str | None = None
+    timezone: str
+    locale: str
+    status: UserStatus
+    is_verified: bool
+    is_kyc_verified: bool
+    created_at: datetime
+    updated_at: datetime
+    last_login_at: datetime | None = None
+    # Admin-only field: org/department memberships
+    memberships: list[UserOrgMembership] | None = None
+
+
+class CreateUserRequest(BaseModel):
+    """Request body for POST /users/ (system admins only).
+
+    Creates a new user account with basic information.
+    Email must be unique across the platform.
+    """
+
+    email: str = Field(
+        ...,
+        min_length=3,
+        max_length=255,
+        description="User's email address (unique)",
+        examples=["user@example.com"],
+    )
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="User's first/given name",
+        examples=["John"],
+    )
+    surname: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="User's last/family name",
+        examples=["Doe"],
+    )
+    nickname: str | None = Field(
+        None,
+        max_length=50,
+        description="User's preferred display name",
+        examples=["johndoe"],
+    )
+    password: str = Field(
+        ...,
+        min_length=8,
+        max_length=100,
+        description="Initial password (min 8 characters)",
+        examples=["SecurePass123!"],
+    )
+    gender: str | None = Field(
+        None,
+        description="User's gender (m, f, other, prefer_not_to_say)",
+        examples=["prefer_not_to_say"],
+    )
+    country: str | None = Field(
+        None,
+        min_length=2,
+        max_length=2,
+        description="ISO-3166-1 alpha-2 country code",
+        examples=["US"],
+    )
+    timezone: str = Field(
+        "UTC",
+        max_length=50,
+        description="IANA timezone",
+        examples=["America/New_York"],
+    )
+    locale: str = Field(
+        "en",
+        max_length=10,
+        description="BCP-47 locale",
+        examples=["en"],
+    )
+    is_verified: bool = Field(
+        False,
+        description="Whether the user's email is verified",
+    )
+    is_kyc_verified: bool = Field(
+        False,
+        description="Whether the user has passed KYC verification",
+    )
+
+class UpdateUserRequest(BaseModel):
+    """Request body for PATCH /users/{user_id} (system admins only).
+
+    Updates an existing user account. All fields are optional.
+    """
+
+    email: str | None = Field(
+        None,
+        min_length=3,
+        max_length=255,
+        description="User's email address (unique)",
+        examples=["user@example.com"],
+    )
+    name: str | None = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description="User's first/given name",
+        examples=["John"],
+    )
+    surname: str | None = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description="User's last/family name",
+        examples=["Doe"],
+    )
+    nickname: str | None = Field(
+        None,
+        max_length=50,
+        description="User's preferred display name",
+        examples=["johndoe"],
+    )
+    password: str | None = Field(
+        None,
+        min_length=8,
+        max_length=100,
+        description="New password (min 8 characters)",
+        examples=["NewSecurePass123!"],
+    )
+    gender: str | None = Field(
+        None,
+        description="User's gender (m, f, other, prefer_not_to_say)",
+        examples=["prefer_not_to_say"],
+    )
+    country: str | None = Field(
+        None,
+        min_length=2,
+        max_length=2,
+        description="ISO-3166-1 alpha-2 country code",
+        examples=["US"],
+    )
+    timezone: str | None = Field(
+        None,
+        max_length=50,
+        description="IANA timezone",
+        examples=["America/New_York"],
+    )
+    locale: str | None = Field(
+        None,
+        max_length=10,
+        description="BCP-47 locale",
+        examples=["en"],
+    )
+    avatar: str | None = Field(
+        None,
+        max_length=500,
+        description="URL to profile avatar",
+    )
+    dob: date | None = Field(
+        None,
+        description="Date of birth",
+    )
+    address: str | None = Field(
+        None,
+        max_length=255,
+        description="Street address",
+    )
+    zip: str | None = Field(
+        None,
+        max_length=20,
+        description="Postal/ZIP code",
+    )
+    phone: str | None = Field(
+        None,
+        max_length=30,
+        description="Phone number",
+    )
+    is_verified: bool | None = Field(
+        None,
+        description="Whether the user's email is verified",
+    )
+    is_kyc_verified: bool | None = Field(
+        None,
+        description="Whether the user has passed KYC verification",
     )
