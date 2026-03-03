@@ -56,6 +56,26 @@ permissions:
     description: Update a position (org admins / dept admins / superusers)
   positions:delete:
     description: Soft-delete a position (org admins / dept admins / superusers)
+  assessments:list:
+    description: List assessments (org members / superusers)
+  assessments:read:
+    description: Read assessment details by ID
+  assessments:create:
+    description: Create a new assessment (org admins / dept admins / superusers)
+  assessments:update:
+    description: Update an existing assessment (org admins / dept admins / superusers)
+  assessments:delete:
+    description: Soft-delete an assessment (org admins / dept admins / superusers)
+  scenarios:list:
+    description: List scenarios (platform-wide global scenarios, or assessment-scoped)
+  scenarios:read:
+    description: Read scenario details by ID
+  scenarios:create:
+    description: Create a new scenario within an assessment (org admins / dept admins / superusers)
+  scenarios:update:
+    description: Update an existing scenario (org admins / dept admins / superusers)
+  scenarios:delete:
+    description: Soft-delete a scenario (org admins / dept admins / superusers)
   users:list:
     description: List all users in the platform (system admins only)
   users:read:
@@ -97,6 +117,10 @@ roles:
       - departments:read
       - positions:list
       - positions:read
+      - assessments:list
+      - assessments:read
+      - scenarios:list
+      - scenarios:read
 
   org_admin:
     type: app
@@ -118,6 +142,16 @@ roles:
       - positions:create
       - positions:update
       - positions:delete
+      - assessments:list
+      - assessments:read
+      - assessments:create
+      - assessments:update
+      - assessments:delete
+      - scenarios:list
+      - scenarios:read
+      - scenarios:create
+      - scenarios:update
+      - scenarios:delete
 
   dept_admin:
     type: app
@@ -133,3 +167,13 @@ roles:
       - positions:create
       - positions:update
       - positions:delete
+      - assessments:list
+      - assessments:read
+      - assessments:create
+      - assessments:update
+      - assessments:delete
+      - scenarios:list
+      - scenarios:read
+      - scenarios:create
+      - scenarios:update
+      - scenarios:delete

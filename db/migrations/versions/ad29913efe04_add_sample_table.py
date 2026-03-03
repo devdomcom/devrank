@@ -484,8 +484,8 @@ def upgrade() -> None:
         # FKs
         sa.Column("role_id", sa.UUID(), nullable=True),  # to roles.id
         sa.Column("created_by", sa.UUID(), nullable=True),  # to users.id
-        sa.Column("org_id", sa.UUID(), nullable=True),  # to organizations.id
-        sa.Column("position_id", sa.UUID(), nullable=True),  # to positions.id
+        sa.Column("org_id", sa.UUID(), nullable=False),  # to organizations.id
+        sa.Column("position_id", sa.UUID(), nullable=False),  # to positions.id
         # Status
         sa.Column(
             "status",

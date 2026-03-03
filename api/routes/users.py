@@ -24,6 +24,9 @@ from api.auth.schemas import AuthContext
 from api.pagination import get_cursor_params, paginate_users
 from api.schemas import (
     CreateUserRequest,
+    OAuthAccountDisconnectedResponse,
+    OAuthAccountResponse,
+    OAuthAccountsResponse,
     UpdateUserRequest,
     UserFilterParams,
     UserOrgMembership,
@@ -32,6 +35,7 @@ from api.schemas import (
     get_user_filters,
 )
 from db.models import (
+    OAuthAccount,
     RoleType,
     SystemRole,
     User,
@@ -406,4 +410,111 @@ def update_user(
         user,
         include_memberships=True,
         db=db,
+    )
+
+
+# ── GET /users/{user_id}/oauth/accounts/ ───────────────────────────────────
+
+
+@router.get(
+    "/{user_id}/oauth/accounts/",
+    summary="List connected OAuth providers for a user",
+    response_model=OAuthAccountsResponse,
+)
+def list_oauth_accounts(
+    user_id: uuid.UUID = Path(..., description="User UUID"),
+    auth: AuthContext = Depends(require_permission("users:read")),
+    db: Session = Depends(get_db),
+) -> OAuthAccountsResponse:
+    """List OAuth accounts linked to a user.
+
+    Access control:
+    - System admins can view any user's OAuth connections.
+    - Non-admins can view only their own OAuth connections.
+    """
+    if not (auth.is_system_admin or auth.user_id == user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this user's OAuth accounts",
+        )
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{user_id}' not found",
+        )
+
+    accounts = db.scalars(
+        select(OAuthAccount)
+        .where(OAuthAccount.user_id == user_id)
+        .order_by(OAuthAccount.created_at.asc())
+    ).all()
+
+    return OAuthAccountsResponse(
+        items=[
+            OAuthAccountResponse(
+                id=account.id,
+                provider=account.provider.value,
+                provider_user_id=account.provider_user_id,
+                created_at=account.created_at,
+                updated_at=account.updated_at,
+            )
+            for account in accounts
+        ]
+    )
+
+
+# ── DELETE /users/{user_id}/oauth/accounts/{oauth_id} ───────────────────────
+
+
+@router.delete(
+    "/{user_id}/oauth/accounts/{oauth_id}",
+    summary="Disconnect an OAuth provider for a user",
+    response_model=OAuthAccountDisconnectedResponse,
+)
+def delete_oauth_account(
+    user_id: uuid.UUID = Path(..., description="User UUID"),
+    oauth_id: uuid.UUID = Path(..., description="OAuth account UUID"),
+    auth: AuthContext = Depends(require_permission("users:update")),
+    db: Session = Depends(get_db),
+) -> OAuthAccountDisconnectedResponse:
+    """Disconnect an OAuth provider for a user.
+
+    Access control:
+    - System admins can disconnect any user's OAuth connections.
+    - Non-admins can disconnect only their own OAuth connections.
+    """
+    if not (auth.is_system_admin or auth.user_id == user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to disconnect OAuth accounts for this user",
+        )
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{user_id}' not found",
+        )
+
+    oauth_account = db.execute(
+        select(OAuthAccount).where(
+            OAuthAccount.id == oauth_id,
+            OAuthAccount.user_id == user_id,
+        )
+    ).scalar_one_or_none()
+    if not oauth_account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"OAuth account '{oauth_id}' not found for user '{user_id}'",
+        )
+
+    db.delete(oauth_account)
+    db.commit()
+
+    return OAuthAccountDisconnectedResponse(
+        id=oauth_account.id,
+        user_id=oauth_account.user_id,
+        provider=oauth_account.provider.value,
     )

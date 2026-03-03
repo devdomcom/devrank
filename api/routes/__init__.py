@@ -1,3 +1,4 @@
+from .assessments import router as assessments_router
 from .auth import router as auth_router
 from .departments import router as departments_router
 from .health import router as infra_health_router
@@ -8,15 +9,21 @@ from .organizations import router as organizations_router
 from .positions import router as positions_router
 # Global roles router (platform-wide default roles; no org assignment)
 from .roles import router as global_roles_router
+# Scenarios router (global scenarios + assessment-scoped CRUD)
+from .scenarios import assessment_router as scenarios_assessment_router
+from .scenarios import router as scenarios_router
 # Users router (platform-wide user management; system admins only)
 from .users import router as users_router
 
 __all__ = [
+    "assessments_router",
     "auth_router",
     "departments_router",
     "global_roles_router",
     "infra_health_router",
     "organizations_router",
     "positions_router",
+    "scenarios_assessment_router",
+    "scenarios_router",
     "users_router",
 ]

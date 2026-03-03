@@ -35,6 +35,9 @@ from sqlalchemy.orm import Session
 
 # Import schemas/DB here (avoid circular; schemas are app-level)
 from api.schemas import (
+    AssessmentFilterParams,
+    AssessmentListItem,
+    AssessmentsCursorPage,
     DepartmentFilterParams,
     DepartmentListItem,
     DepartmentsCursorPage,
@@ -47,14 +50,19 @@ from api.schemas import (
     RoleFilterParams,
     RoleListItem,
     RolesCursorPage,
+    ScenarioFilterParams,
+    ScenarioListItem,
+    ScenariosCursorPage,
     UserFilterParams,
     UserListItem,
     UsersCursorPage,
 )
+from db.models.assessment import Assessment
 from db.models.department import Department
 from db.models.organization import Organization
 from db.models.position import Position
 from db.models.role import Role
+from db.models.scenario import Scenario
 from db.models.user import User
 
 
@@ -381,6 +389,82 @@ def paginate_positions(
     return PositionsCursorPage(items=items, next_cursor=next_cursor, limit=limit)
 
 
+def paginate_assessments(
+    db: Session,
+    cursor: str | None = None,
+    limit: int = 20,
+    *,
+    filters: AssessmentFilterParams | None = None,
+    include_deleted: bool = False,
+    org_ids: list[uuid.UUID] | None = None,
+    creator_id: uuid.UUID | None = None,
+) -> AssessmentsCursorPage:
+    """Fetch paginated assessments using cursor.
+
+    - Visibility filter: optionally restricts to a set of org IDs and/or creator.
+    - Soft-delete filter: ``include_deleted=False`` (default) hides deleted assessments;
+      ``True`` (system admins) includes them. Explicit status filters override this
+      when DELETED is explicitly requested.
+    - Status filter: narrows to specific AssessmentStatus values when provided.
+    - Search filter: case-insensitive contains-match on title, slug, and description.
+      User-supplied wildcards are escaped for safety.
+    - ORDER BY id (PK index ensures efficient range scan, no offset)
+    - Fetches limit+1 to peek for next_cursor (standard technique)
+    - Maps ORM to AssessmentListItem via Pydantic (from_attributes=True)
+    """
+    from db.models.assessment import AssessmentStatus  # local import avoids top-level circular
+
+    query = select(Assessment).order_by(Assessment.id)
+
+    if org_ids or creator_id:
+        visibility_clauses = []
+        if org_ids:
+            visibility_clauses.append(Assessment.org_id.in_(org_ids))
+        if creator_id:
+            visibility_clauses.append(
+                (Assessment.org_id.is_(None))
+                & (Assessment.created_by == creator_id)
+            )
+        query = query.where(or_(*visibility_clauses))
+
+    if filters and filters.status:
+        query = query.where(Assessment.status.in_(filters.status))
+    elif not include_deleted:
+        query = query.where(Assessment.status != AssessmentStatus.DELETED)
+
+    if filters and filters.search:
+        safe_term = _escape_like(filters.search)
+        query = query.where(
+            or_(
+                Assessment.title.ilike(f"%{safe_term}%"),
+                Assessment.slug.ilike(f"%{safe_term}%"),
+                Assessment.description.ilike(f"%{safe_term}%"),
+            )
+        )
+
+    if cursor:
+        try:
+            last_id = decode_cursor(cursor)
+        except ValueError as e:
+            raise ValueError("Invalid pagination cursor") from e
+        query = query.where(Assessment.id > last_id)
+
+    results = db.scalars(query.limit(limit + 1)).all()
+    has_next = len(results) > limit
+    page_assessments = results[:limit]
+
+    next_cursor = (
+        encode_cursor(page_assessments[-1].id) if has_next and page_assessments else None
+    )
+
+    items = [
+        AssessmentListItem.model_validate(assessment, from_attributes=True)
+        for assessment in page_assessments
+    ]
+
+    return AssessmentsCursorPage(items=items, next_cursor=next_cursor, limit=limit)
+
+
 def paginate_roles(
     db: Session,
     cursor: str | None = None,
@@ -524,3 +608,89 @@ def paginate_users(
     ]
 
     return UsersCursorPage(items=items, next_cursor=next_cursor, limit=limit)
+
+
+def paginate_scenarios(
+    db: Session,
+    cursor: str | None = None,
+    limit: int = 20,
+    *,
+    filters: ScenarioFilterParams | None = None,
+    include_deleted: bool = False,
+    assessment_id: uuid.UUID | None = None,
+    is_global: bool | None = None,
+) -> ScenariosCursorPage:
+    """Fetch paginated scenarios using cursor.
+
+    - Assessment filter: optionally restricts to scenarios for a specific assessment.
+    - Global filter: optionally restricts to global (is_global=True) scenarios only.
+    - Soft-delete filter: ``include_deleted=False`` (default) hides deleted scenarios;
+      ``True`` (system admins) includes them. Explicit status filters override this
+      when DELETED is explicitly requested.
+    - Status filter: narrows to specific ScenarioStatus values when provided.
+    - Tool filter: narrows to specific ScenarioTool values when provided.
+    - Search filter: case-insensitive contains-match on title, slug, and description.
+      User-supplied wildcards are escaped for safety.
+    - ORDER BY id (PK index ensures efficient range scan, no offset)
+    - Fetches limit+1 to peek for next_cursor (standard technique)
+    - Maps ORM to ScenarioListItem via Pydantic (from_attributes=True)
+    """
+    from db.models.scenario import ScenarioStatus  # local import avoids top-level circular
+
+    query = select(Scenario).order_by(Scenario.id)
+
+    # Scope to specific assessment if provided
+    if assessment_id:
+        query = query.where(Scenario.assessment_id == assessment_id)
+
+    # Global filter (for platform-wide scenario listing)
+    if is_global is not None:
+        query = query.where(Scenario.is_global == is_global)
+
+    # Status filter
+    if filters and filters.status:
+        query = query.where(Scenario.status.in_(filters.status))
+    elif not include_deleted:
+        query = query.where(Scenario.status != ScenarioStatus.DELETED)
+
+    # Tool filter
+    if filters and filters.tool:
+        query = query.where(Scenario.tool.in_(filters.tool))
+
+    # is_global filter from params (overrides the argument if set)
+    if filters and filters.is_global is not None:
+        query = query.where(Scenario.is_global == filters.is_global)
+
+    # Search filter
+    if filters and filters.search:
+        safe_term = _escape_like(filters.search)
+        query = query.where(
+            or_(
+                Scenario.title.ilike(f"%{safe_term}%"),
+                Scenario.slug.ilike(f"%{safe_term}%"),
+                Scenario.description.ilike(f"%{safe_term}%"),
+            )
+        )
+
+    # Cursor filter
+    if cursor:
+        try:
+            last_id = decode_cursor(cursor)
+        except ValueError as e:
+            raise ValueError("Invalid pagination cursor") from e
+        query = query.where(Scenario.id > last_id)
+
+    results = db.scalars(query.limit(limit + 1)).all()
+    has_next = len(results) > limit
+    page_scenarios = results[:limit]
+
+    next_cursor = (
+        encode_cursor(page_scenarios[-1].id) if has_next and page_scenarios else None
+    )
+
+    items = [
+        ScenarioListItem.model_validate(scenario, from_attributes=True)
+        for scenario in page_scenarios
+    ]
+
+    return ScenariosCursorPage(items=items, next_cursor=next_cursor, limit=limit)

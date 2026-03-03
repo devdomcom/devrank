@@ -85,17 +85,17 @@ class Assessment(Base):
         index=True,
         doc="FK to User who created it (SET NULL preserves assessment on user deletion)",
     )
-    org_id: Mapped[uuid.UUID | None] = mapped_column(
+    org_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=True,
+        nullable=False,
         index=True,
-        doc="FK to Organization (org-scoped assessments; NULL for self-eval)",
+        doc="FK to Organization (org-scoped assessments)",
     )
-    position_id: Mapped[uuid.UUID | None] = mapped_column(
+    position_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("positions.id", ondelete="SET NULL"),
-        nullable=True,
+        nullable=False,
         index=True,
-        doc="FK to Position being assessed (NULL for standalone assessments)",
+        doc="FK to Position being assessed",
     )
 
     # Status/workflow

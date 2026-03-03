@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 # compatible with Pydantic v2 model_validate/from_attributes).
 # Placed after stdlib/pydantic to follow import order in other api/ files
 # (e.g., impact/api/schemas.py, api/routes/auth.py).
+from db.models.assessment import AssessmentStatus
 from db.models.department import DepartmentStatus
 from db.models.organization import OrganizationStatus
 from db.models.position import PositionStatus
@@ -671,6 +672,383 @@ def get_position_filters(
     )
 
 
+# ── Assessment schemas ───────────────────────────────────────────────────
+
+
+class AssessmentListItem(BaseModel):
+    """Summary view of an assessment (for list endpoint; excludes heavy rels)."""
+
+    id: uuid.UUID
+    org_id: uuid.UUID | None = None
+    position_id: uuid.UUID | None = None
+    role_id: uuid.UUID | None = None
+    title: str
+    slug: str
+    description: str | None = None
+    status: AssessmentStatus
+    created_by: uuid.UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+    published_at: datetime | None = None
+    deleted_at: datetime | None = None
+
+
+class AssessmentsCursorPage(BaseModel):
+    """Cursor-paginated response for GET /assessments/."""
+
+    items: list[AssessmentListItem]
+    next_cursor: str | None = None
+    limit: int = Field(default=20, le=100, description="Page size")
+
+
+class AssessmentResponse(AssessmentListItem):
+    """Full detail for a single assessment."""
+
+    pass
+
+
+class CreateAssessmentRequest(BaseModel):
+    """Request body for POST /assessments/."""
+
+    title: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Human-readable assessment title",
+        examples=["Senior Engineer Q1 2026"],
+    )
+    slug: str = Field(
+        ...,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+        description="URL-safe unique slug for the assessment",
+        examples=["senior-engineer-q1-2026"],
+    )
+    description: str | None = Field(None, max_length=1000)
+    role_id: uuid.UUID | None = Field(
+        None, description="Optional role identifier for the assessment"
+    )
+    org_id: uuid.UUID | None = Field(
+        None, description="Optional organization scope for the assessment"
+    )
+    position_id: uuid.UUID | None = Field(
+        None, description="Optional position associated with the assessment"
+    )
+    status: AssessmentStatus = Field(
+        AssessmentStatus.DRAFT,
+        description="Initial lifecycle status (DRAFT or PUBLISHED)",
+    )
+
+
+class UpdateAssessmentRequest(BaseModel):
+    """Request body for PATCH /assessments/{id} (partial update)."""
+
+    title: str | None = Field(
+        None,
+        min_length=1,
+        max_length=200,
+        description="Human-readable assessment title",
+    )
+    slug: str | None = Field(
+        None,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+        description="URL-safe unique slug for the assessment",
+    )
+    description: str | None = Field(None, max_length=1000)
+    role_id: uuid.UUID | None = Field(
+        None, description="Optional role identifier for the assessment"
+    )
+    org_id: uuid.UUID | None = Field(
+        None, description="Optional organization scope for the assessment"
+    )
+    position_id: uuid.UUID | None = Field(
+        None, description="Optional position associated with the assessment"
+    )
+    status: AssessmentStatus | None = Field(
+        None, description="Lifecycle status (DRAFT or PUBLISHED)"
+    )
+
+    @model_validator(mode="after")
+    def _reject_null_required_fields(self) -> UpdateAssessmentRequest:
+        for field in ("title", "slug", "status"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
+
+
+class AssessmentDeletedResponse(BaseModel):
+    """Response for DELETE /assessments/{id} (soft-delete)."""
+
+    id: uuid.UUID
+    slug: str
+    status: AssessmentStatus
+    deleted_at: datetime
+
+
+class AssessmentFilterParams(BaseModel):
+    """Query-parameter filter bag for GET /assessments/ (extensible)."""
+
+    status: list[AssessmentStatus] = Field(default_factory=list)
+    search: str | None = Field(
+        None,
+        description=(
+            "Case-insensitive search term matched against title, slug, and description "
+            "(contains-match on all)."
+        ),
+    )
+
+
+def get_assessment_filters(
+    status: list[AssessmentStatus] | None = Query(
+        None,
+        description=(
+            "Filter by assessment status(es). Repeatable: ?status=PUBLISHED&status=DRAFT. "
+            "Omit to return all visible assessments."
+        ),
+        examples=["PUBLISHED"],
+    ),
+    search: str | None = Query(
+        None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "Search assessments by title, slug, or description (contains-match, "
+            "case-insensitive). Example: ?search=senior"
+        ),
+        examples=["senior"],
+    ),
+) -> AssessmentFilterParams:
+    """FastAPI dependency for assessment list filters."""
+    return AssessmentFilterParams(
+        status=status or [],
+        search=search.strip() if search else None,
+    )
+
+
+# ── Scenario schemas ───────────────────────────────────────────────────────
+
+
+from db.models.scenario import ScenarioStatus, ScenarioTool
+
+
+class ScenarioListItem(BaseModel):
+    """Summary view of a scenario (for list endpoint; excludes heavy rels)."""
+
+    id: uuid.UUID
+    assessment_id: uuid.UUID
+    title: str
+    slug: str
+    description: str | None = None
+    is_global: bool = False
+    status: ScenarioStatus
+    tool: ScenarioTool
+    version: int
+    duration: int | None = None
+    created_at: datetime
+    updated_at: datetime
+    published_at: datetime | None = None
+    deactivated_at: datetime | None = None
+    deleted_at: datetime | None = None
+
+
+class ScenariosCursorPage(BaseModel):
+    """Cursor-paginated response for GET /scenarios/ and GET /assessments/{id}/scenarios/."""
+
+    items: list[ScenarioListItem]
+    next_cursor: str | None = None
+    limit: int = Field(default=20, le=100, description="Page size")
+
+
+class ScenarioResponse(ScenarioListItem):
+    """Full detail for a single scenario."""
+
+    org_id: uuid.UUID | None = None
+    dept_id: uuid.UUID | None = None
+    files: list[str] | None = None
+    system_prompt: str | None = None
+    personas: dict[str, Any] | None = None
+
+
+class CreateScenarioRequest(BaseModel):
+    """Request body for POST /assessments/{id}/scenarios/."""
+
+    title: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Human-readable scenario title",
+        examples=["Live Coding Challenge"],
+    )
+    slug: str = Field(
+        ...,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+        description="URL-safe unique slug for the scenario",
+        examples=["live-coding-challenge"],
+    )
+    description: str | None = Field(None, max_length=1000)
+    is_global: bool = Field(
+        False,
+        description="If true, scenario is reusable across all orgs",
+    )
+    tool: ScenarioTool = Field(
+        ScenarioTool.CHAT,
+        description="Tool type (CHAT or MEET)",
+    )
+    version: int = Field(
+        1,
+        ge=1,
+        description="Scenario version for backward compatibility",
+    )
+    duration: int | None = Field(
+        None,
+        ge=60,
+        description="Max duration in seconds",
+    )
+    files: list[str] | None = Field(
+        None,
+        description="Array of S3 file IDs for scenario assets",
+    )
+    system_prompt: str | None = Field(
+        None,
+        description="System prompt/instructions (long text)",
+    )
+    personas: dict[str, Any] | None = Field(
+        None,
+        description="JSON config for agent personas",
+    )
+    status: ScenarioStatus = Field(
+        ScenarioStatus.DRAFT,
+        description="Initial lifecycle status",
+    )
+
+
+class UpdateScenarioRequest(BaseModel):
+    """Request body for PATCH /assessments/{aid}/scenarios/{sid}."""
+
+    title: str | None = Field(
+        None,
+        min_length=1,
+        max_length=200,
+        description="Human-readable scenario title",
+    )
+    slug: str | None = Field(
+        None,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+        description="URL-safe unique slug for the scenario",
+    )
+    description: str | None = Field(None, max_length=1000)
+    is_global: bool | None = Field(
+        None,
+        description="If true, scenario is reusable across all orgs",
+    )
+    tool: ScenarioTool | None = Field(
+        None,
+        description="Tool type (CHAT or MEET)",
+    )
+    version: int | None = Field(
+        None,
+        ge=1,
+        description="Scenario version for backward compatibility",
+    )
+    duration: int | None = Field(
+        None,
+        ge=60,
+        description="Max duration in seconds",
+    )
+    files: list[str] | None = Field(
+        None,
+        description="Array of S3 file IDs for scenario assets",
+    )
+    system_prompt: str | None = Field(
+        None,
+        description="System prompt/instructions (long text)",
+    )
+    personas: dict[str, Any] | None = Field(
+        None,
+        description="JSON config for agent personas",
+    )
+    status: ScenarioStatus | None = Field(
+        None,
+        description="Lifecycle status",
+    )
+
+    @model_validator(mode="after")
+    def _reject_null_required_fields(self) -> UpdateScenarioRequest:
+        for field in ("title", "slug", "status", "tool"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
+
+
+class ScenarioDeletedResponse(BaseModel):
+    """Response for DELETE /assessments/{aid}/scenarios/{sid} (soft-delete)."""
+
+    id: uuid.UUID
+    slug: str
+    assessment_id: uuid.UUID
+    status: ScenarioStatus
+    deleted_at: datetime
+
+
+class ScenarioFilterParams(BaseModel):
+    """Query-parameter filter bag for scenario list endpoints."""
+
+    status: list[ScenarioStatus] = Field(default_factory=list)
+    tool: list[ScenarioTool] = Field(default_factory=list)
+    is_global: bool | None = None
+    search: str | None = Field(
+        None,
+        description=(
+            "Case-insensitive search term matched against title, slug, and description "
+            "(contains-match on all)."
+        ),
+    )
+
+
+def get_scenario_filters(
+    status: list[ScenarioStatus] | None = Query(
+        None,
+        description=(
+            "Filter by scenario status(es). Repeatable: ?status=PUBLISHED&status=DRAFT."
+        ),
+        examples=["PUBLISHED"],
+    ),
+    tool: list[ScenarioTool] | None = Query(
+        None,
+        description="Filter by tool type(s). Repeatable: ?tool=CHAT&tool=MEET.",
+        examples=["CHAT"],
+    ),
+    is_global: bool | None = Query(
+        None,
+        description="Filter by global flag (true = global scenarios only).",
+    ),
+    search: str | None = Query(
+        None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "Search scenarios by title, slug, or description (contains-match, "
+            "case-insensitive). Example: ?search=coding"
+        ),
+        examples=["coding"],
+    ),
+) -> ScenarioFilterParams:
+    """FastAPI dependency for scenario list filters."""
+    return ScenarioFilterParams(
+        status=status or [],
+        tool=tool or [],
+        is_global=is_global,
+        search=search.strip() if search else None,
+    )
+
+
 # ── Role schemas ───────────────────────────────────────────────────────────
 
 
@@ -912,6 +1290,30 @@ class UserResponse(BaseModel):
     last_login_at: datetime | None = None
     # Admin-only field: org/department memberships
     memberships: list[UserOrgMembership] | None = None
+
+
+class OAuthAccountResponse(BaseModel):
+    """OAuth provider linkage summary for a user."""
+
+    id: uuid.UUID
+    provider: str
+    provider_user_id: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class OAuthAccountsResponse(BaseModel):
+    """List response for a user's connected OAuth providers."""
+
+    items: list[OAuthAccountResponse]
+
+
+class OAuthAccountDisconnectedResponse(BaseModel):
+    """Response payload when an OAuth account is disconnected."""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    provider: str
 
 
 class CreateUserRequest(BaseModel):

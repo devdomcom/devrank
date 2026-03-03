@@ -969,7 +969,7 @@ def seed_assessments(
     config_path: str | None = None,
 ) -> int:
     """Seed assessments (variety of statuses; resolve role_slug/org_slug)."""
-    from db.models import Assessment, Role
+    from db.models import Assessment, Role, Organization, Position
 
     samples = _load_samples_for_artifact("assessments", config_path) or ASSESSMENT_DEFAULT_SAMPLES
     created = 0
@@ -977,7 +977,8 @@ def seed_assessments(
     for sample in samples:
         slug = sample["slug"]
         role_slug = sample.get("role_slug")
-        org_slug = sample.get("org_slug")  # optional
+        org_slug = sample.get("org_slug")
+        position_slug = sample.get("position_slug")
 
         # Resolve role
         role = None
@@ -989,15 +990,29 @@ def seed_assessments(
             print(f"  Assessment '{slug}': role '{role_slug}' not found; skipping.")
             continue
 
-        # Resolve org if provided
-        org_id = None
-        if org_slug:
-            from db.models import Organization
-            org = db.execute(
-                select(Organization).where(Organization.slug == org_slug)
-            ).scalar_one_or_none()
-            if org:
-                org_id = org.id
+        # Resolve org (Mandatory now)
+        if not org_slug:
+             print(f"  Assessment '{slug}': org_slug is mandatory; skipping.")
+             continue
+        
+        org = db.execute(
+            select(Organization).where(Organization.slug == org_slug)
+        ).scalar_one_or_none()
+        if not org:
+             print(f"  Assessment '{slug}': org '{org_slug}' not found; skipping.")
+             continue
+        
+        # Resolve position (Mandatory now)
+        if not position_slug:
+             print(f"  Assessment '{slug}': position_slug is mandatory; skipping.")
+             continue
+        
+        position = db.execute(
+            select(Position).where(Position.slug == position_slug)
+        ).scalar_one_or_none()
+        if not position:
+             print(f"  Assessment '{slug}': position '{position_slug}' not found; skipping.")
+             continue
 
         # created_by: use first available user or create dummy
         from db.models import User
@@ -1034,6 +1049,8 @@ def seed_assessments(
             slug=slug,
             description=sample.get("description"),
             role_id=role.id,
+            org_id=org.id,
+            position_id=position.id,
             created_by=created_by,
             status=status,
             created_at=sample.get("created_at", now - timedelta(days=30)),
@@ -1056,6 +1073,8 @@ ASSESSMENT_DEFAULT_SAMPLES = [
         "slug": "senior-eng-q1-2026",
         "description": "Default sample assessment for senior engineer",
         "role_slug": "sample-role-senior-engineer",
+        "org_slug": "sample-acme-corp",
+        "position_slug": "sample-acme-eng-senior-engineer",
         "status": AssessmentStatus.PUBLISHED,
         "created_at": datetime(2025, 1, 20, tzinfo=timezone.utc),
         "published_at": datetime(2025, 1, 25, tzinfo=timezone.utc),
@@ -1064,6 +1083,8 @@ ASSESSMENT_DEFAULT_SAMPLES = [
         "title": "Data Science Self-Eval",
         "slug": "ds-self-eval-2026",
         "role_slug": "sample-role-data-scientist",
+        "org_slug": "sample-acme-corp",
+        "position_slug": "sample-acme-ds-data-scientist",
         "status": AssessmentStatus.DRAFT,
         "created_at": datetime(2025, 2, 15, tzinfo=timezone.utc),
     },
