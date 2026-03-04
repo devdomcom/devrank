@@ -173,6 +173,10 @@ class TestRbacYamlConfig:
             "positions:list", "positions:create", "positions:read",
             "positions:update", "positions:delete",
             "users:list", "users:read", "users:create", "users:update",
+            "assessments:list", "assessments:read", "assessments:create",
+            "assessments:update", "assessments:delete",
+            "scenarios:list", "scenarios:read", "scenarios:create",
+            "scenarios:update", "scenarios:delete",
         }
         assert expected == get_all_permission_slugs()
 
