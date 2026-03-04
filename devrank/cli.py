@@ -50,7 +50,7 @@ def _start_local_infra() -> None:
     """Start Postgres and Redis directly (no Docker) for DinD / bare-metal setups.
 
     Runs:
-      su postgres -c "pg_ctlcluster 15 main start"
+      su postgres -c "pg_ctlcluster 17 main start"
       redis-server --daemonize yes
 
     Raises typer.Exit(1) on failure.
@@ -60,12 +60,12 @@ def _start_local_infra() -> None:
     typer.echo("[1/6] Starting local infrastructure (no Docker) ...")
 
     pg_result = subprocess.run(
-        ["su", "postgres", "-c", "pg_ctlcluster 15 main start"],
+        ["su", "postgres", "-c", "pg_ctlcluster 17 main start"],
     )
     if pg_result.returncode != 0:
         typer.echo("Failed to start PostgreSQL via pg_ctlcluster.", err=True)
         raise typer.Exit(1)
-    typer.echo("      PostgreSQL started (pg_ctlcluster 15 main).")
+    typer.echo("      PostgreSQL started (pg_ctlcluster 17 main).")
 
     redis_result = subprocess.run(["redis-server", "--daemonize", "yes"])
     if redis_result.returncode != 0:
