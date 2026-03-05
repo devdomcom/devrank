@@ -53,11 +53,19 @@ from api.schemas import (
     ScenarioFilterParams,
     ScenarioListItem,
     ScenariosCursorPage,
+    SubmissionFilterParams,
+    SubmissionListItem,
+    SubmissionsCursorPage,
+    EvaluationFilterParams,
+    EvaluationListItem,
+    EvaluationsCursorPage,
     UserFilterParams,
     UserListItem,
     UsersCursorPage,
 )
 from db.models.assessment import Assessment
+from db.models.submission import Submission
+from db.models.evaluation import Evaluation
 from db.models.department import Department
 from db.models.organization import Organization
 from db.models.position import Position
@@ -694,3 +702,116 @@ def paginate_scenarios(
     ]
 
     return ScenariosCursorPage(items=items, next_cursor=next_cursor, limit=limit)
+
+
+def paginate_submissions(
+    db: Session,
+    cursor: str | None = None,
+    limit: int = 20,
+    *,
+    filters: SubmissionFilterParams | None = None,
+    include_deleted: bool = False,
+    assessment_id: uuid.UUID | None = None,
+    assessment_ids: list[uuid.UUID] | None = None,
+    position_ids: list[uuid.UUID] | None = None,
+) -> SubmissionsCursorPage:
+    """Fetch paginated submissions using cursor.
+
+    - Assessment filter: optionally restricts to submissions for a specific assessment.
+    - Assessments filter: optionally restricts to a set of assessment IDs.
+    - Position filter: optionally restricts to a set of position IDs.
+    - Soft-delete filter: ``include_deleted=False`` (default) hides deleted submissions;
+      ``True`` (system admins) includes them unless explicit status filters override.
+    - Status filter: narrows to specific SubmissionStatus values when provided.
+    - User filter: narrows to specific submitter user IDs.
+    - ORDER BY id (PK index ensures efficient range scan, no offset)
+    - Fetches limit+1 to peek for next_cursor (standard technique)
+    - Maps ORM to SubmissionListItem via Pydantic (from_attributes=True)
+    """
+    from db.models.submission import SubmissionStatus  # local import avoids top-level circular
+
+    query = select(Submission).order_by(Submission.id)
+
+    if assessment_id:
+        query = query.where(Submission.assessment_id == assessment_id)
+    if assessment_ids:
+        query = query.where(Submission.assessment_id.in_(assessment_ids))
+    if position_ids:
+        query = query.where(Submission.position_id.in_(position_ids))
+
+    if filters and filters.status:
+        query = query.where(Submission.status.in_(filters.status))
+    elif not include_deleted:
+        query = query.where(Submission.status != SubmissionStatus.DELETED)
+
+    if filters and filters.user_ids:
+        query = query.where(Submission.user_id.in_(filters.user_ids))
+
+    if cursor:
+        try:
+            last_id = decode_cursor(cursor)
+        except ValueError as e:
+            raise ValueError("Invalid pagination cursor") from e
+        query = query.where(Submission.id > last_id)
+
+    results = db.scalars(query.limit(limit + 1)).all()
+    has_next = len(results) > limit
+    page_submissions = results[:limit]
+
+    next_cursor = (
+        encode_cursor(page_submissions[-1].id) if has_next and page_submissions else None
+    )
+
+    items = [
+        SubmissionListItem.model_validate(submission, from_attributes=True)
+        for submission in page_submissions
+    ]
+
+    return SubmissionsCursorPage(items=items, next_cursor=next_cursor, limit=limit)
+
+
+def paginate_evaluations(
+    db: Session,
+    cursor: str | None = None,
+    limit: int = 20,
+    *,
+    filters: EvaluationFilterParams | None = None,
+    assessment_id: uuid.UUID | None = None,
+) -> EvaluationsCursorPage:
+    """Fetch paginated evaluations using cursor.
+
+    - Assessment filter: optionally restricts to evaluations for a specific assessment.
+    - Submission filter: narrows to specific submission IDs.
+    - ORDER BY id (PK index ensures efficient range scan, no offset)
+    - Fetches limit+1 to peek for next_cursor (standard technique)
+    - Maps ORM to EvaluationListItem via Pydantic (from_attributes=True)
+    """
+    query = select(Evaluation).order_by(Evaluation.id)
+
+    if assessment_id:
+        query = query.where(Evaluation.assessment_id == assessment_id)
+
+    if filters and filters.submission_ids:
+        query = query.where(Evaluation.submission_id.in_(filters.submission_ids))
+
+    if cursor:
+        try:
+            last_id = decode_cursor(cursor)
+        except ValueError as e:
+            raise ValueError("Invalid pagination cursor") from e
+        query = query.where(Evaluation.id > last_id)
+
+    results = db.scalars(query.limit(limit + 1)).all()
+    has_next = len(results) > limit
+    page_evaluations = results[:limit]
+
+    next_cursor = (
+        encode_cursor(page_evaluations[-1].id) if has_next and page_evaluations else None
+    )
+
+    items = [
+        EvaluationListItem.model_validate(evaluation, from_attributes=True)
+        for evaluation in page_evaluations
+    ]
+
+    return EvaluationsCursorPage(items=items, next_cursor=next_cursor, limit=limit)

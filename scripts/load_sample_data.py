@@ -1651,9 +1651,16 @@ def seed_submissions(db: Session, config_path: str | None = None) -> int:
         if isinstance(status, str):
             status = SubmissionStatus(status)
 
+        if assessment.position_id is None:
+            print(
+                f"  Submission: assessment '{assessment_slug}' missing position_id; skipping."
+            )
+            continue
+
         submission = Submission(
             user_id=user.id,
             assessment_id=assessment.id,
+            position_id=assessment.position_id,
             scenario_id=scenario_id,
             status=status,
             started_at=sample.get("started_at"),

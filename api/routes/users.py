@@ -23,27 +23,38 @@ from sqlalchemy.orm import Session
 
 from api.auth.dependencies import get_current_user, get_db, require_permission
 from api.auth.schemas import AuthContext
-from api.pagination import get_cursor_params, paginate_users
+from api.pagination import decode_cursor, encode_cursor, get_cursor_params, paginate_users
 from api.schemas import (
+    AssessmentListItem,
+    AssessmentsCursorPage,
     CreateUserRequest,
     OAuthAccountDisconnectedResponse,
     OAuthAccountResponse,
     OAuthAccountsResponse,
+    PositionListItem,
+    PositionsCursorPage,
     UpdateUserRequest,
+    UserAssessmentFilterParams,
     UserFilterParams,
     UserOrgMembership,
+    UserPositionFilterParams,
     UserResponse,
     UsersCursorPage,
+    get_user_assessment_filters,
     get_user_filters,
+    get_user_position_filters,
 )
 from db.models import (
+    Assessment,
     OAuthAccount,
+    Position,
     RoleType,
     SystemRole,
     User,
     UserOrgDepartment,
     UserRoleAssignment,
 )
+from db.models.submission import Submission
 from db.models.user import Gender, UserStatus
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -302,6 +313,118 @@ def get_user(
         include_memberships=is_admin,
         db=db,
     )
+
+
+@router.get(
+    "/{user_id_or_email}/positions/",
+    summary="List positions a user has participated in",
+    response_model=PositionsCursorPage,
+)
+def list_user_positions(
+    params: Annotated[tuple[str | None, int], Depends(get_cursor_params)],
+    filters: Annotated[UserPositionFilterParams, Depends(get_user_position_filters)],
+    user_id_or_email: str = Path(
+        openapi_examples={"default": {"value": "alice.eng@devrank.local"}},
+    ),
+    auth: AuthContext = Depends(require_permission("users:read")),
+    db: Session = Depends(get_db),
+) -> PositionsCursorPage:
+    """List positions a user has participated in via submissions.
+
+    System admins can view any user's positions; non-admins can only view their own.
+    Supports filtering by organization IDs.
+    """
+    user = _resolve_user(user_id_or_email, db)
+    if not (auth.is_system_admin or auth.user_id == user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view positions for this user",
+        )
+
+    submission_query = select(Submission.position_id).where(Submission.user_id == user.id)
+    if filters.org_ids:
+        submission_query = submission_query.join(
+            Assessment,
+            Assessment.id == Submission.assessment_id,
+        ).where(Assessment.org_id.in_(filters.org_ids))
+
+    position_ids = list({pid for pid in db.scalars(submission_query).all() if pid})
+    if not position_ids:
+        return PositionsCursorPage(items=[], next_cursor=None, limit=params[1])
+
+    cursor, limit = params
+    query = select(Position).where(Position.id.in_(position_ids)).order_by(Position.id)
+    if cursor:
+        try:
+            last_id = decode_cursor(cursor)
+        except ValueError as exc:
+            raise ValueError("Invalid pagination cursor") from exc
+        query = query.where(Position.id > last_id)
+
+    results = db.scalars(query.limit(limit + 1)).all()
+    has_next = len(results) > limit
+    page_positions = results[:limit]
+    next_cursor = encode_cursor(page_positions[-1].id) if has_next and page_positions else None
+
+    items = [PositionListItem.model_validate(pos, from_attributes=True) for pos in page_positions]
+    return PositionsCursorPage(items=items, next_cursor=next_cursor, limit=limit)
+
+
+@router.get(
+    "/{user_id_or_email}/assessments/",
+    summary="List assessments a user has taken",
+    response_model=AssessmentsCursorPage,
+)
+def list_user_assessments(
+    params: Annotated[tuple[str | None, int], Depends(get_cursor_params)],
+    filters: Annotated[UserAssessmentFilterParams, Depends(get_user_assessment_filters)],
+    user_id_or_email: str = Path(
+        openapi_examples={"default": {"value": "alice.eng@devrank.local"}},
+    ),
+    auth: AuthContext = Depends(require_permission("users:read")),
+    db: Session = Depends(get_db),
+) -> AssessmentsCursorPage:
+    """List assessments a user has taken via submissions.
+
+    System admins can view any user's assessments; non-admins can only view their own.
+    Supports filtering by organization IDs and position IDs.
+    """
+    user = _resolve_user(user_id_or_email, db)
+    if not (auth.is_system_admin or auth.user_id == user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view assessments for this user",
+        )
+
+    submission_query = select(Submission.assessment_id).where(Submission.user_id == user.id)
+    if filters.org_ids:
+        submission_query = submission_query.join(
+            Assessment,
+            Assessment.id == Submission.assessment_id,
+        ).where(Assessment.org_id.in_(filters.org_ids))
+    if filters.position_ids:
+        submission_query = submission_query.where(Submission.position_id.in_(filters.position_ids))
+
+    assessment_ids = list({aid for aid in db.scalars(submission_query).all() if aid})
+    if not assessment_ids:
+        return AssessmentsCursorPage(items=[], next_cursor=None, limit=params[1])
+
+    cursor, limit = params
+    query = select(Assessment).where(Assessment.id.in_(assessment_ids)).order_by(Assessment.id)
+    if cursor:
+        try:
+            last_id = decode_cursor(cursor)
+        except ValueError as exc:
+            raise ValueError("Invalid pagination cursor") from exc
+        query = query.where(Assessment.id > last_id)
+
+    results = db.scalars(query.limit(limit + 1)).all()
+    has_next = len(results) > limit
+    page_assessments = results[:limit]
+    next_cursor = encode_cursor(page_assessments[-1].id) if has_next and page_assessments else None
+
+    items = [AssessmentListItem.model_validate(assessment, from_attributes=True) for assessment in page_assessments]
+    return AssessmentsCursorPage(items=items, next_cursor=next_cursor, limit=limit)
 
 # ── PATCH /users/{user_id} ────────────────────────────────────────────────
 

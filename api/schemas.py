@@ -23,6 +23,7 @@ from db.models.department import DepartmentStatus
 from db.models.organization import OrganizationStatus
 from db.models.position import PositionStatus
 from db.models.role import RoleStatus
+from db.models.submission import SubmissionStatus
 from db.models.user import UserStatus
 
 
@@ -680,7 +681,7 @@ class AssessmentListItem(BaseModel):
 
     id: uuid.UUID
     org_id: uuid.UUID | None = None
-    position_id: uuid.UUID | None = None
+    position_id: uuid.UUID
     role_id: uuid.UUID | None = None
     title: str
     slug: str
@@ -1049,6 +1050,146 @@ def get_scenario_filters(
     )
 
 
+# ── Submission schemas ─────────────────────────────────────────────────────
+
+
+class SubmissionListItem(BaseModel):
+    """Summary view of a submission (list endpoint; excludes heavy rels)."""
+
+    id: uuid.UUID
+    assessment_id: uuid.UUID
+    user_id: uuid.UUID
+    evaluation_id: uuid.UUID | None = None
+    position_id: uuid.UUID
+    scenario_id: uuid.UUID | None = None
+    status: SubmissionStatus
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    abandoned_at: datetime | None = None
+    deleted_at: datetime | None = None
+
+
+class SubmissionResponse(SubmissionListItem):
+    """Full detail for a submission (matches list fields today)."""
+
+    pass
+
+
+class SubmissionsCursorPage(BaseModel):
+    """Cursor-paginated response for submission list endpoints."""
+
+    items: list[SubmissionListItem]
+    next_cursor: str | None = None
+    limit: int = Field(default=20, le=100, description="Page size")
+
+
+class SubmissionFilterParams(BaseModel):
+    """Query-parameter filter bag for submission list endpoints."""
+
+    status: list[SubmissionStatus] = Field(default_factory=list)
+    user_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+def get_submission_filters(
+    status: list[SubmissionStatus] | None = Query(
+        None,
+        description=(
+            "Filter by submission status(es). Repeatable: ?status=PENDING&status=COMPLETED."
+        ),
+        examples=["PENDING"],
+    ),
+    user_ids: list[uuid.UUID] | None = Query(
+        None,
+        description=(
+            "Filter by submitter user IDs. Repeatable: ?user_ids=<uuid>&user_ids=<uuid>."
+        ),
+    ),
+) -> SubmissionFilterParams:
+    """FastAPI dependency for submission list filters."""
+    return SubmissionFilterParams(status=status or [], user_ids=user_ids or [])
+
+
+# ── Evaluation schemas ─────────────────────────────────────────────────────
+
+
+class EvaluationListItem(BaseModel):
+    """Summary view of an evaluation (list endpoint; excludes heavy rels)."""
+
+    id: uuid.UUID
+    assessment_id: uuid.UUID
+    submission_id: uuid.UUID | None = None
+    summary: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class EvaluationResponse(EvaluationListItem):
+    """Full detail for an evaluation (matches list fields today)."""
+
+    pass
+
+
+class CreateEvaluationRequest(BaseModel):
+    """Request body for POST /assessments/{id}/evaluations/."""
+
+    submission_id: uuid.UUID | None = Field(
+        None,
+        description="Submission identifier to associate with this evaluation",
+    )
+    summary: dict[str, Any] = Field(
+        ...,
+        description="Evaluation summary payload (scores, metrics, notes)",
+    )
+
+
+class UpdateEvaluationRequest(BaseModel):
+    """Request body for PATCH /assessments/{id}/evaluations/{evaluation_id}."""
+
+    submission_id: uuid.UUID | None = Field(
+        None,
+        description="Submission identifier to associate with this evaluation",
+    )
+    summary: dict[str, Any] | None = Field(
+        None,
+        description="Updated evaluation summary payload",
+    )
+
+    @model_validator(mode="after")
+    def _reject_null_required_fields(self) -> UpdateEvaluationRequest:
+        for field in ("summary",):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
+
+
+class EvaluationsCursorPage(BaseModel):
+    """Cursor-paginated response for evaluation list endpoints."""
+
+    items: list[EvaluationListItem]
+    next_cursor: str | None = None
+    limit: int = Field(default=20, le=100, description="Page size")
+
+
+class EvaluationFilterParams(BaseModel):
+    """Query-parameter filter bag for evaluation list endpoints."""
+
+    submission_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+def get_evaluation_filters(
+    submission_ids: list[uuid.UUID] | None = Query(
+        None,
+        description=(
+            "Filter by submission IDs. Repeatable: ?submission_ids=<uuid>&submission_ids=<uuid>."
+        ),
+    ),
+) -> EvaluationFilterParams:
+    """FastAPI dependency for evaluation list filters."""
+    return EvaluationFilterParams(submission_ids=submission_ids or [])
+
+
 # ── Role schemas ───────────────────────────────────────────────────────────
 
 
@@ -1240,6 +1381,55 @@ def get_user_filters(
     return UserFilterParams(
         status=status or [],
         search=search.strip() if search else None,
+    )
+
+
+class UserPositionFilterParams(BaseModel):
+    """Filter bag for user position participation endpoints."""
+
+    org_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class UserAssessmentFilterParams(BaseModel):
+    """Filter bag for user assessment participation endpoints."""
+
+    org_ids: list[uuid.UUID] = Field(default_factory=list)
+    position_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+def get_user_position_filters(
+    org_ids: list[uuid.UUID] | None = Query(
+        None,
+        description=(
+            "Filter user positions by organization IDs. Repeatable: "
+            "?org_ids=<uuid>&org_ids=<uuid>."
+        ),
+    ),
+) -> UserPositionFilterParams:
+    """FastAPI dependency for user position filters."""
+    return UserPositionFilterParams(org_ids=org_ids or [])
+
+
+def get_user_assessment_filters(
+    org_ids: list[uuid.UUID] | None = Query(
+        None,
+        description=(
+            "Filter user assessments by organization IDs. Repeatable: "
+            "?org_ids=<uuid>&org_ids=<uuid>."
+        ),
+    ),
+    position_ids: list[uuid.UUID] | None = Query(
+        None,
+        description=(
+            "Filter user assessments by position IDs. Repeatable: "
+            "?position_ids=<uuid>&position_ids=<uuid>."
+        ),
+    ),
+) -> UserAssessmentFilterParams:
+    """FastAPI dependency for user assessment filters."""
+    return UserAssessmentFilterParams(
+        org_ids=org_ids or [],
+        position_ids=position_ids or [],
     )
 
 

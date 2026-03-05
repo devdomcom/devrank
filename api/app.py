@@ -10,7 +10,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.handlers import register_exception_handlers
 # Root app routes now include organizations + departments (platform tenancy)
-from api.routes import assessments_router, auth_router, departments_router, global_roles_router, infra_health_router, organizations_router, positions_router, scenarios_assessment_router, scenarios_router, users_router
+from api.routes import (
+    assessments_router,
+    auth_router,
+    departments_router,
+    evaluations_router,
+    global_roles_router,
+    infra_health_router,
+    organizations_router,
+    positions_router,
+    scenarios_assessment_router,
+    scenarios_router,
+    submissions_router,
+    users_router,
+)
 from config import settings
 from impact.api.routes import dumps_router, metrics_router
 
@@ -54,6 +67,9 @@ def create_app() -> FastAPI:
     # Scenarios (global + assessment-scoped)
     v1.include_router(scenarios_router)
     v1.include_router(scenarios_assessment_router, prefix="/assessments")
+    # Submissions + evaluations (assessment-scoped)
+    v1.include_router(submissions_router, prefix="/assessments")
+    v1.include_router(evaluations_router, prefix="/assessments")
     # Impact domain
     v1.include_router(metrics_router)
     v1.include_router(dumps_router)

@@ -16,7 +16,6 @@ Assessment-scoped scenarios inherit access rules from their parent assessment:
 """
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
@@ -25,13 +24,10 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from api.auth.dependencies import (
-    _check_org_scoped_permission,
-    get_db,
-    require_permission,
-)
+from api.auth.dependencies import get_db, require_permission
 from api.auth.schemas import AuthContext
 from api.pagination import get_cursor_params, paginate_scenarios
+from api.routes.assessments import _enforce_assessment_access, _resolve_assessment
 from api.schemas import (
     CreateScenarioRequest,
     ScenarioDeletedResponse,
@@ -42,7 +38,6 @@ from api.schemas import (
     get_scenario_filters,
 )
 from db.models.assessment import Assessment
-from db.models.organization import Organization
 from db.models.scenario import Scenario, ScenarioStatus
 
 # ── Routers ──────────────────────────────────────────────────────────────
@@ -51,63 +46,10 @@ router = APIRouter(prefix="/scenarios", tags=["scenarios"])
 
 assessment_router = APIRouter(tags=["scenarios"])
 
+# Exported for use in other assessment-scoped route modules.
+__all__ = ["router", "assessment_router"]
+
 # ── Helpers ──────────────────────────────────────────────────────────────
-
-
-def _resolve_assessment(
-    id_or_slug: str, db: Session, *, allow_deleted: bool = False
-) -> Assessment:
-    """Resolve assessment by UUID or slug. Raises 404 if not found."""
-    assessment = None
-    try:
-        aid = UUID(id_or_slug)
-        assessment = db.get(Assessment, aid)
-    except ValueError:
-        assessment = db.execute(
-            select(Assessment).where(Assessment.slug == id_or_slug)
-        ).scalar_one_or_none()
-    if not assessment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Assessment '{id_or_slug}' not found",
-        )
-    if assessment.deleted_at and not allow_deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Assessment '{id_or_slug}' not found",
-        )
-    return assessment
-
-
-def _enforce_assessment_access(
-    assessment: Assessment,
-    auth: AuthContext,
-    db: Session,
-    permission_slug: str,
-) -> None:
-    """Enforce org/self access rules inherited from the parent assessment.
-
-    Mirrors assessments._enforce_assessment_access (DRY logic, local copy to
-    avoid cross-router import coupling).
-    """
-    if auth.is_system_admin:
-        return
-
-    if assessment.org_id is None:
-        if assessment.created_by != auth.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to access this assessment",
-            )
-        return
-
-    org = db.get(Organization, assessment.org_id)
-    if not org:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Organization '{assessment.org_id}' not found",
-        )
-    _check_org_scoped_permission(auth, org, permission_slug, db)
 
 
 def _resolve_scenario(

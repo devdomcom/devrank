@@ -12,6 +12,10 @@ from .roles import router as global_roles_router
 # Scenarios router (global scenarios + assessment-scoped CRUD)
 from .scenarios import assessment_router as scenarios_assessment_router
 from .scenarios import router as scenarios_router
+# Submissions router (assessment-scoped submissions)
+from .submissions import router as submissions_router
+# Evaluations router (assessment-scoped evaluations)
+from .evaluations import router as evaluations_router
 # Users router (platform-wide user management; system admins only)
 from .users import router as users_router
 
@@ -25,5 +29,7 @@ __all__ = [
     "positions_router",
     "scenarios_assessment_router",
     "scenarios_router",
+    "submissions_router",
+    "evaluations_router",
     "users_router",
 ]

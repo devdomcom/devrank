@@ -402,3 +402,6 @@ def _enforce_assessment_access(
             detail=f"Organization '{assessment.org_id}' not found",
         )
     _check_org_scoped_permission(auth, org, permission_slug, db)
+
+
+__all__ = ["router", "_resolve_assessment", "_enforce_assessment_access"]

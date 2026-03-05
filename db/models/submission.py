@@ -1,15 +1,15 @@
 """Submission model - join table for User + Assessment participation.
 
-Connects users to assessments they took (self-eval or org-assigned via position_id).
+Connects users to assessments they took (org-assigned via position_id).
 Handles lifecycle (status, timestamps for start/complete/abandon/delete).
 Supports 1 scenario per submission (assessment can have multiple; user completes all).
 
 FastAPI/SQLAlchemy 2026 best practices (DRY, modular SaaS):
 - Dedicated file (model-heavy; avoids bloated User/Assessment).
 - Enum status; nullable timestamps for soft states (e.g., abandoned_at).
-- FKs: assessment_id/user_id (required), evaluation_id/position_id (future tables - placeholders).
+- FKs: assessment_id/user_id/position_id (required), evaluation_id (future table placeholder).
 - Relationships: many-to-many-ish via User/Assessment (with extra data like status).
-- Multi-tenancy: supports self-assess (position_id NULL) + org roles/positions.
+- Multi-tenancy: org role/position assignments per assessment.
 - Timestamps for audit; extensible for reports/metrics tie-in.
 
 Future: evaluation/position tables, api/routes/submissions.py (e.g., submit self-assess).
@@ -78,12 +78,12 @@ class Submission(Base):
         index=True,
         doc="FK to Evaluation (future table; results/metrics snapshot)",
     )
-    # position_id: UUID per fix (was int; nullable per proposal for self-assess vs. org role/position)
-    position_id: Mapped[uuid.UUID | None] = mapped_column(
+    # position_id: UUID per fix (required for assessment linkage)
+    position_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("positions.id", ondelete="SET NULL"),
-        nullable=True,
+        nullable=False,
         index=True,
-        doc="FK to Position (NULL = self-assessment; org role otherwise)",
+        doc="FK to Position associated with the assessment submission",
     )
     # scenario_id: FK to Scenario (nullable for backward compat; required for new multi-scenario flows)
     # Per spec: each submission now tied to exactly one scenario

@@ -175,27 +175,27 @@ scenarios:
 submissions:
   - assessment_slug: senior-eng-q1-2026
     scenario_slug: live-coding-challenge
-    user_email: engineer@acme.local
+    user_email: alice.eng@devrank.local
     status: COMPLETED
     started_at: 2025-02-01T10:00:00+00:00
     completed_at: 2025-02-01T10:45:00+00:00
 
   - assessment_slug: senior-eng-q1-2026
     scenario_slug: system-design-deep-dive
-    user_email: engineer@acme.local
+    user_email: bob.lead@devrank.local
     status: PENDING
     started_at: 2025-02-02T09:00:00+00:00
 
   - assessment_slug: ds-project-review-2026
     scenario_slug: data-pipeline-review
-    user_email: data-scientist@acme.local
+    user_email: carol.ds@devrank.local
     status: COMPLETED
     started_at: 2025-02-20T14:00:00+00:00
     completed_at: 2025-02-20T15:30:00+00:00
 
   - assessment_slug: legacy-deleted
     scenario_slug: legacy-scenario
-    user_email: engineer@acme.local
+    user_email: alice.eng@devrank.local
     status: ABANDONED
     started_at: 2024-12-10T11:00:00+00:00
     abandoned_at: 2024-12-10T11:30:00+00:00
