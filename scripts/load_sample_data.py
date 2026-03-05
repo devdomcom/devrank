@@ -39,13 +39,20 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from passlib.context import CryptContext
+
 from db.engine import SyncSessionLocal
 # Core models for seedable artifacts (start with orgs; extend registry)
 from db.models import Department, DepartmentStatus, Organization, OrganizationStatus
 from db.models.position import PositionStatus
 # New: assessments/scenarios chain (on-demand imports in seeders OK)
 from db.models import Assessment, AssessmentStatus, RoleStatus, Scenario, ScenarioStatus, ScenarioTool, Submission, SubmissionStatus, Evaluation
+from db.models import User, UserRoleAssignment, AssignmentStatus, RoleType, AppRole
+from db.models.user import UserStatus, Gender
+from db.models.user_org_department import UserOrgDepartment, UserOrgDeptStatus
 # Import others on-demand in seeders (avoid heavy if unused)
+
+_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Registry for artifacts: artifact -> (seeder_func, drop_func, sample_data_key)
 # Enables generic --objects; organizations first per task. Extensible dict.
@@ -1236,6 +1243,520 @@ def drop_scenarios(db: Session, slug_prefix: str = "sample-") -> int:
 SEED_REGISTRY["scenarios"] = (seed_scenarios, drop_scenarios, "scenarios")
 
 
+# ── Users seeder (diverse sample users for Swagger/RBAC testing) ─────────────
+
+USER_DEFAULT_SAMPLES: list[dict[str, Any]] = [
+    {
+        "email": "alice.eng@devrank.local",
+        "name": "Alice",
+        "surname": "Chen",
+        "nickname": "alicec",
+        "password": "password123",
+        "gender": Gender.FEMALE,
+        "country": "US",
+        "status": UserStatus.ACTIVE,
+    },
+    {
+        "email": "bob.lead@devrank.local",
+        "name": "Bob",
+        "surname": "Martinez",
+        "nickname": "bobm",
+        "password": "password123",
+        "gender": Gender.MALE,
+        "country": "GB",
+        "status": UserStatus.ACTIVE,
+    },
+    {
+        "email": "carol.ds@devrank.local",
+        "name": "Carol",
+        "surname": "Nakamura",
+        "nickname": "caroln",
+        "password": "password123",
+        "gender": Gender.FEMALE,
+        "country": "JP",
+        "status": UserStatus.ACTIVE,
+    },
+    {
+        "email": "dave.pm@devrank.local",
+        "name": "Dave",
+        "surname": "O'Brien",
+        "nickname": "daveo",
+        "password": "password123",
+        "gender": Gender.MALE,
+        "country": "IE",
+        "status": UserStatus.ACTIVE,
+    },
+    {
+        "email": "eve.deactivated@devrank.local",
+        "name": "Eve",
+        "surname": "Kowalski",
+        "nickname": "evek",
+        "password": "password123",
+        "gender": Gender.FEMALE,
+        "country": "PL",
+        "status": UserStatus.DEACTIVATED,
+    },
+]
+
+_ARTIFACT_DEFAULTS["users"] = USER_DEFAULT_SAMPLES
+
+
+def seed_users(db: Session, config_path: str | None = None) -> int:
+    """Seed diverse sample users (idempotent by email)."""
+    samples = _load_samples_for_artifact("users", config_path) or USER_DEFAULT_SAMPLES
+    created = 0
+    for sample in samples:
+        email = sample["email"]
+        existing = db.execute(
+            select(User).where(User.email == email)
+        ).scalar_one_or_none()
+        if existing:
+            print(f"  User '{email}' exists; skipping.")
+            continue
+
+        user = User(
+            name=sample["name"],
+            surname=sample["surname"],
+            nickname=sample.get("nickname"),
+            email=email,
+            hashed_password=_pwd_context.hash(sample.get("password", "password123")),
+            gender=sample.get("gender", Gender.PREFER_NOT_TO_SAY),
+            country=sample.get("country"),
+            status=sample.get("status", UserStatus.ACTIVE),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        print(f"  Created user: {email} (status={user.status.value})")
+        created += 1
+    return created
+
+
+def drop_users(db: Session, slug_prefix: str = "sample-") -> int:
+    """Drop sample users (by @devrank.local domain, excluding admin)."""
+    users = db.scalars(
+        select(User).where(
+            User.email.like("%@devrank.local"),
+            User.email != "admin@devrank.local",
+        )
+    ).all()
+    count = len(users)
+    for u in users:
+        db.delete(u)
+    if count:
+        db.commit()
+        print(f"Dropped {count} sample users.")
+    return count
+
+
+SEED_REGISTRY["users"] = (seed_users, drop_users, "users")
+
+
+# ── User Org/Dept Memberships seeder ─────────────────────────────────────────
+# Maps sample users to orgs/depts for multi-tenancy testing.
+
+MEMBERSHIP_DEFAULT_SAMPLES: list[dict[str, Any]] = [
+    # Alice: Acme Engineering
+    {"user_email": "alice.eng@devrank.local", "org_slug": "sample-acme-corp", "dept_slug": "sample-engineering"},
+    # Bob: Acme Engineering (lead)
+    {"user_email": "bob.lead@devrank.local", "org_slug": "sample-acme-corp", "dept_slug": "sample-engineering"},
+    # Carol: Acme Data Science
+    {"user_email": "carol.ds@devrank.local", "org_slug": "sample-acme-corp", "dept_slug": "sample-data-science"},
+    # Dave: Acme Product
+    {"user_email": "dave.pm@devrank.local", "org_slug": "sample-acme-corp", "dept_slug": "sample-product"},
+    # Eve: Beta Inc Legacy Ops (deactivated membership)
+    {"user_email": "eve.deactivated@devrank.local", "org_slug": "sample-beta-inc", "dept_slug": "sample-legacy-ops", "status": UserOrgDeptStatus.DEACTIVATED},
+    # Admin: Acme Corp (org-wide, no dept)
+    {"user_email": "admin@devrank.local", "org_slug": "sample-acme-corp", "dept_slug": None},
+]
+
+_ARTIFACT_DEFAULTS["memberships"] = MEMBERSHIP_DEFAULT_SAMPLES
+
+
+def seed_memberships(db: Session, config_path: str | None = None) -> int:
+    """Seed user-org-dept memberships (idempotent by user+org+dept)."""
+    samples = _load_samples_for_artifact("memberships", config_path) or MEMBERSHIP_DEFAULT_SAMPLES
+    created = 0
+    for sample in samples:
+        user_email = sample["user_email"]
+        org_slug = sample["org_slug"]
+        dept_slug = sample.get("dept_slug")
+
+        user = db.execute(select(User).where(User.email == user_email)).scalar_one_or_none()
+        if not user:
+            print(f"  Membership: user '{user_email}' not found; skipping.")
+            continue
+
+        org = db.execute(select(Organization).where(Organization.slug == org_slug)).scalar_one_or_none()
+        if not org:
+            print(f"  Membership: org '{org_slug}' not found; skipping.")
+            continue
+
+        dept_id = None
+        if dept_slug:
+            dept = db.execute(
+                select(Department).where(Department.org_id == org.id, Department.slug == dept_slug)
+            ).scalar_one_or_none()
+            if not dept:
+                print(f"  Membership: dept '{dept_slug}' not found in '{org_slug}'; skipping.")
+                continue
+            dept_id = dept.id
+
+        # Check existing
+        dept_clause = UserOrgDepartment.dept_id.is_(None) if dept_id is None else UserOrgDepartment.dept_id == dept_id
+        existing = db.execute(
+            select(UserOrgDepartment).where(
+                UserOrgDepartment.user_id == user.id,
+                UserOrgDepartment.org_id == org.id,
+                dept_clause,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            print(f"  Membership ({user_email}, {org_slug}, {dept_slug}) exists; skipping.")
+            continue
+
+        status = sample.get("status", UserOrgDeptStatus.ACTIVE)
+        if isinstance(status, str):
+            status = UserOrgDeptStatus(status)
+
+        membership = UserOrgDepartment(
+            user_id=user.id,
+            org_id=org.id,
+            dept_id=dept_id,
+            status=status,
+        )
+        db.add(membership)
+        db.commit()
+        db.refresh(membership)
+        dept_label = dept_slug or "(org-wide)"
+        print(f"  Created membership: {user_email} -> {org_slug}/{dept_label}")
+        created += 1
+    return created
+
+
+def drop_memberships(db: Session, slug_prefix: str = "sample-") -> int:
+    """Drop memberships for sample users."""
+    sample_users = db.scalars(
+        select(User).where(User.email.like("%@devrank.local"))
+    ).all()
+    user_ids = [u.id for u in sample_users]
+    if not user_ids:
+        return 0
+    memberships = db.scalars(
+        select(UserOrgDepartment).where(UserOrgDepartment.user_id.in_(user_ids))
+    ).all()
+    count = len(memberships)
+    for m in memberships:
+        db.delete(m)
+    if count:
+        db.commit()
+        print(f"Dropped {count} memberships.")
+    return count
+
+
+SEED_REGISTRY["memberships"] = (seed_memberships, drop_memberships, "memberships")
+
+
+# ── User Role Assignments seeder (app roles for org/dept RBAC) ───────────────
+
+ROLE_ASSIGNMENT_DEFAULT_SAMPLES: list[dict[str, Any]] = [
+    # Bob: org_admin for Acme Corp
+    {"user_email": "bob.lead@devrank.local", "app_role_slug": "org_admin", "org_slug": "sample-acme-corp"},
+    # Alice: analyst for Acme Corp
+    {"user_email": "alice.eng@devrank.local", "app_role_slug": "analyst", "org_slug": "sample-acme-corp"},
+    # Carol: analyst for Acme Corp
+    {"user_email": "carol.ds@devrank.local", "app_role_slug": "analyst", "org_slug": "sample-acme-corp"},
+    # Dave: dept_admin for Acme Product
+    {"user_email": "dave.pm@devrank.local", "app_role_slug": "dept_admin", "org_slug": "sample-acme-corp", "dept_slug": "sample-product"},
+]
+
+_ARTIFACT_DEFAULTS["role_assignments"] = ROLE_ASSIGNMENT_DEFAULT_SAMPLES
+
+
+def seed_role_assignments(db: Session, config_path: str | None = None) -> int:
+    """Seed app role assignments for sample users (idempotent)."""
+    samples = _load_samples_for_artifact("role_assignments", config_path) or ROLE_ASSIGNMENT_DEFAULT_SAMPLES
+    created = 0
+    for sample in samples:
+        user_email = sample["user_email"]
+        role_slug = sample["app_role_slug"]
+        org_slug = sample["org_slug"]
+        dept_slug = sample.get("dept_slug")
+
+        user = db.execute(select(User).where(User.email == user_email)).scalar_one_or_none()
+        if not user:
+            print(f"  RoleAssignment: user '{user_email}' not found; skipping.")
+            continue
+
+        app_role = db.execute(select(AppRole).where(AppRole.slug == role_slug)).scalar_one_or_none()
+        if not app_role:
+            print(f"  RoleAssignment: app role '{role_slug}' not found; skipping.")
+            continue
+
+        org = db.execute(select(Organization).where(Organization.slug == org_slug)).scalar_one_or_none()
+        if not org:
+            print(f"  RoleAssignment: org '{org_slug}' not found; skipping.")
+            continue
+
+        dept_id = None
+        if dept_slug:
+            dept = db.execute(
+                select(Department).where(Department.org_id == org.id, Department.slug == dept_slug)
+            ).scalar_one_or_none()
+            if not dept:
+                print(f"  RoleAssignment: dept '{dept_slug}' not found; skipping.")
+                continue
+            dept_id = dept.id
+
+        # Check existing
+        dept_clause = (
+            UserRoleAssignment.dept_id.is_(None) if dept_id is None
+            else UserRoleAssignment.dept_id == dept_id
+        )
+        existing = db.execute(
+            select(UserRoleAssignment).where(
+                UserRoleAssignment.user_id == user.id,
+                UserRoleAssignment.role_type == RoleType.APP,
+                UserRoleAssignment.role_id == app_role.id,
+                UserRoleAssignment.org_id == org.id,
+                dept_clause,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            print(f"  RoleAssignment ({user_email}, {role_slug}, {org_slug}) exists; skipping.")
+            continue
+
+        assignment = UserRoleAssignment(
+            user_id=user.id,
+            role_type=RoleType.APP,
+            role_id=app_role.id,
+            org_id=org.id,
+            dept_id=dept_id,
+            status=AssignmentStatus.ACTIVE,
+        )
+        db.add(assignment)
+        db.commit()
+        db.refresh(assignment)
+        print(f"  Created role assignment: {user_email} -> {role_slug} @ {org_slug}")
+        created += 1
+    return created
+
+
+def drop_role_assignments(db: Session, slug_prefix: str = "sample-") -> int:
+    """Drop app role assignments for sample users."""
+    sample_users = db.scalars(
+        select(User).where(User.email.like("%@devrank.local"))
+    ).all()
+    user_ids = [u.id for u in sample_users]
+    if not user_ids:
+        return 0
+    assignments = db.scalars(
+        select(UserRoleAssignment).where(
+            UserRoleAssignment.user_id.in_(user_ids),
+            UserRoleAssignment.role_type == RoleType.APP,
+        )
+    ).all()
+    count = len(assignments)
+    for a in assignments:
+        db.delete(a)
+    if count:
+        db.commit()
+        print(f"Dropped {count} app role assignments.")
+    return count
+
+
+SEED_REGISTRY["role_assignments"] = (seed_role_assignments, drop_role_assignments, "role_assignments")
+
+
+# ── Submissions seeder ───────────────────────────────────────────────────────
+
+SUBMISSION_DEFAULT_SAMPLES: list[dict[str, Any]] = [
+    {
+        "user_email": "alice.eng@devrank.local",
+        "assessment_slug": "senior-eng-q1-2026",
+        "scenario_slug": "live-coding-challenge",
+        "status": SubmissionStatus.COMPLETED,
+        "started_at": datetime(2025, 2, 1, 10, 0, tzinfo=timezone.utc),
+        "completed_at": datetime(2025, 2, 1, 10, 30, tzinfo=timezone.utc),
+    },
+    {
+        "user_email": "alice.eng@devrank.local",
+        "assessment_slug": "senior-eng-q1-2026",
+        "scenario_slug": "system-design-deep-dive",
+        "status": SubmissionStatus.COMPLETED,
+        "started_at": datetime(2025, 2, 2, 14, 0, tzinfo=timezone.utc),
+        "completed_at": datetime(2025, 2, 2, 15, 0, tzinfo=timezone.utc),
+    },
+    {
+        "user_email": "bob.lead@devrank.local",
+        "assessment_slug": "senior-eng-q1-2026",
+        "scenario_slug": "live-coding-challenge",
+        "status": SubmissionStatus.PENDING,
+        "started_at": datetime(2025, 2, 5, 9, 0, tzinfo=timezone.utc),
+    },
+]
+
+_ARTIFACT_DEFAULTS["submissions"] = SUBMISSION_DEFAULT_SAMPLES
+
+
+def seed_submissions(db: Session, config_path: str | None = None) -> int:
+    """Seed sample submissions (idempotent by user+assessment+scenario)."""
+    samples = _load_samples_for_artifact("submissions", config_path) or SUBMISSION_DEFAULT_SAMPLES
+    created = 0
+    for sample in samples:
+        user_email = sample["user_email"]
+        assessment_slug = sample["assessment_slug"]
+        scenario_slug = sample.get("scenario_slug")
+
+        user = db.execute(select(User).where(User.email == user_email)).scalar_one_or_none()
+        if not user:
+            print(f"  Submission: user '{user_email}' not found; skipping.")
+            continue
+
+        assessment = db.execute(
+            select(Assessment).where(Assessment.slug == assessment_slug)
+        ).scalar_one_or_none()
+        if not assessment:
+            print(f"  Submission: assessment '{assessment_slug}' not found; skipping.")
+            continue
+
+        scenario = None
+        scenario_id = None
+        if scenario_slug:
+            scenario = db.execute(
+                select(Scenario).where(Scenario.slug == scenario_slug)
+            ).scalar_one_or_none()
+            if not scenario:
+                print(f"  Submission: scenario '{scenario_slug}' not found; skipping.")
+                continue
+            scenario_id = scenario.id
+
+        # Idempotent
+        scenario_clause = (
+            Submission.scenario_id.is_(None) if scenario_id is None
+            else Submission.scenario_id == scenario_id
+        )
+        existing = db.execute(
+            select(Submission).where(
+                Submission.user_id == user.id,
+                Submission.assessment_id == assessment.id,
+                scenario_clause,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            print(f"  Submission ({user_email}, {assessment_slug}, {scenario_slug}) exists; skipping.")
+            continue
+
+        status = sample.get("status", SubmissionStatus.PENDING)
+        if isinstance(status, str):
+            status = SubmissionStatus(status)
+
+        submission = Submission(
+            user_id=user.id,
+            assessment_id=assessment.id,
+            scenario_id=scenario_id,
+            status=status,
+            started_at=sample.get("started_at"),
+            completed_at=sample.get("completed_at"),
+            abandoned_at=sample.get("abandoned_at"),
+        )
+        db.add(submission)
+        db.commit()
+        db.refresh(submission)
+        print(f"  Created submission: {user_email} -> {assessment_slug}/{scenario_slug} [{status.value}]")
+        created += 1
+    return created
+
+
+def drop_submissions(db: Session, slug_prefix: str = "sample-") -> int:
+    """Drop sample submissions."""
+    sample_users = db.scalars(
+        select(User).where(User.email.like("%@devrank.local"))
+    ).all()
+    user_ids = [u.id for u in sample_users]
+    if not user_ids:
+        return 0
+    subs = db.scalars(
+        select(Submission).where(Submission.user_id.in_(user_ids))
+    ).all()
+    count = len(subs)
+    for s in subs:
+        db.delete(s)
+    if count:
+        db.commit()
+        print(f"Dropped {count} submissions.")
+    return count
+
+
+SEED_REGISTRY["submissions"] = (seed_submissions, drop_submissions, "submissions")
+
+
+# ── Evaluations seeder ───────────────────────────────────────────────────────
+
+def seed_evaluations(db: Session, config_path: str | None = None) -> int:
+    """Seed evaluations for completed submissions."""
+    created = 0
+    # Find completed submissions without evaluations
+    completed = db.scalars(
+        select(Submission).where(
+            Submission.status == SubmissionStatus.COMPLETED,
+            Submission.evaluation_id.is_(None),
+        )
+    ).all()
+
+    for sub in completed:
+        eval_obj = Evaluation(
+            assessment_id=sub.assessment_id,
+            submission_id=sub.id,
+            summary={
+                "score": 82,
+                "strengths": ["Clean code structure", "Good time management"],
+                "weaknesses": ["Could improve edge case handling"],
+                "metrics": {"code_quality": 85, "problem_solving": 80, "communication": 78},
+            },
+        )
+        db.add(eval_obj)
+        db.commit()
+        db.refresh(eval_obj)
+
+        # Link back to submission
+        sub.evaluation_id = eval_obj.id
+        db.commit()
+
+        print(f"  Created evaluation for submission {sub.id}")
+        created += 1
+    return created
+
+
+def drop_evaluations(db: Session, slug_prefix: str = "sample-") -> int:
+    """Drop evaluations for sample submissions."""
+    sample_users = db.scalars(
+        select(User).where(User.email.like("%@devrank.local"))
+    ).all()
+    user_ids = [u.id for u in sample_users]
+    if not user_ids:
+        return 0
+    subs = db.scalars(
+        select(Submission).where(Submission.user_id.in_(user_ids))
+    ).all()
+    sub_ids = [s.id for s in subs]
+    if not sub_ids:
+        return 0
+    evals = db.scalars(
+        select(Evaluation).where(Evaluation.submission_id.in_(sub_ids))
+    ).all()
+    count = len(evals)
+    for e in evals:
+        db.delete(e)
+    if count:
+        db.commit()
+        print(f"Dropped {count} evaluations.")
+    return count
+
+
+SEED_REGISTRY["evaluations"] = (seed_evaluations, drop_evaluations, "evaluations")
+
+
 def load_sample_data(
     objects: List[str] | None = None,
     config_path: str | None = None,
@@ -1248,8 +1769,17 @@ def load_sample_data(
     - Config/YAML for param data.
     - Registry-driven for extensibility; graceful per artifact.
     """
+    # Explicit FK-safe order: users before assessments (created_by FK),
+    # memberships/role_assignments after users+orgs+depts,
+    # submissions after assessments+scenarios+users, evaluations last.
+    _SEED_ORDER = [
+        "organizations", "departments", "roles", "positions",
+        "users", "assessments", "scenarios",
+        "memberships", "role_assignments",
+        "submissions", "evaluations",
+    ]
     if objects is None:
-        objects = list(SEED_REGISTRY.keys())  # Default: all (orgs first in dict order)
+        objects = [o for o in _SEED_ORDER if o in SEED_REGISTRY]
     results = {}
     db = get_db_session()
     try:

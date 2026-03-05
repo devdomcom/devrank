@@ -723,7 +723,7 @@ class CreateAssessmentRequest(BaseModel):
         max_length=100,
         pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$",
         description="URL-safe unique slug for the assessment",
-        examples=["senior-engineer-q1-2026"],
+        examples=["senior-eng-q1-2026"],
     )
     description: str | None = Field(None, max_length=1000)
     role_id: uuid.UUID | None = Field(

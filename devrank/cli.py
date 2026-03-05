@@ -206,7 +206,7 @@ def init(
         typer.echo(f"      Created admin: {admin_email}")
 
     typer.echo("\nDevRank initialized. Start the server with:")
-    typer.echo("  uvicorn api.app:app --reload --host 0.0.0.0 --port 8000")
+    typer.echo("  uv run uvicorn api.app:app --reload --host 0.0.0.0 --port 8000")
 
 
 # ── Seed subcommand (for load_sample_data.py; orgs first) ───────────────────
