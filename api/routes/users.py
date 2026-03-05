@@ -1,9 +1,10 @@
 """Users routes (platform-wide user management).
 
 Endpoints:
-- GET    /users/          — cursor-paginated list (system admins only)
-- POST   /users/          — create new user (system admins only)
-- GET    /users/{user_id} — user detail (own profile or system admin)
+- GET    /users/                  — cursor-paginated list (system admins only)
+- POST   /users/                  — create new user (system admins only)
+- GET    /users/{id_or_email}     — user detail (own profile or system admin)
+- PATCH  /users/{id_or_email}     — update user (system admins only)
 
 User listing and creation are restricted to system administrators (superusers).
 The detail endpoint allows users to view their own profile, and system admins
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from passlib.context import CryptContext
@@ -108,6 +110,24 @@ def _build_user_response(
         phone=user.phone,
         memberships=memberships,
     )
+
+
+def _resolve_user(id_or_email: str, db: Session) -> User:
+    """Resolve user by UUID or email. Raises 404 if not found."""
+    user = None
+    try:
+        uid = UUID(id_or_email)
+        user = db.get(User, uid)
+    except ValueError:
+        user = db.execute(
+            select(User).where(User.email == id_or_email)
+        ).scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{id_or_email}' not found",
+        )
+    return user
 
 
 # ── GET /users/ ───────────────────────────────────────────────────────────
@@ -240,12 +260,14 @@ def create_user(
 
 
 @router.get(
-    "/{user_id}",
-    summary="Get user by ID",
+    "/{user_id_or_email}",
+    summary="Get user by ID or email",
     response_model=UserResponse,
 )
 def get_user(
-    user_id: uuid.UUID = Path(..., description="User UUID"),
+    user_id_or_email: str = Path(
+        openapi_examples={"default": {"value": "alice.eng@devrank.local"}},
+    ),
     auth: AuthContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> UserResponse:
@@ -265,20 +287,14 @@ def get_user(
     - All basic user information
     - ``memberships`` field contains list of org/department memberships
     """
-    is_own_profile = auth.user_id == user_id
+    user = _resolve_user(user_id_or_email, db)
+    is_own_profile = auth.user_id == user.id
     is_admin = auth.is_system_admin
 
     if not (is_own_profile or is_admin):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to view this user's profile",
-        )
-
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User '{user_id}' not found",
         )
 
     return _build_user_response(
@@ -291,13 +307,15 @@ def get_user(
 
 
 @router.patch(
-    "/{user_id}",
+    "/{user_id_or_email}",
     summary="Update user details (system admins only)",
     response_model=UserResponse,
 )
 def update_user(
     body: UpdateUserRequest,
-    user_id: uuid.UUID = Path(..., description="User UUID"),
+    user_id_or_email: str = Path(
+        openapi_examples={"default": {"value": "alice.eng@devrank.local"}},
+    ),
     auth: AuthContext = Depends(require_permission("users:update")),
     db: Session = Depends(get_db),
 ) -> UserResponse:
@@ -330,12 +348,7 @@ def update_user(
             detail="No fields provided for update",
         )
 
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User '{user_id}' not found",
-        )
+    user = _resolve_user(user_id_or_email, db)
 
     # 1. Email uniqueness check (if changing)
     if "email" in sent_fields:
@@ -417,12 +430,14 @@ def update_user(
 
 
 @router.get(
-    "/{user_id}/oauth/accounts/",
+    "/{user_id_or_email}/oauth/accounts/",
     summary="List connected OAuth providers for a user",
     response_model=OAuthAccountsResponse,
 )
 def list_oauth_accounts(
-    user_id: uuid.UUID = Path(..., description="User UUID"),
+    user_id_or_email: str = Path(
+        openapi_examples={"default": {"value": "alice.eng@devrank.local"}},
+    ),
     auth: AuthContext = Depends(require_permission("users:read")),
     db: Session = Depends(get_db),
 ) -> OAuthAccountsResponse:
@@ -432,22 +447,17 @@ def list_oauth_accounts(
     - System admins can view any user's OAuth connections.
     - Non-admins can view only their own OAuth connections.
     """
-    if not (auth.is_system_admin or auth.user_id == user_id):
+    user = _resolve_user(user_id_or_email, db)
+
+    if not (auth.is_system_admin or auth.user_id == user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to view this user's OAuth accounts",
         )
 
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User '{user_id}' not found",
-        )
-
     accounts = db.scalars(
         select(OAuthAccount)
-        .where(OAuthAccount.user_id == user_id)
+        .where(OAuthAccount.user_id == user.id)
         .order_by(OAuthAccount.created_at.asc())
     ).all()
 
@@ -469,12 +479,14 @@ def list_oauth_accounts(
 
 
 @router.delete(
-    "/{user_id}/oauth/accounts/{oauth_id}",
+    "/{user_id_or_email}/oauth/accounts/{oauth_id}",
     summary="Disconnect an OAuth provider for a user",
     response_model=OAuthAccountDisconnectedResponse,
 )
 def delete_oauth_account(
-    user_id: uuid.UUID = Path(..., description="User UUID"),
+    user_id_or_email: str = Path(
+        openapi_examples={"default": {"value": "alice.eng@devrank.local"}},
+    ),
     oauth_id: uuid.UUID = Path(..., description="OAuth account UUID"),
     auth: AuthContext = Depends(require_permission("users:update")),
     db: Session = Depends(get_db),
@@ -485,29 +497,24 @@ def delete_oauth_account(
     - System admins can disconnect any user's OAuth connections.
     - Non-admins can disconnect only their own OAuth connections.
     """
-    if not (auth.is_system_admin or auth.user_id == user_id):
+    user = _resolve_user(user_id_or_email, db)
+
+    if not (auth.is_system_admin or auth.user_id == user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to disconnect OAuth accounts for this user",
         )
 
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User '{user_id}' not found",
-        )
-
     oauth_account = db.execute(
         select(OAuthAccount).where(
             OAuthAccount.id == oauth_id,
-            OAuthAccount.user_id == user_id,
+            OAuthAccount.user_id == user.id,
         )
     ).scalar_one_or_none()
     if not oauth_account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"OAuth account '{oauth_id}' not found for user '{user_id}'",
+            detail=f"OAuth account '{oauth_id}' not found for user '{user_id_or_email}'",
         )
 
     db.delete(oauth_account)

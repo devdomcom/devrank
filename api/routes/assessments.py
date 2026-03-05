@@ -2,10 +2,10 @@
 
 Endpoints:
 - GET    /assessments/        — cursor-paginated list
-- GET    /assessments/{id}    — single assessment detail
-- POST   /assessments/        — create assessment
-- PATCH  /assessments/{id}    — partial update
-- DELETE /assessments/{id}    — soft-delete
+- GET    /assessments/{id_or_slug}  — single assessment detail
+- POST   /assessments/              — create assessment
+- PATCH  /assessments/{id_or_slug}  — partial update
+- DELETE /assessments/{id_or_slug}  — soft-delete
 
 Assessments are either org-scoped (org_id set) or unscoped self-evals
 (org_id NULL). Access rules:
@@ -18,6 +18,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy import select
@@ -96,23 +97,48 @@ def list_assessments(
     )
 
 
-@router.get(
-    "/{assessment_id}",
-    summary="Get assessment by ID",
-    response_model=AssessmentResponse,
-)
-def get_assessment(
-    assessment_id: uuid.UUID = Path(..., description="Assessment UUID"),
-    auth: AuthContext = Depends(require_permission("assessments:read")),
-    db: Session = Depends(get_db),
-) -> AssessmentResponse:
-    """Get a single assessment by ID with RBAC enforcement."""
-    assessment = db.get(Assessment, assessment_id)
+def _resolve_assessment(
+    id_or_slug: str, db: Session, *, allow_deleted: bool = False
+) -> Assessment:
+    """Resolve assessment by UUID or slug. Raises 404 if not found."""
+    assessment = None
+    try:
+        aid = UUID(id_or_slug)
+        assessment = db.get(Assessment, aid)
+    except ValueError:
+        assessment = db.execute(
+            select(Assessment).where(Assessment.slug == id_or_slug)
+        ).scalar_one_or_none()
     if not assessment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Assessment '{assessment_id}' not found",
+            detail=f"Assessment '{id_or_slug}' not found",
         )
+    if assessment.deleted_at and not allow_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Assessment '{id_or_slug}' not found",
+        )
+    return assessment
+
+
+@router.get(
+    "/{assessment_id_or_slug}",
+    summary="Get assessment by ID or slug",
+    response_model=AssessmentResponse,
+)
+def get_assessment(
+    assessment_id_or_slug: str = Path(
+        openapi_examples={"default": {"value": "senior-eng-q1-2026"}},
+    ),
+    auth: AuthContext = Depends(require_permission("assessments:read")),
+    db: Session = Depends(get_db),
+) -> AssessmentResponse:
+    """Get a single assessment by ID or slug with RBAC enforcement."""
+    assessment = _resolve_assessment(
+        assessment_id_or_slug, db,
+        allow_deleted=auth.is_system_admin,
+    )
 
     _enforce_assessment_access(assessment, auth, db, "assessments:read")
 
@@ -205,13 +231,15 @@ def create_assessment(
 
 
 @router.patch(
-    "/{assessment_id}",
+    "/{assessment_id_or_slug}",
     summary="Partially update an assessment",
     response_model=AssessmentResponse,
 )
 def update_assessment(
     body: UpdateAssessmentRequest,
-    assessment_id: uuid.UUID = Path(..., description="Assessment UUID"),
+    assessment_id_or_slug: str = Path(
+        openapi_examples={"default": {"value": "senior-eng-q1-2026"}},
+    ),
     auth: AuthContext = Depends(require_permission("assessments:update")),
     db: Session = Depends(get_db),
 ) -> AssessmentResponse:
@@ -223,12 +251,7 @@ def update_assessment(
             detail="No fields provided for update",
         )
 
-    assessment = db.get(Assessment, assessment_id)
-    if not assessment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Assessment '{assessment_id}' not found",
-        )
+    assessment = _resolve_assessment(assessment_id_or_slug, db)
 
     _enforce_assessment_access(assessment, auth, db, "assessments:update")
 
@@ -315,22 +338,22 @@ def update_assessment(
 
 
 @router.delete(
-    "/{assessment_id}",
+    "/{assessment_id_or_slug}",
     summary="Soft-delete an assessment",
     response_model=AssessmentDeletedResponse,
 )
 def delete_assessment(
-    assessment_id: uuid.UUID = Path(..., description="Assessment UUID"),
+    assessment_id_or_slug: str = Path(
+        openapi_examples={"default": {"value": "senior-eng-q1-2026"}},
+    ),
     auth: AuthContext = Depends(require_permission("assessments:delete")),
     db: Session = Depends(get_db),
 ) -> AssessmentDeletedResponse:
     """Soft-delete an assessment (sets status=DELETED and deleted_at timestamp)."""
-    assessment = db.get(Assessment, assessment_id)
-    if not assessment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Assessment '{assessment_id}' not found",
-        )
+    assessment = _resolve_assessment(
+        assessment_id_or_slug, db,
+        allow_deleted=auth.is_system_admin,
+    )
 
     _enforce_assessment_access(assessment, auth, db, "assessments:delete")
 

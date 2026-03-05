@@ -1,12 +1,12 @@
 """Scenarios routes (global platform listing + assessment-scoped CRUD).
 
 Endpoints:
-- GET    /scenarios/                                  — global scenarios (is_global=True, searchable)
-- GET    /assessments/{assessment_id}/scenarios/      — list scenarios for an assessment
-- GET    /assessments/{assessment_id}/scenarios/{sid} — single scenario detail
-- POST   /assessments/{assessment_id}/scenarios/      — create scenario in assessment
-- PATCH  /assessments/{assessment_id}/scenarios/{sid} — partial update
-- DELETE /assessments/{assessment_id}/scenarios/{sid} — soft-delete
+- GET    /scenarios/                                            — global scenarios (is_global=True, searchable)
+- GET    /assessments/{id_or_slug}/scenarios/                   — list scenarios for an assessment
+- GET    /assessments/{id_or_slug}/scenarios/{id_or_slug}       — single scenario detail
+- POST   /assessments/{id_or_slug}/scenarios/                   — create scenario in assessment
+- PATCH  /assessments/{id_or_slug}/scenarios/{id_or_slug}       — partial update
+- DELETE /assessments/{id_or_slug}/scenarios/{id_or_slug}       — soft-delete
 
 Global scenarios (is_global=True) are visible platform-wide.
 Assessment-scoped scenarios inherit access rules from their parent assessment:
@@ -19,6 +19,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy import select
@@ -54,14 +55,26 @@ assessment_router = APIRouter(tags=["scenarios"])
 
 
 def _resolve_assessment(
-    assessment_id: uuid.UUID, db: Session
+    id_or_slug: str, db: Session, *, allow_deleted: bool = False
 ) -> Assessment:
-    """Fetch assessment by UUID or raise 404."""
-    assessment = db.get(Assessment, assessment_id)
+    """Resolve assessment by UUID or slug. Raises 404 if not found."""
+    assessment = None
+    try:
+        aid = UUID(id_or_slug)
+        assessment = db.get(Assessment, aid)
+    except ValueError:
+        assessment = db.execute(
+            select(Assessment).where(Assessment.slug == id_or_slug)
+        ).scalar_one_or_none()
     if not assessment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Assessment '{assessment_id}' not found",
+            detail=f"Assessment '{id_or_slug}' not found",
+        )
+    if assessment.deleted_at and not allow_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Assessment '{id_or_slug}' not found",
         )
     return assessment
 
@@ -98,29 +111,39 @@ def _enforce_assessment_access(
 
 
 def _resolve_scenario(
-    scenario_id: uuid.UUID,
+    id_or_slug: str,
     assessment: Assessment,
     db: Session,
     *,
     allow_deleted: bool = False,
 ) -> Scenario:
-    """Fetch scenario by UUID scoped to an assessment, or raise 404."""
-    scenario = db.execute(
-        select(Scenario).where(
-            Scenario.id == scenario_id,
-            Scenario.assessment_id == assessment.id,
-        )
-    ).scalar_one_or_none()
+    """Resolve scenario by UUID or slug, scoped to an assessment. Raises 404 if not found."""
+    scenario = None
+    try:
+        sid = UUID(id_or_slug)
+        scenario = db.execute(
+            select(Scenario).where(
+                Scenario.id == sid,
+                Scenario.assessment_id == assessment.id,
+            )
+        ).scalar_one_or_none()
+    except ValueError:
+        scenario = db.execute(
+            select(Scenario).where(
+                Scenario.slug == id_or_slug,
+                Scenario.assessment_id == assessment.id,
+            )
+        ).scalar_one_or_none()
 
     if not scenario:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Scenario '{scenario_id}' not found in assessment '{assessment.slug}'",
+            detail=f"Scenario '{id_or_slug}' not found in assessment '{assessment.slug}'",
         )
     if scenario.deleted_at and not allow_deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Scenario '{scenario_id}' not found in assessment '{assessment.slug}'",
+            detail=f"Scenario '{id_or_slug}' not found in assessment '{assessment.slug}'",
         )
     return scenario
 
@@ -160,14 +183,16 @@ def list_global_scenarios(
 
 
 @assessment_router.get(
-    "/{assessment_id}/scenarios/",
+    "/{assessment_id_or_slug}/scenarios/",
     summary="List scenarios for an assessment",
     response_model=ScenariosCursorPage,
 )
 def list_assessment_scenarios(
     params: Annotated[tuple[str | None, int], Depends(get_cursor_params)],
     filters: Annotated[ScenarioFilterParams, Depends(get_scenario_filters)],
-    assessment_id: uuid.UUID = Path(..., description="Assessment UUID"),
+    assessment_id_or_slug: str = Path(
+        openapi_examples={"default": {"value": "senior-eng-q1-2026"}},
+    ),
     auth: AuthContext = Depends(require_permission("scenarios:list")),
     db: Session = Depends(get_db),
 ) -> ScenariosCursorPage:
@@ -175,7 +200,7 @@ def list_assessment_scenarios(
 
     Access is inherited from the parent assessment's org/creator scope.
     """
-    assessment = _resolve_assessment(assessment_id, db)
+    assessment = _resolve_assessment(assessment_id_or_slug, db, allow_deleted=auth.is_system_admin)
     _enforce_assessment_access(assessment, auth, db, "scenarios:list")
 
     cursor, limit = params
@@ -190,36 +215,42 @@ def list_assessment_scenarios(
 
 
 @assessment_router.get(
-    "/{assessment_id}/scenarios/{scenario_id}",
-    summary="Get scenario by ID",
+    "/{assessment_id_or_slug}/scenarios/{scenario_id_or_slug}",
+    summary="Get scenario by ID or slug",
     response_model=ScenarioResponse,
 )
 def get_scenario(
-    assessment_id: uuid.UUID = Path(..., description="Assessment UUID"),
-    scenario_id: uuid.UUID = Path(..., description="Scenario UUID"),
+    assessment_id_or_slug: str = Path(
+        openapi_examples={"default": {"value": "senior-eng-q1-2026"}},
+    ),
+    scenario_id_or_slug: str = Path(
+        openapi_examples={"default": {"value": "live-coding-challenge"}},
+    ),
     auth: AuthContext = Depends(require_permission("scenarios:read")),
     db: Session = Depends(get_db),
 ) -> ScenarioResponse:
-    """Get a single scenario by ID within an assessment."""
-    assessment = _resolve_assessment(assessment_id, db)
+    """Get a single scenario by ID or slug within an assessment."""
+    assessment = _resolve_assessment(assessment_id_or_slug, db, allow_deleted=auth.is_system_admin)
     _enforce_assessment_access(assessment, auth, db, "scenarios:read")
 
     scenario = _resolve_scenario(
-        scenario_id, assessment, db,
+        scenario_id_or_slug, assessment, db,
         allow_deleted=auth.is_system_admin,
     )
     return ScenarioResponse.model_validate(scenario, from_attributes=True)
 
 
 @assessment_router.post(
-    "/{assessment_id}/scenarios/",
+    "/{assessment_id_or_slug}/scenarios/",
     summary="Create a new scenario in an assessment",
     response_model=ScenarioResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_scenario(
     body: CreateScenarioRequest,
-    assessment_id: uuid.UUID = Path(..., description="Assessment UUID"),
+    assessment_id_or_slug: str = Path(
+        openapi_examples={"default": {"value": "senior-eng-q1-2026"}},
+    ),
     auth: AuthContext = Depends(require_permission("scenarios:create")),
     db: Session = Depends(get_db),
 ) -> ScenarioResponse:
@@ -235,7 +266,7 @@ def create_scenario(
             detail="Cannot create a scenario with status DELETED; use the DELETE endpoint",
         )
 
-    assessment = _resolve_assessment(assessment_id, db)
+    assessment = _resolve_assessment(assessment_id_or_slug, db)
     _enforce_assessment_access(assessment, auth, db, "scenarios:create")
 
     # Slug uniqueness (global)
@@ -280,14 +311,18 @@ def create_scenario(
 
 
 @assessment_router.patch(
-    "/{assessment_id}/scenarios/{scenario_id}",
+    "/{assessment_id_or_slug}/scenarios/{scenario_id_or_slug}",
     summary="Partially update a scenario",
     response_model=ScenarioResponse,
 )
 def update_scenario(
     body: UpdateScenarioRequest,
-    assessment_id: uuid.UUID = Path(..., description="Assessment UUID"),
-    scenario_id: uuid.UUID = Path(..., description="Scenario UUID"),
+    assessment_id_or_slug: str = Path(
+        openapi_examples={"default": {"value": "senior-eng-q1-2026"}},
+    ),
+    scenario_id_or_slug: str = Path(
+        openapi_examples={"default": {"value": "live-coding-challenge"}},
+    ),
     auth: AuthContext = Depends(require_permission("scenarios:update")),
     db: Session = Depends(get_db),
 ) -> ScenarioResponse:
@@ -304,9 +339,9 @@ def update_scenario(
             detail="No fields provided for update",
         )
 
-    assessment = _resolve_assessment(assessment_id, db)
+    assessment = _resolve_assessment(assessment_id_or_slug, db)
     _enforce_assessment_access(assessment, auth, db, "scenarios:update")
-    scenario = _resolve_scenario(scenario_id, assessment, db)
+    scenario = _resolve_scenario(scenario_id_or_slug, assessment, db)
 
     # Slug uniqueness (if changing)
     if "slug" in sent_fields and body.slug != scenario.slug:
@@ -364,20 +399,24 @@ def update_scenario(
 
 
 @assessment_router.delete(
-    "/{assessment_id}/scenarios/{scenario_id}",
+    "/{assessment_id_or_slug}/scenarios/{scenario_id_or_slug}",
     summary="Soft-delete a scenario",
     response_model=ScenarioDeletedResponse,
 )
 def delete_scenario(
-    assessment_id: uuid.UUID = Path(..., description="Assessment UUID"),
-    scenario_id: uuid.UUID = Path(..., description="Scenario UUID"),
+    assessment_id_or_slug: str = Path(
+        openapi_examples={"default": {"value": "senior-eng-q1-2026"}},
+    ),
+    scenario_id_or_slug: str = Path(
+        openapi_examples={"default": {"value": "live-coding-challenge"}},
+    ),
     auth: AuthContext = Depends(require_permission("scenarios:delete")),
     db: Session = Depends(get_db),
 ) -> ScenarioDeletedResponse:
     """Soft-delete a scenario (sets status=DELETED and deleted_at timestamp)."""
-    assessment = _resolve_assessment(assessment_id, db)
+    assessment = _resolve_assessment(assessment_id_or_slug, db, allow_deleted=auth.is_system_admin)
     _enforce_assessment_access(assessment, auth, db, "scenarios:delete")
-    scenario = _resolve_scenario(scenario_id, assessment, db, allow_deleted=True)
+    scenario = _resolve_scenario(scenario_id_or_slug, assessment, db, allow_deleted=True)
 
     if scenario.deleted_at is not None:
         raise HTTPException(
