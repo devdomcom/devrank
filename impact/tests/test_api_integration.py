@@ -1680,3 +1680,1395 @@ class TestDeleteDepartment:
         finally:
             self._cleanup_overrides()
 
+
+# ---------------------------------------------------------------------------
+# Roles (platform-wide global roles; cursor-paginated)
+# ---------------------------------------------------------------------------
+
+
+class TestListRoles:
+    """Integration tests for GET /api/v1/roles/."""
+
+    def test_list_roles_ok(self, client):
+        """Basic list returns cursor page shape."""
+        resp = client.get("/api/v1/roles/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert isinstance(data["items"], list)
+        assert "next_cursor" in data
+        assert data["limit"] == 20
+
+    def test_list_roles_with_custom_limit(self, client):
+        resp = client.get("/api/v1/roles/?limit=5")
+        assert resp.status_code == 200
+        assert resp.json()["limit"] == 5
+
+    def test_list_roles_invalid_cursor_returns_400(self, client):
+        resp = client.get("/api/v1/roles/?cursor=invalid!!")
+        assert resp.status_code == 400
+
+    def test_list_roles_status_filter_accepted(self, client):
+        resp = client.get("/api/v1/roles/?status=PUBLISHED")
+        assert resp.status_code == 200
+
+    def test_list_roles_invalid_status_returns_422(self, client):
+        resp = client.get("/api/v1/roles/?status=NOT_REAL")
+        assert resp.status_code == 422
+
+    def test_list_roles_search_accepted(self, client):
+        resp = client.get("/api/v1/roles/?search=senior")
+        assert resp.status_code == 200
+
+
+class TestGetRole:
+    """Integration tests for GET /api/v1/roles/{id_or_slug}."""
+
+    def test_get_role_not_found_404(self, client):
+        """Non-existent role returns 404."""
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get("/api/v1/roles/nonexistent-role")
+        assert resp.status_code == 404
+        assert "not found" in resp.json()["detail"]
+
+    def test_get_role_by_uuid_not_found(self, client):
+        """UUID that doesn't match returns 404."""
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        mock_session.get.return_value = None
+        app.dependency_overrides[get_db] = lambda: mock_session
+        fake_uuid = str(uuid.uuid4())
+        resp = client.get(f"/api/v1/roles/{fake_uuid}")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Assessments (platform-wide; org-scoped visibility)
+# ---------------------------------------------------------------------------
+
+
+class TestListAssessments:
+    """Integration tests for GET /api/v1/assessments/."""
+
+    def test_list_assessments_ok(self, client):
+        resp = client.get("/api/v1/assessments/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert isinstance(data["items"], list)
+        assert "next_cursor" in data
+        assert data["limit"] == 20
+
+    def test_list_assessments_with_custom_limit(self, client):
+        resp = client.get("/api/v1/assessments/?limit=5")
+        assert resp.status_code == 200
+        assert resp.json()["limit"] == 5
+
+    def test_list_assessments_invalid_cursor_returns_400(self, client):
+        resp = client.get("/api/v1/assessments/?cursor=invalid!!")
+        assert resp.status_code == 400
+
+    def test_list_assessments_status_filter_accepted(self, client):
+        resp = client.get("/api/v1/assessments/?status=PUBLISHED")
+        assert resp.status_code == 200
+
+    def test_list_assessments_invalid_status_returns_422(self, client):
+        resp = client.get("/api/v1/assessments/?status=NOT_REAL")
+        assert resp.status_code == 422
+
+    def test_list_assessments_search_accepted(self, client):
+        resp = client.get("/api/v1/assessments/?search=senior")
+        assert resp.status_code == 200
+
+
+class TestGetAssessment:
+    """Integration tests for GET /api/v1/assessments/{id_or_slug}."""
+
+    @pytest.fixture
+    def test_assessment(self):
+        from db.models.assessment import Assessment, AssessmentStatus
+        return Assessment(
+            id=uuid.uuid4(),
+            title="Senior Engineer Q1 2026",
+            slug="senior-eng-q1-2026",
+            description="Assessment for senior engineers",
+            status=AssessmentStatus.PUBLISHED,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_get_assessment_ok(self, client, test_assessment):
+        """Successful GET returns AssessmentResponse shape."""
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = test_assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = test_assessment
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get(f"/api/v1/assessments/{test_assessment.slug}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["slug"] == "senior-eng-q1-2026"
+        assert data["title"] == "Senior Engineer Q1 2026"
+        assert data["status"] == "PUBLISHED"
+        assert "id" in data
+        assert "created_at" in data
+
+    def test_get_assessment_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get("/api/v1/assessments/nonexistent")
+        assert resp.status_code == 404
+
+
+class TestCreateAssessment:
+    """Integration tests for POST /api/v1/assessments/."""
+
+    def test_create_assessment_slug_conflict_409(self, client):
+        """Creating assessment with existing slug returns 409."""
+        from db.models.assessment import Assessment, AssessmentStatus
+        existing = Assessment(id=uuid.uuid4(), slug="taken-slug")
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = existing
+        mock_session.execute.return_value = mock_result
+        mock_session.get.return_value = None
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.post("/api/v1/assessments/", json={
+            "title": "Test Assessment",
+            "slug": "taken-slug",
+            "status": "DRAFT",
+        })
+        assert resp.status_code == 409
+        assert "already exists" in resp.json()["detail"]
+
+    def test_create_assessment_deleted_status_rejected(self, client):
+        resp = client.post("/api/v1/assessments/", json={
+            "title": "Bad Assessment",
+            "slug": "bad-assessment",
+            "status": "DELETED",
+        })
+        assert resp.status_code == 422
+
+    def test_create_assessment_missing_title_returns_422(self, client):
+        resp = client.post("/api/v1/assessments/", json={
+            "slug": "no-title",
+        })
+        assert resp.status_code == 422
+
+    def test_create_assessment_missing_slug_returns_422(self, client):
+        resp = client.post("/api/v1/assessments/", json={
+            "title": "No Slug",
+        })
+        assert resp.status_code == 422
+
+
+class TestUpdateAssessment:
+    """Integration tests for PATCH /api/v1/assessments/{id_or_slug}."""
+
+    @pytest.fixture
+    def test_assessment(self):
+        from db.models.assessment import Assessment, AssessmentStatus
+        return Assessment(
+            id=uuid.uuid4(),
+            title="Patchable Assessment",
+            slug="patchable-assessment",
+            description="Original description",
+            status=AssessmentStatus.DRAFT,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=None,
+            deleted_at=None,
+        )
+
+    def test_patch_title(self, client, test_assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = test_assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = test_assessment
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.patch(
+            f"/api/v1/assessments/{test_assessment.slug}",
+            json={"title": "Updated Title"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "Updated Title"
+
+    def test_patch_empty_body_returns_422(self, client, test_assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = test_assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = test_assessment
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.patch(
+            f"/api/v1/assessments/{test_assessment.slug}",
+            json={},
+        )
+        assert resp.status_code == 422
+
+    def test_patch_status_deleted_rejected(self, client, test_assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = test_assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = test_assessment
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.patch(
+            f"/api/v1/assessments/{test_assessment.slug}",
+            json={"status": "DELETED"},
+        )
+        assert resp.status_code == 422
+
+    def test_patch_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.patch(
+            "/api/v1/assessments/nonexistent",
+            json={"title": "Won't work"},
+        )
+        assert resp.status_code == 404
+
+
+class TestDeleteAssessment:
+    """Integration tests for DELETE /api/v1/assessments/{id_or_slug}."""
+
+    @pytest.fixture
+    def active_assessment(self):
+        from db.models.assessment import Assessment, AssessmentStatus
+        return Assessment(
+            id=uuid.uuid4(),
+            title="Deletable Assessment",
+            slug="deletable-assessment",
+            description="To be deleted",
+            status=AssessmentStatus.PUBLISHED,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_delete_assessment_ok(self, client, active_assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = active_assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = active_assessment
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.delete(f"/api/v1/assessments/{active_assessment.slug}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "DELETED"
+        assert data["deleted_at"] is not None
+        assert data["slug"] == "deletable-assessment"
+
+    def test_delete_already_deleted_returns_409(self, client):
+        from db.models.assessment import Assessment, AssessmentStatus
+        deleted = Assessment(
+            id=uuid.uuid4(),
+            title="Already Deleted",
+            slug="already-deleted",
+            status=AssessmentStatus.DELETED,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=datetime.now(timezone.utc),
+        )
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = deleted
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = deleted
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.delete(f"/api/v1/assessments/{deleted.slug}")
+        assert resp.status_code == 409
+        assert "already deleted" in resp.json()["detail"]
+
+    def test_delete_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.delete("/api/v1/assessments/nonexistent")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Scenarios (global + assessment-scoped)
+# ---------------------------------------------------------------------------
+
+
+class TestListGlobalScenarios:
+    """Integration tests for GET /api/v1/scenarios/."""
+
+    def test_list_global_scenarios_ok(self, client):
+        resp = client.get("/api/v1/scenarios/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert isinstance(data["items"], list)
+        assert "next_cursor" in data
+        assert data["limit"] == 20
+
+    def test_list_global_scenarios_with_limit(self, client):
+        resp = client.get("/api/v1/scenarios/?limit=3")
+        assert resp.status_code == 200
+        assert resp.json()["limit"] == 3
+
+    def test_list_global_scenarios_invalid_cursor_returns_400(self, client):
+        resp = client.get("/api/v1/scenarios/?cursor=bad!!")
+        assert resp.status_code == 400
+
+    def test_list_global_scenarios_search_accepted(self, client):
+        resp = client.get("/api/v1/scenarios/?search=coding")
+        assert resp.status_code == 200
+
+
+class TestAssessmentScopedScenarios:
+    """Integration tests for assessment-scoped scenario endpoints."""
+
+    @pytest.fixture
+    def assessment(self):
+        from db.models.assessment import Assessment, AssessmentStatus
+        return Assessment(
+            id=uuid.uuid4(),
+            title="Scenario Test Assessment",
+            slug="scenario-test-assessment",
+            status=AssessmentStatus.PUBLISHED,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def _mock_db_with_assessment(self, assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = assessment
+        mock_session.execute.return_value = mock_result
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_session.scalars.return_value = mock_scalars
+        app.dependency_overrides[get_db] = lambda: mock_session
+        return mock_session
+
+    def test_list_assessment_scenarios_ok(self, client, assessment):
+        self._mock_db_with_assessment(assessment)
+        resp = client.get(f"/api/v1/assessments/{assessment.slug}/scenarios/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert "next_cursor" in data
+
+    def test_list_assessment_scenarios_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get("/api/v1/assessments/nonexistent/scenarios/")
+        assert resp.status_code == 404
+
+    def test_get_scenario_not_found_404(self, client, assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        # First call resolves assessment, second returns None for scenario
+        mock_result.scalar_one_or_none.side_effect = [assessment, None]
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get(
+            f"/api/v1/assessments/{assessment.slug}/scenarios/nonexistent"
+        )
+        assert resp.status_code == 404
+
+    def test_create_scenario_deleted_status_rejected(self, client, assessment):
+        self._mock_db_with_assessment(assessment)
+        resp = client.post(
+            f"/api/v1/assessments/{assessment.slug}/scenarios/",
+            json={
+                "title": "Bad Scenario",
+                "slug": "bad-scenario",
+                "status": "DELETED",
+                "tool": "GITHUB",
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_create_scenario_missing_title_422(self, client, assessment):
+        self._mock_db_with_assessment(assessment)
+        resp = client.post(
+            f"/api/v1/assessments/{assessment.slug}/scenarios/",
+            json={"slug": "no-title-scenario", "tool": "GITHUB"},
+        )
+        assert resp.status_code == 422
+
+    def test_create_scenario_slug_conflict_409(self, client, assessment):
+        """Creating scenario with existing slug returns 409."""
+        from db.models.scenario import Scenario
+        existing = Scenario(id=uuid.uuid4(), slug="taken-slug")
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        # _resolve_assessment -> assessment, slug uniqueness -> existing
+        mock_result.scalar_one_or_none.side_effect = [assessment, existing]
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.post(
+            f"/api/v1/assessments/{assessment.slug}/scenarios/",
+            json={
+                "title": "New Scenario",
+                "slug": "taken-slug",
+                "tool": "CHAT",
+                "status": "DRAFT",
+            },
+        )
+        assert resp.status_code == 409
+        assert "already exists" in resp.json()["detail"]
+
+    def test_delete_scenario_not_found_404(self, client, assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.side_effect = [assessment, None]
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.delete(
+            f"/api/v1/assessments/{assessment.slug}/scenarios/ghost-scenario"
+        )
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Submissions (assessment-scoped)
+# ---------------------------------------------------------------------------
+
+
+class TestListSubmissions:
+    """Integration tests for GET /api/v1/assessments/{id}/submissions/."""
+
+    @pytest.fixture
+    def assessment(self):
+        from db.models.assessment import Assessment, AssessmentStatus
+        return Assessment(
+            id=uuid.uuid4(),
+            title="Submission Test Assessment",
+            slug="submission-test-assessment",
+            status=AssessmentStatus.PUBLISHED,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_list_submissions_ok(self, client, assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = assessment
+        mock_session.execute.return_value = mock_result
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_session.scalars.return_value = mock_scalars
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get(f"/api/v1/assessments/{assessment.slug}/submissions/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert isinstance(data["items"], list)
+        assert "next_cursor" in data
+
+    def test_list_submissions_assessment_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get("/api/v1/assessments/nonexistent/submissions/")
+        assert resp.status_code == 404
+
+
+class TestGetSubmission:
+    """Integration tests for GET /api/v1/assessments/{id}/submissions/{sid}."""
+
+    @pytest.fixture
+    def assessment(self):
+        from db.models.assessment import Assessment, AssessmentStatus
+        return Assessment(
+            id=uuid.uuid4(),
+            title="Sub Detail Assessment",
+            slug="sub-detail-assessment",
+            status=AssessmentStatus.PUBLISHED,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_get_submission_not_found_404(self, client, assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        # First call resolves assessment, second returns None for submission
+        mock_result.scalar_one_or_none.side_effect = [assessment, None]
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        fake_sid = str(uuid.uuid4())
+        resp = client.get(
+            f"/api/v1/assessments/{assessment.slug}/submissions/{fake_sid}"
+        )
+        assert resp.status_code == 404
+
+    def test_get_submission_assessment_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        fake_sid = str(uuid.uuid4())
+        resp = client.get(
+            f"/api/v1/assessments/nonexistent/submissions/{fake_sid}"
+        )
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Evaluations (assessment-scoped + submission-scoped)
+# ---------------------------------------------------------------------------
+
+
+class TestListEvaluations:
+    """Integration tests for GET /api/v1/assessments/{id}/evaluations/."""
+
+    @pytest.fixture
+    def assessment(self):
+        from db.models.assessment import Assessment, AssessmentStatus
+        return Assessment(
+            id=uuid.uuid4(),
+            title="Eval Test Assessment",
+            slug="eval-test-assessment",
+            status=AssessmentStatus.PUBLISHED,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_list_evaluations_ok(self, client, assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = assessment
+        mock_session.execute.return_value = mock_result
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_session.scalars.return_value = mock_scalars
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get(f"/api/v1/assessments/{assessment.slug}/evaluations/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert "next_cursor" in data
+
+    def test_list_evaluations_assessment_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get("/api/v1/assessments/nonexistent/evaluations/")
+        assert resp.status_code == 404
+
+
+class TestGetEvaluation:
+    """Integration tests for GET /api/v1/assessments/{id}/evaluations/{eid}."""
+
+    @pytest.fixture
+    def assessment(self):
+        from db.models.assessment import Assessment, AssessmentStatus
+        return Assessment(
+            id=uuid.uuid4(),
+            title="Eval Detail Assessment",
+            slug="eval-detail-assessment",
+            status=AssessmentStatus.PUBLISHED,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_get_evaluation_not_found_404(self, client, assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.side_effect = [assessment, None]
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        fake_eid = str(uuid.uuid4())
+        resp = client.get(
+            f"/api/v1/assessments/{assessment.slug}/evaluations/{fake_eid}"
+        )
+        assert resp.status_code == 404
+
+
+class TestCreateEvaluation:
+    """Integration tests for POST /api/v1/assessments/{id}/evaluations/."""
+
+    @pytest.fixture
+    def assessment(self):
+        from db.models.assessment import Assessment, AssessmentStatus
+        return Assessment(
+            id=uuid.uuid4(),
+            title="Eval Create Assessment",
+            slug="eval-create-assessment",
+            status=AssessmentStatus.PUBLISHED,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_create_evaluation_assessment_not_found_404(self, client):
+        """Creating evaluation on non-existent assessment returns 404."""
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.post(
+            "/api/v1/assessments/nonexistent/evaluations/",
+            json={"summary": {"score": 85}},
+        )
+        assert resp.status_code == 404
+
+    def test_create_evaluation_missing_summary_422(self, client, assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = assessment
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.post(
+            f"/api/v1/assessments/{assessment.slug}/evaluations/",
+            json={},
+        )
+        assert resp.status_code == 422
+
+    def test_create_evaluation_non_admin_403(self, client, assessment):
+        """Non-system-admin cannot create evaluations."""
+        non_admin_auth = AuthContext(
+            user_id=uuid.uuid4(),
+            email="regular@example.com",
+            name="Regular User",
+            roles=["user"],
+            permissions=["assessments:read", "assessments:update"],
+        )
+        app.dependency_overrides[get_current_user] = lambda: non_admin_auth
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = assessment
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        try:
+            resp = client.post(
+                f"/api/v1/assessments/{assessment.slug}/evaluations/",
+                json={"summary": {"score": 50}},
+            )
+            assert resp.status_code == 403
+        finally:
+            app.dependency_overrides[get_current_user] = lambda: _TEST_AUTH
+
+
+class TestDeleteEvaluation:
+    """Integration tests for DELETE /api/v1/assessments/{id}/evaluations/{eid}."""
+
+    @pytest.fixture
+    def assessment(self):
+        from db.models.assessment import Assessment, AssessmentStatus
+        return Assessment(
+            id=uuid.uuid4(),
+            title="Eval Delete Assessment",
+            slug="eval-delete-assessment",
+            status=AssessmentStatus.PUBLISHED,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_delete_evaluation_not_found_404(self, client, assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.side_effect = [assessment, None]
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        fake_eid = str(uuid.uuid4())
+        resp = client.delete(
+            f"/api/v1/assessments/{assessment.slug}/evaluations/{fake_eid}"
+        )
+        assert resp.status_code == 404
+
+    def test_delete_evaluation_non_admin_403(self, client, assessment):
+        non_admin_auth = AuthContext(
+            user_id=uuid.uuid4(),
+            email="regular@example.com",
+            name="Regular User",
+            roles=["user"],
+            permissions=["assessments:read", "assessments:delete"],
+        )
+        app.dependency_overrides[get_current_user] = lambda: non_admin_auth
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = assessment
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        try:
+            fake_eid = str(uuid.uuid4())
+            resp = client.delete(
+                f"/api/v1/assessments/{assessment.slug}/evaluations/{fake_eid}"
+            )
+            assert resp.status_code == 403
+        finally:
+            app.dependency_overrides[get_current_user] = lambda: _TEST_AUTH
+
+
+class TestSubmissionScopedEvaluations:
+    """Integration tests for submission-scoped evaluation endpoints."""
+
+    @pytest.fixture
+    def assessment(self):
+        from db.models.assessment import Assessment, AssessmentStatus
+        return Assessment(
+            id=uuid.uuid4(),
+            title="Sub Eval Assessment",
+            slug="sub-eval-assessment",
+            status=AssessmentStatus.PUBLISHED,
+            org_id=None,
+            role_id=None,
+            position_id=uuid.uuid4(),
+            created_by=_TEST_AUTH.user_id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_list_submission_evaluations_submission_not_found_404(self, client, assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        # First call: resolve assessment; second: resolve submission -> None
+        mock_result.scalar_one_or_none.side_effect = [assessment, None]
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        fake_sid = str(uuid.uuid4())
+        resp = client.get(
+            f"/api/v1/assessments/{assessment.slug}/submissions/{fake_sid}/evaluations/"
+        )
+        assert resp.status_code == 404
+
+    def test_get_submission_evaluation_not_found_404(self, client, assessment):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = assessment
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.side_effect = [assessment, None]
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        fake_sid = str(uuid.uuid4())
+        fake_eid = str(uuid.uuid4())
+        resp = client.get(
+            f"/api/v1/assessments/{assessment.slug}/submissions/{fake_sid}/evaluations/{fake_eid}"
+        )
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Positions (org-scoped; nested under organizations)
+# ---------------------------------------------------------------------------
+
+
+class TestListPositions:
+    """Integration tests for GET /api/v1/organizations/{org}/positions/."""
+
+    @pytest.fixture
+    def org_for_positions(self):
+        return Organization(
+            id=uuid.uuid4(),
+            name="Pos Test Org",
+            slug="pos-test-org",
+            status=OrganizationStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_list_positions_ok(self, client, org_for_positions):
+        from api.auth.dependencies import get_organization_with_positions_access
+        app.dependency_overrides[get_organization_with_positions_access] = lambda: org_for_positions
+        try:
+            resp = client.get(f"/api/v1/organizations/{org_for_positions.slug}/positions/")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "items" in data
+            assert isinstance(data["items"], list)
+            assert "next_cursor" in data
+            assert data["limit"] == 20
+        finally:
+            app.dependency_overrides.pop(get_organization_with_positions_access, None)
+
+    def test_list_positions_custom_limit(self, client, org_for_positions):
+        from api.auth.dependencies import get_organization_with_positions_access
+        app.dependency_overrides[get_organization_with_positions_access] = lambda: org_for_positions
+        try:
+            resp = client.get(f"/api/v1/organizations/{org_for_positions.slug}/positions/?limit=5")
+            assert resp.status_code == 200
+            assert resp.json()["limit"] == 5
+        finally:
+            app.dependency_overrides.pop(get_organization_with_positions_access, None)
+
+    def test_list_positions_invalid_cursor_400(self, client, org_for_positions):
+        from api.auth.dependencies import get_organization_with_positions_access
+        app.dependency_overrides[get_organization_with_positions_access] = lambda: org_for_positions
+        try:
+            resp = client.get(
+                f"/api/v1/organizations/{org_for_positions.slug}/positions/?cursor=bad!!"
+            )
+            assert resp.status_code == 400
+        finally:
+            app.dependency_overrides.pop(get_organization_with_positions_access, None)
+
+    def test_list_positions_no_org_access_403(self, client):
+        from api.auth.dependencies import get_organization_with_positions_access
+        def _mock_no_access():
+            raise AuthorizationError("Not authorized")
+        app.dependency_overrides[get_organization_with_positions_access] = _mock_no_access
+        try:
+            resp = client.get("/api/v1/organizations/no-access-org/positions/")
+            assert resp.status_code == 403
+        finally:
+            app.dependency_overrides.pop(get_organization_with_positions_access, None)
+
+
+class TestGetPosition:
+    """Integration tests for GET /api/v1/organizations/{org}/positions/{pos}."""
+
+    @pytest.fixture
+    def org_for_pos(self):
+        return Organization(
+            id=uuid.uuid4(),
+            name="Pos Detail Org",
+            slug="pos-detail-org",
+            status=OrganizationStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_get_position_ok(self, client, org_for_pos):
+        from db.models.position import Position, PositionStatus
+        from api.auth.dependencies import get_position_with_access
+        position = Position(
+            id=uuid.uuid4(),
+            org_id=org_for_pos.id,
+            dept_id=None,
+            role_id=uuid.uuid4(),
+            slug="sample-acme-eng-senior-engineer",
+            description="Senior Engineer position",
+            status=PositionStatus.PUBLISHED,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+        app.dependency_overrides[get_position_with_access] = lambda: position
+        try:
+            resp = client.get(
+                f"/api/v1/organizations/{org_for_pos.slug}/positions/{position.slug}"
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["slug"] == "sample-acme-eng-senior-engineer"
+            assert data["status"] == "PUBLISHED"
+            assert "id" in data
+            assert "org_id" in data
+        finally:
+            app.dependency_overrides.pop(get_position_with_access, None)
+
+    def test_get_position_not_found_404(self, client, org_for_pos):
+        from fastapi import HTTPException
+        from api.auth.dependencies import get_position_with_access
+        def _mock_not_found():
+            raise HTTPException(status_code=404, detail="Position not found")
+        app.dependency_overrides[get_position_with_access] = _mock_not_found
+        try:
+            resp = client.get(
+                f"/api/v1/organizations/{org_for_pos.slug}/positions/nonexistent"
+            )
+            assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_position_with_access, None)
+
+
+class TestDeletePosition:
+    """Integration tests for DELETE /api/v1/organizations/{org}/positions/{pos}."""
+
+    @pytest.fixture
+    def org_for_pos_del(self):
+        return Organization(
+            id=uuid.uuid4(),
+            name="Pos Del Org",
+            slug="pos-del-org",
+            status=OrganizationStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+
+    def test_delete_position_ok(self, client, org_for_pos_del):
+        from db.models.position import Position, PositionStatus
+        from api.auth.dependencies import get_position_with_delete_access
+        position = Position(
+            id=uuid.uuid4(),
+            org_id=org_for_pos_del.id,
+            dept_id=None,
+            role_id=uuid.uuid4(),
+            slug="deletable-position",
+            description="Position to delete",
+            status=PositionStatus.PUBLISHED,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            published_at=datetime.now(timezone.utc),
+            deleted_at=None,
+        )
+        app.dependency_overrides[get_position_with_delete_access] = lambda: position
+        try:
+            resp = client.delete(
+                f"/api/v1/organizations/{org_for_pos_del.slug}/positions/{position.slug}"
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "DELETED"
+            assert data["deleted_at"] is not None
+        finally:
+            app.dependency_overrides.pop(get_position_with_delete_access, None)
+
+    def test_delete_already_deleted_position_409(self, client, org_for_pos_del):
+        from db.models.position import Position, PositionStatus
+        from api.auth.dependencies import get_position_with_delete_access
+        position = Position(
+            id=uuid.uuid4(),
+            org_id=org_for_pos_del.id,
+            dept_id=None,
+            role_id=uuid.uuid4(),
+            slug="already-deleted-position",
+            status=PositionStatus.DELETED,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=datetime.now(timezone.utc),
+        )
+        app.dependency_overrides[get_position_with_delete_access] = lambda: position
+        try:
+            resp = client.delete(
+                f"/api/v1/organizations/{org_for_pos_del.slug}/positions/{position.slug}"
+            )
+            assert resp.status_code == 409
+            assert "already deleted" in resp.json()["detail"]
+        finally:
+            app.dependency_overrides.pop(get_position_with_delete_access, None)
+
+
+# ---------------------------------------------------------------------------
+# Users (platform-wide management)
+# ---------------------------------------------------------------------------
+
+
+class TestListUsers:
+    """Integration tests for GET /api/v1/users/."""
+
+    def test_list_users_ok(self, client):
+        resp = client.get("/api/v1/users/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert isinstance(data["items"], list)
+        assert "next_cursor" in data
+        assert data["limit"] == 20
+
+    def test_list_users_with_limit(self, client):
+        resp = client.get("/api/v1/users/?limit=5")
+        assert resp.status_code == 200
+        assert resp.json()["limit"] == 5
+
+    def test_list_users_invalid_cursor_400(self, client):
+        resp = client.get("/api/v1/users/?cursor=bad!!")
+        assert resp.status_code == 400
+
+    def test_list_users_status_filter_accepted(self, client):
+        resp = client.get("/api/v1/users/?status=ACTIVE")
+        assert resp.status_code == 200
+
+    def test_list_users_invalid_status_422(self, client):
+        resp = client.get("/api/v1/users/?status=NOT_REAL")
+        assert resp.status_code == 422
+
+    def test_list_users_search_accepted(self, client):
+        resp = client.get("/api/v1/users/?search=alice")
+        assert resp.status_code == 200
+
+
+class TestGetUser:
+    """Integration tests for GET /api/v1/users/{id_or_email}."""
+
+    def test_get_user_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get("/api/v1/users/nonexistent@example.com")
+        assert resp.status_code == 404
+
+    def test_get_user_own_profile_ok(self, client):
+        """User can view their own profile."""
+        from db.models.user import User, UserStatus, Gender
+        user = User(
+            id=_TEST_AUTH.user_id,
+            email="test-admin@example.com",
+            name="Test",
+            surname="Admin",
+            status=UserStatus.ACTIVE,
+            hashed_password="hashed",
+            gender=Gender.PREFER_NOT_TO_SAY,
+            timezone="UTC",
+            locale="en",
+            is_verified=False,
+            is_kyc_verified=False,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = user
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        mock_session.execute.return_value = mock_result
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_session.scalars.return_value = mock_scalars
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get(f"/api/v1/users/{user.email}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["email"] == "test-admin@example.com"
+
+
+class TestCreateUser:
+    """Integration tests for POST /api/v1/users/."""
+
+    def test_create_user_db_add_called(self, client):
+        """Successful user creation calls db.add (mock can't fully validate response)."""
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None  # no email conflict, no system role
+        mock_session.execute.return_value = mock_result
+        # Simulate refresh populating id + timestamps
+        def _fake_refresh(obj):
+            if not obj.id:
+                obj.id = uuid.uuid4()
+            if not obj.created_at:
+                obj.created_at = datetime.now(timezone.utc)
+            if not obj.updated_at:
+                obj.updated_at = datetime.now(timezone.utc)
+        mock_session.refresh.side_effect = _fake_refresh
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.post("/api/v1/users/", json={
+            "email": "newuser@example.com",
+            "name": "New",
+            "surname": "User",
+            "password": "securepassword123",
+        })
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["email"] == "newuser@example.com"
+        assert data["name"] == "New"
+
+    def test_create_user_missing_email_422(self, client):
+        resp = client.post("/api/v1/users/", json={
+            "name": "No",
+            "surname": "Email",
+            "password": "pass123",
+        })
+        assert resp.status_code == 422
+
+    def test_create_user_missing_password_422(self, client):
+        resp = client.post("/api/v1/users/", json={
+            "email": "no-pass@example.com",
+            "name": "No",
+            "surname": "Pass",
+        })
+        assert resp.status_code == 422
+
+    def test_create_user_email_conflict_409(self, client):
+        from db.models.user import User, UserStatus
+        existing = User(
+            id=uuid.uuid4(),
+            email="taken@example.com",
+            name="Taken",
+            surname="User",
+            status=UserStatus.ACTIVE,
+            hashed_password="hashed",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = existing
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.post("/api/v1/users/", json={
+            "email": "taken@example.com",
+            "name": "Dup",
+            "surname": "User",
+            "password": "password123",
+        })
+        assert resp.status_code == 409
+        assert "already exists" in resp.json()["detail"]
+
+
+class TestUpdateUser:
+    """Integration tests for PATCH /api/v1/users/{id_or_email}."""
+
+    def test_patch_user_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.patch(
+            "/api/v1/users/nonexistent@example.com",
+            json={"name": "Won't work"},
+        )
+        assert resp.status_code == 404
+
+    def test_patch_user_empty_body_422(self, client):
+        from db.models.user import User, UserStatus
+        user = User(
+            id=uuid.uuid4(),
+            email="patchable@example.com",
+            name="Patch",
+            surname="User",
+            status=UserStatus.ACTIVE,
+            hashed_password="hashed",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = user
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.patch(
+            f"/api/v1/users/{user.email}",
+            json={},
+        )
+        assert resp.status_code == 422
+
+
+class TestUserOAuth:
+    """Integration tests for user OAuth endpoints."""
+
+    def test_list_oauth_accounts_user_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get("/api/v1/users/nonexistent@example.com/oauth/accounts/")
+        assert resp.status_code == 404
+
+    def test_delete_oauth_user_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        fake_oid = str(uuid.uuid4())
+        resp = client.delete(
+            f"/api/v1/users/nonexistent@example.com/oauth/accounts/{fake_oid}"
+        )
+        assert resp.status_code == 404
+
+
+class TestUserPositions:
+    """Integration tests for GET /api/v1/users/{id_or_email}/positions/."""
+
+    def test_list_user_positions_user_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get("/api/v1/users/nonexistent@example.com/positions/")
+        assert resp.status_code == 404
+
+
+class TestUserAssessments:
+    """Integration tests for GET /api/v1/users/{id_or_email}/assessments/."""
+
+    def test_list_user_assessments_user_not_found_404(self, client):
+        mock_session = MagicMock(spec=Session)
+        mock_session.get.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.get("/api/v1/users/nonexistent@example.com/assessments/")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Auth (login, refresh, me)
+# ---------------------------------------------------------------------------
+
+
+class TestAuthMe:
+    """Integration tests for GET /api/v1/auth/me."""
+
+    def test_auth_me_ok(self, client):
+        """GET /auth/me returns the overridden AuthContext."""
+        resp = client.get("/api/v1/auth/me")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["email"] == "test-admin@example.com"
+        assert "superuser" in data["roles"]
+        assert "user_id" in data
+
+    def test_auth_me_has_required_fields(self, client):
+        resp = client.get("/api/v1/auth/me")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "user_id" in data
+        assert "email" in data
+        assert "name" in data
+        assert "roles" in data
+        assert "permissions" in data
+
+
+class TestAuthLogin:
+    """Integration tests for POST /api/v1/auth/login."""
+
+    def test_login_missing_email_422(self, client):
+        resp = client.post("/api/v1/auth/login", json={"password": "test"})
+        assert resp.status_code == 422
+
+    def test_login_missing_password_422(self, client):
+        resp = client.post("/api/v1/auth/login", json={"email": "test@test.com"})
+        assert resp.status_code == 422
+
+    def test_login_empty_password_422(self, client):
+        resp = client.post("/api/v1/auth/login", json={
+            "email": "test@test.com",
+            "password": "",
+        })
+        assert resp.status_code == 422
+
+    def test_login_bad_credentials_401(self, client):
+        """Login with non-existent user returns 401."""
+        mock_session = MagicMock(spec=Session)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None  # no user found
+        mock_session.execute.return_value = mock_result
+        app.dependency_overrides[get_db] = lambda: mock_session
+        resp = client.post("/api/v1/auth/login", json={
+            "email": "nobody@example.com",
+            "password": "wrongpassword",
+        })
+        assert resp.status_code == 401
+
+
+class TestAuthRefresh:
+    """Integration tests for POST /api/v1/auth/refresh."""
+
+    def test_refresh_missing_token_422(self, client):
+        resp = client.post("/api/v1/auth/refresh", json={})
+        assert resp.status_code == 422
+
+    def test_refresh_empty_token_422(self, client):
+        resp = client.post("/api/v1/auth/refresh", json={"refresh_token": ""})
+        assert resp.status_code == 422
