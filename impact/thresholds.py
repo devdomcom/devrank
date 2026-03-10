@@ -355,6 +355,44 @@ METRIC_THRESHOLDS = {
         "neutral": lambda x: x < 0.5,
         "scores": [(0, 50), (0.5, 75), (2.0, 100)],
     },
+    # Hotspot Detection: lower max score = more stable codebase (fewer high-churn files)
+    "hotspot_detection": {
+        "key": "max_hotspot_score",
+        "excellent": lambda x: x <= 50,
+        "good": lambda x: 50 < x <= 150,
+        "neutral": lambda x: 150 < x <= 300,
+        "bad": lambda x: x > 300,
+        "scores": [(0, 100), (50, 75), (150, 50), (300, 25), (600, 0)],
+    },
+    # Temporal/Logical Coupling: lower max ratio = fewer hidden dependencies
+    # Note: coupling_ratio = shared_revisions / avg_revisions × 100, max is 100
+    "temporal_logical_coupling": {
+        "key": "max_coupling_ratio",
+        "excellent": lambda x: x <= 30,
+        "good": lambda x: 30 < x <= 60,
+        "neutral": lambda x: 60 < x <= 85,
+        "bad": lambda x: x > 85,
+        "scores": [(0, 100), (30, 75), (60, 50), (85, 25), (100, 0)],
+    },
+    # Entity Fragmentation: lower index = more concentrated work
+    # fragmentation_index = 1 - sum(share^2), range 0..(1-1/n)
+    "entity_fragmentation": {
+        "key": "fragmentation_index",
+        "excellent": lambda x: x <= 0.35,
+        "good": lambda x: 0.35 < x <= 0.55,
+        "neutral": lambda x: 0.55 < x <= 0.75,
+        "bad": lambda x: x > 0.75,
+        "scores": [(0.0, 100), (0.35, 75), (0.55, 50), (0.75, 25), (0.9, 0)],
+    },
+    # Complexity Trend: lower std dev implies stable complexity
+    "complexity_trend": {
+        "key": "max_std_dev",
+        "excellent": lambda x: x <= 0.4,
+        "good": lambda x: 0.4 < x <= 0.8,
+        "neutral": lambda x: 0.8 < x <= 1.2,
+        "bad": lambda x: x > 1.2,
+        "scores": [(0.0, 100), (0.4, 75), (0.8, 50), (1.2, 25), (2.0, 0)],
+    },
     # Net Code Contribution: descriptive only (no rating; ratio for assessment; role knobs ignored)
     "net_code_contribution": {
         "key": "add_to_del_ratio",

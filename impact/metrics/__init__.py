@@ -30,8 +30,12 @@ from impact.metrics.plugins.authored.documentation_touch_rate import Documentati
 from impact.metrics.plugins.authored.net_code_contribution import NetCodeContribution
 from impact.metrics.plugins.authored.off_hours_activity_rate import OffHoursActivityRate
 from impact.metrics.plugins.authored.follow_up_commit_rate import FollowUpCommitRate
+from impact.metrics.plugins.authored.hotspot_detection import HotspotDetection
+from impact.metrics.plugins.authored.temporal_logical_coupling import TemporalLogicalCoupling
 from impact.metrics.plugins.authored.pr_category_diversity import PRCategoryDiversity
 from impact.metrics.plugins.authored.first_time_approval_rate import FirstTimeApprovalRate
+from impact.metrics.plugins.authored.entity_fragmentation import EntityFragmentation
+from impact.metrics.plugins.authored.complexity_trend import ComplexityTrend
 from impact.metrics.plugins.influence.approval_to_merge_ratio import ApprovalToMergeRatio
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
@@ -116,4 +120,8 @@ def get_metrics():
         "mentorship_signal": MentorshipSignal,
         "review_demand": ReviewDemand,
         "first_reviewer_rate": FirstReviewerRate,
+        "hotspot_detection": HotspotDetection,
+        "temporal_logical_coupling": TemporalLogicalCoupling,
+        "entity_fragmentation": EntityFragmentation,
+        "complexity_trend": ComplexityTrend,
     }

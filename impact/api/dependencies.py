@@ -12,7 +12,6 @@ from fastapi import HTTPException, Query, status
 
 from config import settings
 from impact.domain.models import CanonicalBundle, MetricContext
-from impact.exceptions import ImpactError, ParseError
 from impact.ledger.ledger import Ledger
 
 # Allowed base directories for dump paths (prevents path traversal).
@@ -42,6 +41,8 @@ def validate_dump_path(dump_path: str) -> Path:
 
 def _parse_iso_date(value: str | None, field_name: str) -> datetime | None:
     """Parse an ISO date string with a user-friendly error message."""
+    from impact.exceptions import ParseError
+
     if not value:
         return None
     try:
@@ -55,6 +56,7 @@ def _parse_iso_date(value: str | None, field_name: str) -> datetime | None:
 def load_manifest(dump_path: str) -> dict:
     """Read and return the dump_manifest.json from a validated dump directory."""
     import json
+    from impact.exceptions import ParseError
 
     validated = validate_dump_path(dump_path)
     manifest_path = validated / "dump_manifest.json"
@@ -71,6 +73,7 @@ def load_manifest(dump_path: str) -> dict:
 
 def load_bundle(dump_path: str) -> CanonicalBundle:
     """Load a CanonicalBundle from a validated dump directory."""
+    from impact.exceptions import ImpactError
     from impact.ingestion.dump import DumpIngestion
 
     validated = validate_dump_path(dump_path)

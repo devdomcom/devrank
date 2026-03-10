@@ -73,7 +73,10 @@ HIDDEN_KEYS = frozenset({
     "opened_pr_numbers", "merged_pr_numbers", "review_pr_numbers",
     "revert_shas", "distinct_areas", "distribution",
     "activity_sources", "active_weeks", "inactive_weeks",
-    "trivial_pr_numbers", "pr_details",
+    "trivial_pr_numbers", "pr_details", "top_hotspots", "pr_numbers",
+    "top_coupled_pairs",
+    "entity_shares",
+    "file_trends",
 })
 
 # ---------------------------------------------------------------------------
@@ -444,6 +447,37 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
             ("reworked_lines", "Reworked Lines", "count"),
             ("total_changed", "Total Changed", "count"),
             ("pr_count", "PRs", "count"),
+        ],
+    },
+    "hotspot_detection": {
+        "name": "Hotspot Detection",
+        "stats": [
+            ("max_hotspot_score", "Max Score", "ratio"),
+            ("hotspot_count", "Hotspots", "count"),
+        ],
+    },
+    "temporal_logical_coupling": {
+        "name": "Temporal / Logical Coupling",
+        "stats": [
+            ("max_coupling_ratio", "Max Ratio", "pct"),
+            ("pair_count", "Pairs", "count"),
+        ],
+    },
+    "entity_fragmentation": {
+        "name": "Entity Fragmentation",
+        "stats": [
+            ("fragmentation_index", "Fragmentation", "ratio"),
+            ("entity_count", "Entities", "count"),
+            ("total_changes", "Changes", "count"),
+        ],
+    },
+    "complexity_trend": {
+        "name": "Complexity Trend",
+        "stats": [
+            ("max_std_dev", "Max Std Dev", "ratio"),
+            ("avg_std_dev", "Avg Std Dev", "ratio"),
+            ("file_count", "Files", "count"),
+            ("sample_count", "Samples", "count"),
         ],
     },
 }

@@ -153,6 +153,43 @@ metrics:
     scores: [[0, 100], [2, 75], [8, 50], [20, 25], [40, 0]]
     allowed_ratings: [excellent, good, neutral, bad]
 
+  hotspot_detection:
+    key: max_hotspot_score
+    direction: lower_is_better
+    excellent: 50
+    good: 150
+    neutral: 300
+    scores: [[0, 100], [50, 75], [150, 50], [300, 25], [600, 0]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  # Note: coupling_ratio = shared_revisions / avg_revisions × 100, max is 100
+  temporal_logical_coupling:
+    key: max_coupling_ratio
+    direction: lower_is_better
+    excellent: 30
+    good: 60
+    neutral: 85
+    scores: [[0, 100], [30, 75], [60, 50], [85, 25], [100, 0]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  entity_fragmentation:
+    key: fragmentation_index
+    direction: lower_is_better
+    excellent: 0.35
+    good: 0.55
+    neutral: 0.75
+    scores: [[0.0, 100], [0.35, 75], [0.55, 50], [0.75, 25], [0.9, 0]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
+  complexity_trend:
+    key: max_std_dev
+    direction: lower_is_better
+    excellent: 0.4
+    good: 0.8
+    neutral: 1.2
+    scores: [[0.0, 100], [0.4, 75], [0.8, 50], [1.2, 25], [2.0, 0]]
+    allowed_ratings: [excellent, good, neutral, bad]
+
   # ORG-DEPENDENT: Orgs with mandatory multi-approval policies skew this.
   # Override with no_rating: false if your org uses single-approval flow.
   first_time_approval_rate:
