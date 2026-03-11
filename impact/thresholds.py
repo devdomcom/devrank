@@ -452,6 +452,52 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x > 30,
         "scores": [(0, 100), (5, 75), (15, 50), (30, 25), (60, 0)],
     },
+    # Change Proximity: lower avg distance = concentrated/focused changes (safer)
+    # High avg distance = scattered changes across files (riskier)
+    "change_proximity": {
+        "key": "avg_proximity_per_change",
+        "excellent": lambda x: x <= 5,    # Changes within 5 lines of each other
+        "good": lambda x: 5 < x <= 15,   # Moderately concentrated
+        "neutral": lambda x: 15 < x <= 30,  # Somewhat scattered
+        "bad": lambda x: x > 30,         # Highly scattered changes
+        "scores": [(0, 100), (5, 75), (15, 50), (30, 25), (60, 0)],
+    },
+    # Sum of Coupling: lower max coupling = fewer entanglements
+    "sum_of_coupling": {
+        "key": "max_coupling_score",
+        "excellent": lambda x: x <= 2,
+        "good": lambda x: 2 < x <= 6,
+        "neutral": lambda x: 6 < x <= 12,
+        "bad": lambda x: x > 12,
+        "scores": [(0, 100), (2, 75), (6, 50), (12, 25), (24, 0)],
+    },
+    # Absolute Churn Trend: lower daily spikes indicate smoother integration
+    "absolute_churn_trend": {
+        "key": "max_daily_churn",
+        "excellent": lambda x: x <= 50,
+        "good": lambda x: 50 < x <= 150,
+        "neutral": lambda x: 150 < x <= 300,
+        "bad": lambda x: x > 300,
+        "scores": [(0, 100), (50, 75), (150, 50), (300, 25), (600, 0)],
+    },
+    # Commit Message Mining: lower defect-rate indicates fewer bug fixes
+    "commit_message_mining": {
+        "key": "defect_commit_rate",
+        "excellent": lambda x: x <= 5,
+        "good": lambda x: 5 < x <= 15,
+        "neutral": lambda x: 15 < x <= 30,
+        "bad": lambda x: x > 30,
+        "scores": [(0, 100), (5, 75), (15, 50), (30, 25), (60, 0)],
+    },
+    # Code Survival: higher % still present indicates higher durability/impact
+    "code_survival": {
+        "key": "survival_rate",
+        "excellent": lambda x: x >= 80,
+        "good": lambda x: 60 <= x < 80,
+        "neutral": lambda x: 40 <= x < 60,
+        "bad": lambda x: x < 40,
+        "scores": [(0, 0), (40, 25), (60, 50), (80, 75), (100, 100)],
+    },
 }
 
 

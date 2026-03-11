@@ -77,6 +77,11 @@ HIDDEN_KEYS = frozenset({
     "top_coupled_pairs",
     "entity_shares",
     "file_trends",
+    "per_file",
+    "per_entity",
+    "per_day",
+    "defect_commit_samples",
+    "per_cohort",
 })
 
 # ---------------------------------------------------------------------------
@@ -478,6 +483,50 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
             ("avg_std_dev", "Avg Std Dev", "ratio"),
             ("file_count", "Files", "count"),
             ("sample_count", "Samples", "count"),
+        ],
+    },
+    "change_proximity": {
+        "name": "Change Proximity",
+        "stats": [
+            ("avg_proximity_per_change", "Avg Distance", "ratio"),
+            ("total_proximity", "Total Distance", "count"),
+            ("total_changes", "Changes", "count"),
+            ("total_files", "Files", "count"),
+        ],
+    },
+    "sum_of_coupling": {
+        "name": "Sum of Coupling",
+        "stats": [
+            ("max_coupling_score", "Max SoC", "count"),
+            ("total_coupling", "Total SoC", "count"),
+            ("total_entities", "Entities", "count"),
+            ("pr_count", "PRs", "count"),
+        ],
+    },
+    "absolute_churn_trend": {
+        "name": "Absolute Churn Trend",
+        "stats": [
+            ("max_daily_churn", "Max Daily Churn", "count"),
+            ("total_churn", "Total Churn", "count"),
+            ("total_additions", "Additions", "count"),
+            ("total_deletions", "Deletions", "count"),
+        ],
+    },
+    "commit_message_mining": {
+        "name": "Commit Message Mining",
+        "stats": [
+            ("defect_commit_rate", "Defect Rate", "pct"),
+            ("defect_commit_count", "Defect Commits", "count"),
+            ("total_commits", "Total Commits", "count"),
+        ],
+    },
+    "code_survival": {
+        "name": "Code Survival",
+        "stats": [
+            ("survival_rate", "Survival Rate", "pct"),
+            ("total_survived", "Survived Lines", "count"),
+            ("total_contributed", "Total Lines", "count"),
+            ("total_churned", "Churned Lines", "count"),
         ],
     },
 }

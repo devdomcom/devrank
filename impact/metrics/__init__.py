@@ -36,6 +36,11 @@ from impact.metrics.plugins.authored.pr_category_diversity import PRCategoryDive
 from impact.metrics.plugins.authored.first_time_approval_rate import FirstTimeApprovalRate
 from impact.metrics.plugins.authored.entity_fragmentation import EntityFragmentation
 from impact.metrics.plugins.authored.complexity_trend import ComplexityTrend
+from impact.metrics.plugins.authored.change_proximity import ChangeProximity
+from impact.metrics.plugins.authored.sum_of_coupling import SumOfCoupling
+from impact.metrics.plugins.authored.absolute_churn_trend import AbsoluteChurnTrend
+from impact.metrics.plugins.authored.commit_message_mining import CommitMessageMining
+from impact.metrics.plugins.authored.code_survival import CodeSurvival
 from impact.metrics.plugins.influence.approval_to_merge_ratio import ApprovalToMergeRatio
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
@@ -124,4 +129,9 @@ def get_metrics():
         "temporal_logical_coupling": TemporalLogicalCoupling,
         "entity_fragmentation": EntityFragmentation,
         "complexity_trend": ComplexityTrend,
+        "change_proximity": ChangeProximity,
+        "sum_of_coupling": SumOfCoupling,
+        "absolute_churn_trend": AbsoluteChurnTrend,
+        "commit_message_mining": CommitMessageMining,
+        "code_survival": CodeSurvival,
     }

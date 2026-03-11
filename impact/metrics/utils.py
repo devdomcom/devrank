@@ -754,6 +754,43 @@ def is_conventional_commit(message: str) -> bool:
     return any(msg.startswith(t + ":") or msg.startswith(t + "!:") or msg.startswith(t + "(") for t in types)
 
 
+# Commit message defect mining: regex patterns for defect-related changes
+_DEFECT_PATTERNS: list[re.Pattern] = [
+    # Core defect terms
+    re.compile(r"\bfix(?:es|ed|ing)?\b", re.IGNORECASE),
+    re.compile(r"\bbug(?:s|fix|fixed|fixes)?\b", re.IGNORECASE),
+    re.compile(r"\bhotfix(?:es)?\b", re.IGNORECASE),
+    re.compile(r"\bdefect(?:s)?\b", re.IGNORECASE),
+    re.compile(r"\bissue(?:s)?\b", re.IGNORECASE),
+    # Stability/resolution language
+    re.compile(r"\bresolve(?:s|d)?\b", re.IGNORECASE),
+    re.compile(r"\bpatch(?:es|ed|ing)?\b", re.IGNORECASE),
+    re.compile(r"\bregression(?:s)?\b", re.IGNORECASE),
+    re.compile(r"\bcrash(?:es|ed|ing)?\b", re.IGNORECASE),
+    re.compile(r"\bflak(?:y|iness)?\b", re.IGNORECASE),
+    # Production/support language
+    re.compile(r"\bincident(?:s)?\b", re.IGNORECASE),
+    re.compile(r"\boutage(?:s)?\b", re.IGNORECASE),
+    re.compile(r"\brollback(?:s)?\b", re.IGNORECASE),
+    re.compile(r"\bmitigate(?:s|d|ing)?\b", re.IGNORECASE),
+    re.compile(r"\btriage(?:s|d|ing)?\b", re.IGNORECASE),
+    re.compile(r"\bescalat(?:e|es|ed|ing)\b", re.IGNORECASE),
+    # Error or failure signatures
+    re.compile(r"\berror(?:s)?\b", re.IGNORECASE),
+    re.compile(r"\bfail(?:s|ed|ing|ure|ures)?\b", re.IGNORECASE),
+    re.compile(r"\bpanic(?:s|ked|king)?\b", re.IGNORECASE),
+    re.compile(r"\bexception(?:s)?\b", re.IGNORECASE),
+]
+
+
+def classify_defect_commit(message: str) -> bool:
+    """Return True if commit message suggests defect-related work."""
+    if not message:
+        return False
+    normalized = message.strip()
+    return any(pattern.search(normalized) for pattern in _DEFECT_PATTERNS)
+
+
 def compute_code_churn(
     ledger, user_login: str, prs: list, window_days: int = 30,
     *, start_date=None, end_date=None,
@@ -1696,3 +1733,442 @@ def analyze_file_complexity(content: str, filename: str) -> dict[str, Any]:
         "trivial_ratio": compute_trivial_ratio(functions),
         "functions": functions,
     }
+
+
+def compute_change_proximity(
+    ledger, prs: list, *, start_date=None, end_date=None
+) -> dict:
+    """Compute change proximity score: sum of distances between changed lines.
+
+    High proximity score = scattered changes across files = risky.
+    Low proximity score = concentrated changes in specific areas = safer.
+
+    The algorithm:
+    1. For each file in each PR, extract all changed line numbers
+    2. Calculate the sum of distances between consecutive changed lines
+    3. Normalize by total changes to get average distance per changed line
+    4. Higher average distance = more scattered changes = higher risk
+
+    Returns:
+        dict with:
+        - total_proximity: sum of all distances across all files
+        - avg_proximity_per_change: average distance per changed line
+        - per_file: list of per-file proximity details
+        - per_pr: list of per-PR proximity details
+        - total_files: number of files touched
+        - total_changes: total lines changed
+    """
+    if not prs:
+        return {
+            "total_proximity": 0,
+            "avg_proximity_per_change": 0.0,
+            "per_file": [],
+            "per_pr": [],
+            "total_files": 0,
+            "total_changes": 0,
+            "pr_count": 0,
+            "period_days": 0,
+            "no_data": True,
+        }
+
+    per_file = []
+    per_pr = []
+    total_proximity = 0
+    total_changes = 0
+    total_files = 0
+
+    for pr in prs:
+        files = ledger.get_files_for_pr(pr.number)
+        pr_proximity = 0
+        pr_changes = 0
+        pr_files = 0
+
+        for f in files:
+            if is_generated_file(f.filename, f.patch):
+                continue
+
+            # Get changed line numbers from the new file (where code ends up)
+            # We focus on the new file positions since that's where the changes will be
+            added_lines = _parse_hunk_lines(f.patch, "+") if f.patch else set()
+
+            # Combine all changed lines and sort
+            all_changed = sorted(added_lines)
+
+            if len(all_changed) < 2:
+                # Single line or no changes - proximity is 0 (concentrated)
+                if all_changed:
+                    pr_changes += 1
+                    pr_files += 1
+                    total_changes += 1
+                    total_files += 1
+                    per_file.append({
+                        "filename": f.filename,
+                        "pr_number": pr.number,
+                        "proximity": 0,
+                        "avg_proximity": 0.0,
+                        "change_count": 1,
+                        "line_range": (all_changed[0], all_changed[0]),
+                        "hunk_count": len(parse_hunks(f.patch)) if f.patch else 0,
+                    })
+                continue
+
+            # Calculate sum of distances between consecutive changed lines
+            file_proximity = 0
+            for i in range(1, len(all_changed)):
+                file_proximity += all_changed[i] - all_changed[i - 1]
+
+            file_changes = len(all_changed)
+            avg_file_proximity = file_proximity / (file_changes - 1) if file_changes > 1 else 0
+
+            pr_proximity += file_proximity
+            pr_changes += file_changes
+            pr_files += 1
+            total_proximity += file_proximity
+            total_changes += file_changes
+            total_files += 1
+
+            per_file.append({
+                "filename": f.filename,
+                "pr_number": pr.number,
+                "proximity": file_proximity,
+                "avg_proximity": round(avg_file_proximity, 1),
+                "change_count": file_changes,
+                "line_range": (all_changed[0], all_changed[-1]),
+                "hunk_count": len(parse_hunks(f.patch)) if f.patch else 0,
+            })
+
+        if pr_files > 0:
+            avg_pr_proximity = pr_proximity / pr_changes if pr_changes > 0 else 0
+            per_pr.append({
+                "number": pr.number,
+                "proximity": pr_proximity,
+                "avg_proximity": round(avg_pr_proximity, 1),
+                "change_count": pr_changes,
+                "file_count": pr_files,
+            })
+
+    # Calculate overall average proximity per change
+    # Use (total_changes - total_files) as denominator since each file with N changes
+    # contributes N-1 distances
+    total_distances = total_changes - total_files if total_changes > total_files else 1
+    avg_proximity = total_proximity / total_distances if total_distances > 0 else 0.0
+
+    # Normalize by number of changes to get a meaningful metric
+    # This gives us average distance per changed line
+    avg_proximity_per_change = total_proximity / total_changes if total_changes > 0 else 0.0
+
+    # Calculate period
+    if start_date and end_date:
+        period_days = (end_date - start_date).total_seconds() / 86400
+    elif prs:
+        dates = [p.created_at for p in prs if p.created_at]
+        period_days = (max(dates) - min(dates)).days or 1 if dates else 30
+    else:
+        period_days = 30
+
+    # Sort per_file by proximity descending (most scattered first)
+    per_file.sort(key=lambda x: x["proximity"], reverse=True)
+
+    result = {
+        "total_proximity": total_proximity,
+        "avg_proximity_per_change": round(avg_proximity_per_change, 1),
+        "per_file": per_file[:20],  # Top 20 most scattered files
+        "per_pr": per_pr,
+        "total_files": total_files,
+        "total_changes": total_changes,
+        "pr_count": len(prs),
+        "period_days": period_days,
+        "max_file_proximity": per_file[0]["proximity"] if per_file else 0,
+        "max_avg_file_proximity": per_file[0]["avg_proximity"] if per_file else 0.0,
+    }
+
+    # Guard: no data if no changes or very short period with few PRs
+    if total_changes == 0 or (period_days < 7 and len(prs) < 3):
+        result["no_data"] = True
+
+    return result
+
+
+def compute_sum_of_coupling(
+    ledger, prs: list, *, start_date=None, end_date=None
+) -> dict:
+    """Compute Sum of Coupling (SoC) per entity across all revisions.
+
+    SoC per entity = sum of times it changed together with any other entity
+    across all PRs in the period. Higher SoC indicates more coupling (risk).
+
+    Returns:
+        dict with:
+        - per_entity: list of entity coupling scores
+        - total_entities: number of entities touched
+        - total_coupling: total coupling events across all entities
+        - max_coupling_score: highest SoC observed
+    """
+    if not prs:
+        return {
+            "per_entity": [],
+            "total_entities": 0,
+            "total_coupling": 0,
+            "max_coupling_score": 0,
+            "pr_count": 0,
+            "period_days": 0,
+            "no_data": True,
+        }
+
+    per_entity_scores: dict[str, int] = defaultdict(int)
+    entity_revision_counts: dict[str, int] = defaultdict(int)
+    total_coupling = 0
+
+    for pr in prs:
+        files = ledger.get_files_for_pr(pr.number)
+        entities = sorted({f.filename for f in files if not is_generated_file(f.filename, f.patch)})
+        if len(entities) < 2:
+            # Single-entity changes have no coupling in this PR
+            for ent in entities:
+                entity_revision_counts[ent] += 1
+            continue
+
+        # Count revisions per entity
+        for ent in entities:
+            entity_revision_counts[ent] += 1
+
+        # For each entity, it is coupled with all other entities in this PR
+        # SoC increment is number of other entities in the same PR
+        for ent in entities:
+            coupling_increment = len(entities) - 1
+            per_entity_scores[ent] += coupling_increment
+            total_coupling += coupling_increment
+
+    # Build per-entity list sorted by coupling score
+    per_entity = []
+    for ent, score in per_entity_scores.items():
+        per_entity.append({
+            "entity": ent,
+            "coupling_score": score,
+            "revision_count": entity_revision_counts.get(ent, 0),
+        })
+
+    per_entity.sort(key=lambda x: x["coupling_score"], reverse=True)
+    max_coupling = per_entity[0]["coupling_score"] if per_entity else 0
+
+    # Calculate period
+    if start_date and end_date:
+        period_days = (end_date - start_date).total_seconds() / 86400
+    elif prs:
+        dates = [p.created_at for p in prs if p.created_at]
+        period_days = (max(dates) - min(dates)).days or 1 if dates else 30
+    else:
+        period_days = 30
+
+    result = {
+        "per_entity": per_entity[:20],
+        "total_entities": len(per_entity_scores),
+        "total_coupling": total_coupling,
+        "max_coupling_score": max_coupling,
+        "pr_count": len(prs),
+        "period_days": period_days,
+    }
+
+    # Guard: no data if too few PRs in short period
+    if len(prs) < 2 and period_days < 7:
+        result["no_data"] = True
+
+    return result
+
+
+def compute_absolute_churn_trend(
+    ledger, prs: list, *, start_date=None, end_date=None
+) -> dict:
+    """Compute absolute churn (adds+deletes) per date.
+
+    Aggregates line additions and deletions per PR creation date to highlight
+    periods with heavy integration activity (potential bottlenecks).
+    """
+    if not prs:
+        return {
+            "per_day": [],
+            "total_additions": 0,
+            "total_deletions": 0,
+            "total_churn": 0,
+            "max_daily_churn": 0,
+            "pr_count": 0,
+            "period_days": 0,
+            "no_data": True,
+        }
+
+    daily_stats: dict[str, dict[str, int]] = defaultdict(lambda: {
+        "additions": 0,
+        "deletions": 0,
+        "churn": 0,
+        "pr_count": 0,
+    })
+    total_additions = 0
+    total_deletions = 0
+
+    for pr in prs:
+        if not pr.created_at:
+            continue
+        day = pr.created_at.date().isoformat()
+        pr_additions = 0
+        pr_deletions = 0
+
+        files = ledger.get_files_for_pr(pr.number)
+        if files:
+            for f in files:
+                if is_generated_file(f.filename, f.patch):
+                    continue
+                pr_additions += f.additions
+                pr_deletions += f.deletions
+        else:
+            pr_additions = pr.additions
+            pr_deletions = pr.deletions
+
+        daily_stats[day]["additions"] += pr_additions
+        daily_stats[day]["deletions"] += pr_deletions
+        daily_stats[day]["churn"] += pr_additions + pr_deletions
+        daily_stats[day]["pr_count"] += 1
+
+        total_additions += pr_additions
+        total_deletions += pr_deletions
+
+    per_day = []
+    max_daily_churn = 0
+    for day, stats in sorted(daily_stats.items()):
+        max_daily_churn = max(max_daily_churn, stats["churn"])
+        per_day.append({
+            "date": day,
+            "additions": stats["additions"],
+            "deletions": stats["deletions"],
+            "churn": stats["churn"],
+            "pr_count": stats["pr_count"],
+        })
+
+    total_churn = total_additions + total_deletions
+
+    if start_date and end_date:
+        period_days = (end_date - start_date).total_seconds() / 86400
+    elif prs:
+        dates = [p.created_at for p in prs if p.created_at]
+        period_days = (max(dates) - min(dates)).days or 1 if dates else 30
+    else:
+        period_days = 30
+
+    result = {
+        "per_day": per_day,
+        "total_additions": total_additions,
+        "total_deletions": total_deletions,
+        "total_churn": total_churn,
+        "max_daily_churn": max_daily_churn,
+        "pr_count": len(prs),
+        "period_days": period_days,
+    }
+
+    if len(prs) < 2 and period_days < 7:
+        result["no_data"] = True
+
+    return result
+
+
+def compute_code_survival(
+    ledger, user_login: str, prs: list, *, start_date=None, end_date=None
+) -> dict:
+    """Analyze code survival (durability) over the period.
+
+    Identifies how much code contributed by the user in the past remains
+    untouched (survives) by subsequent changes (both own and others)
+    within the target period.
+    """
+    if not prs:
+        return {
+            "survival_rate": 0.0,
+            "total_contributed": 0,
+            "total_survived": 0,
+            "total_churned": 0,
+            "per_cohort": [],
+            "pr_count": 0,
+            "period_days": 0,
+            "no_data": True,
+        }
+
+    # 1. Map all line-level contributions by the user (cohorts)
+    # cohort_id -> { filename -> set(line_numbers) }
+    cohorts: dict[int, dict[str, set[int]]] = {}
+    for pr in prs:
+        cohorts[pr.number] = {}
+        for f in ledger.get_files_for_pr(pr.number):
+            if is_generated_file(f.filename, f.patch):
+                continue
+            if f.patch:
+                added = _parse_hunk_lines(f.patch, "+")
+                if added:
+                    cohorts[pr.number][f.filename] = added
+
+    # 2. Track all subsequent changes to those files (to detect churn/death)
+    # We look at ALL PRs in the ledger that happened AFTER each cohort PR
+    all_prs = sorted(ledger.bundle.pull_requests, key=lambda p: p.created_at or datetime.min)
+    
+    cohort_survival = []
+    total_contributed = 0
+    total_survived = 0
+
+    for pr_num, cohort_files in cohorts.items():
+        cohort_pr = next(p for p in prs if p.number == pr_num)
+        pr_date = cohort_pr.created_at
+        
+        initial_lines = sum(len(lines) for lines in cohort_files.values())
+        if initial_lines == 0:
+            continue
+            
+        current_lines = {fn: set(lines) for fn, lines in cohort_files.items()}
+        
+        # Find all PRs that happened after this cohort PR
+        subsequent_prs = [p for p in all_prs if p.created_at and p.created_at > pr_date]
+        
+        for sub_pr in subsequent_prs:
+            sub_files = ledger.get_files_for_pr(sub_pr.number)
+            for sf in sub_files:
+                if sf.filename in current_lines:
+                    # If someone modifies (removes or changes) lines in this file
+                    # we need to know WHICH lines were removed.
+                    # _parse_hunk_lines(side='-') gives us lines removed from the OLD file.
+                    if sf.patch:
+                        removed = _parse_hunk_lines(sf.patch, "-")
+                        current_lines[sf.filename] -= removed
+
+        survived_count = sum(len(lines) for lines in current_lines.values())
+        total_contributed += initial_lines
+        total_survived += survived_count
+        
+        survival_rate = (survived_count / initial_lines * 100) if initial_lines else 0.0
+        cohort_survival.append({
+            "pr_number": pr_num,
+            "date": pr_date.date().isoformat() if pr_date else None,
+            "initial_lines": initial_lines,
+            "survived_lines": survived_count,
+            "survival_rate": round(survival_rate, 1),
+        })
+
+    overall_rate = (total_survived / total_contributed * 100) if total_contributed else 0.0
+    
+    if start_date and end_date:
+        period_days = (end_date - start_date).total_seconds() / 86400
+    elif prs:
+        dates = [p.created_at for p in prs if p.created_at]
+        period_days = (max(dates) - min(dates)).days or 1 if dates else 30
+    else:
+        period_days = 30
+
+    result = {
+        "survival_rate": round(overall_rate, 1),
+        "total_contributed": total_contributed,
+        "total_survived": total_survived,
+        "total_churned": total_contributed - total_survived,
+        "per_cohort": cohort_survival,
+        "pr_count": len(prs),
+        "period_days": period_days,
+    }
+
+    if total_contributed == 0 or (period_days < 14 and len(prs) < 3):
+        result["no_data"] = True
+
+    return result
