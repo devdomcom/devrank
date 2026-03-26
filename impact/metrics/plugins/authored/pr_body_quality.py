@@ -20,6 +20,10 @@ class PRBodyQualityScore(Metric):
     def category(self) -> str:
         return "process_discipline"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["DevRank"]
+
     def run(self, context: MetricContext) -> MetricResult:
         all_prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date

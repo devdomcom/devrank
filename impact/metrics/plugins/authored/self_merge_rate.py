@@ -20,6 +20,10 @@ class SelfMergeRate(Metric):
     def category(self) -> str:
         return "process_discipline"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["DevRank"]
+
     def run(self, context: MetricContext) -> MetricResult:
         details = compute_self_merge_rate(context.ledger, context.user_login)
         rate = details["self_merge_rate"]

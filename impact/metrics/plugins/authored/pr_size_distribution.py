@@ -53,6 +53,10 @@ class PRSizeDistribution(Metric):
     def category(self) -> str:
         return "code_quality"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["DevRank"]
+
     def run(self, context: MetricContext) -> MetricResult:
         # Filter: exclude drafts for quality/size (incomplete); include closed (attempted).
         # Reviewed all: only quality metrics filter; throughput/activity include drafts.

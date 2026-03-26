@@ -88,6 +88,26 @@ HIDDEN_KEYS = frozenset({
 # Metric display config: slug -> {name, category, stats: [(key, label, fmt)]}
 # ---------------------------------------------------------------------------
 METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
+    # ---- AI-Assisted Development ----
+    "ai_assisted_pr_rate": {
+        "name": "AI-Assisted PR Rate",
+        "stats": [
+            ("ai_rate", "AI Rate", "pct"),
+            ("ai_pr_count", "AI PRs", "count"),
+            ("human_pr_count", "Human PRs", "count"),
+            ("total_pr_count", "Total", "count"),
+        ],
+    },
+    # ---- Code Quality & Risk ----
+    "bus_factor": {
+        "name": "Bus Factor",
+        "stats": [
+            ("bus_factor", "Bus Factor", "count"),
+            ("unique_contributors", "Contributors", "count"),
+            ("total_files", "Files", "count"),
+            ("single_contributor_files_count", "Single-Contrib Files", "count"),
+        ],
+    },
     # ---- Productivity & Throughput ----
     "pr_throughput": {
         "name": "PR Throughput",
@@ -775,12 +795,34 @@ _SIGNAL_TAG_COLORS: dict[str, tuple[str, str]] = {
     "mixed": ("#B45309", "#FEF3C7"),       # amber
 }
 
+# Framework badge colors (foreground, background)
+FRAMEWORK_COLORS: dict[str, tuple[str, str]] = {
+    "DORA": ("#7C3AED", "#EDE9FE"),        # purple
+    "SPACE": ("#0891B2", "#CFFAFE"),       # cyan
+    "CodeScene": ("#C2410C", "#FFEDD5"),   # orange
+    "Lean": ("#059669", "#D1FAE5"),        # emerald
+    "Traditional": ("#4B5563", "#E5E7EB"), # gray
+    "Network": ("#DB2777", "#FCE7F3"),     # pink
+    "DevRank": ("#2563EB", "#DBEAFE"),     # blue
+}
+
 
 def _signal_tag(signal_type: str) -> str:
     """Inline XML fragment for a small signal-type label."""
     fg, _bg = _SIGNAL_TAG_COLORS.get(signal_type, ("#6B7280", "#F3F4F6"))
     label = signal_type.capitalize()
     return f'  <font color="{fg}" size="8">[{label}]</font>'
+
+
+def _framework_tags(frameworks: list[str]) -> str:
+    """Inline XML fragment for small framework labels."""
+    if not frameworks:
+        return ""
+    tags = []
+    for fw in frameworks[:3]:  # Limit to first 3 frameworks
+        fg, _bg = FRAMEWORK_COLORS.get(fw, ("#6B7280", "#F3F4F6"))
+        tags.append(f'<font color="{fg}" size="7">{fw}</font>')
+    return '  ' + ' • '.join(tags)
 
 
 def _build_metric_card(
@@ -798,6 +840,7 @@ def _build_metric_card(
     summary = metric.get("summary", "")
     description = metric.get("description", "")
     signal_type = metric.get("signal_type", "authored")
+    frameworks = metric.get("frameworks", [])
 
     # Truncate summary
     if len(summary) > 140:
@@ -809,10 +852,11 @@ def _build_metric_card(
     # Badge
     badge = _rating_badge(rating, styles)
 
-    # Name + score + signal tag line
+    # Name + score + signal tag + framework tags line
     tag = _signal_tag(signal_type)
+    fw_tags = _framework_tags(frameworks)
     name_p = Paragraph(
-        f'{display_name}<font color="{LIGHT_TEXT.hexval()}" size="9">{score_text}</font>{tag}',
+        f'{display_name}<font color="{LIGHT_TEXT.hexval()}" size="9">{score_text}</font>{tag}{fw_tags}',
         styles["metric_name"],
     )
 

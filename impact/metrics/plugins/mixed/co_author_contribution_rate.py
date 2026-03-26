@@ -24,6 +24,10 @@ class CoAuthorContributionRate(Metric):
     def category(self) -> str:
         return "contextual"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["SPACE"]
+
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login
         all_prs = context.ledger.get_prs_for_user(user, context.start_date, context.end_date)

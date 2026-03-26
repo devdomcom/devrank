@@ -19,6 +19,10 @@ class ReviewBreadth(Metric):
     def category(self) -> str:
         return "review_impact"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["SPACE", "Network"]
+
     def run(self, context: MetricContext) -> MetricResult:
         reviews = context.ledger.get_reviews_for_user(
             context.user_login, context.start_date, context.end_date

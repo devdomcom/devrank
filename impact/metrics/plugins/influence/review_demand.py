@@ -21,6 +21,10 @@ class ReviewDemand(Metric):
     def category(self) -> str:
         return "review_impact"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["SPACE", "Network"]
+
     def run(self, context: MetricContext) -> MetricResult:
         # Aggregate review_requested targeting the user (accurate demand via requested_reviewer)
         # Deduplicate by PR — count at most 1 request per PR (re-requests after

@@ -24,6 +24,10 @@ class ReviewTurnaroundTime(Metric):
     def category(self) -> str:
         return "responsiveness"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["SPACE", "Lean"]
+
     def run(self, context: MetricContext) -> MetricResult:
         # PRs reviewed by user (influence)
         reviews = context.ledger.get_reviews_for_user(

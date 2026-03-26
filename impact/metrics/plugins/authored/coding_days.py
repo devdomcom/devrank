@@ -22,6 +22,10 @@ class CodingDays(Metric):
     def category(self) -> str:
         return "delivery_velocity"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["SPACE"]
+
     def run(self, context: MetricContext) -> MetricResult:
         commits = context.ledger.get_commits_for_user(
             context.user_login, context.start_date, context.end_date

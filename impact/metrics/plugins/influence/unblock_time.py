@@ -24,6 +24,10 @@ class UnblockTime(Metric):
     def category(self) -> str:
         return "responsiveness"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["Lean"]
+
     def run(self, context: MetricContext) -> MetricResult:
         # User's CR reviews
         reviews = context.ledger.get_reviews_for_user(

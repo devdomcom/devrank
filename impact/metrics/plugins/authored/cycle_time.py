@@ -34,6 +34,10 @@ class CycleTime(Metric):
     def category(self) -> str:
         return "delivery_velocity"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["DORA", "SPACE", "Lean"]
+
     def run(self, context: MetricContext) -> MetricResult:
         merged_prs = context.ledger.get_merged_prs_for_user(
             context.user_login, context.start_date, context.end_date

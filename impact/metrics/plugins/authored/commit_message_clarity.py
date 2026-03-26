@@ -20,6 +20,10 @@ class ConventionalCommitRate(Metric):
     def category(self) -> str:
         return "process_discipline"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["DevRank"]
+
     def run(self, context: MetricContext) -> MetricResult:
         all_commits = context.ledger.get_commits_for_user(
             context.user_login, context.start_date, context.end_date

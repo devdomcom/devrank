@@ -19,6 +19,10 @@ class InlineCommentDensity(Metric):
     def category(self) -> str:
         return "review_impact"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["DevRank"]
+
     def run(self, context: MetricContext) -> MetricResult:
         # Get reviews given by the user in the time window
         reviews = context.ledger.get_reviews_for_user(

@@ -39,6 +39,10 @@ class ModuleAreaBreadth(Metric):
     def category(self) -> str:
         return "process_discipline"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["DevRank"]
+
     def run(self, context: MetricContext) -> MetricResult:
         # Filter: exclude drafts for breadth/quality (incomplete contributions).
         all_prs = context.ledger.get_prs_for_user(

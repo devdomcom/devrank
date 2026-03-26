@@ -20,6 +20,10 @@ class FollowUpCommitRate(Metric):
     def category(self) -> str:
         return "responsiveness"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["DevRank"]
+
     def run(self, context: MetricContext) -> MetricResult:
         period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
 

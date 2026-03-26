@@ -45,6 +45,10 @@ class ReviewLeverage(Metric):
     def category(self) -> str:
         return "review_impact"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["DevRank"]
+
     def _is_effective_change_request(self, review, context):
         pr = context.ledger.get_pr(review.pull_request_number)
         if not pr or not pr.merged:

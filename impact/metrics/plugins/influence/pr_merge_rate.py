@@ -24,6 +24,10 @@ class PRMergeRate(Metric):
     def category(self) -> str:
         return "review_effectiveness"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["SPACE", "Lean"]
+
     def run(self, context: MetricContext) -> MetricResult:
         # User's reviews (influence on others' PRs)
         reviews = context.ledger.get_reviews_for_user(

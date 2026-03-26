@@ -35,6 +35,10 @@ class DeliveryVolume(Metric):
     def category(self) -> str:
         return "delivery_velocity"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["SPACE"]
+
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date

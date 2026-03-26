@@ -22,6 +22,10 @@ class ReworkRate(Metric):
     def category(self) -> str:
         return "code_quality"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["SPACE", "Lean"]
+
     def run(self, context: MetricContext) -> MetricResult:
         prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date

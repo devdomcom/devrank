@@ -324,6 +324,7 @@ def main():
                 "description": metric.description,
                 "signal_type": metric.signal_type,
                 "category": metric.category,
+                "frameworks": metric.frameworks,
                 "rating": rating,
                 "score": continuous_score,
                 "summary": result.summary,

@@ -22,6 +22,10 @@ class OffHoursActivityRate(Metric):
     def category(self) -> str:
         return "contextual"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["SPACE"]
+
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login
         # User TZ from bundle (manifest); data UTC

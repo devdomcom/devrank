@@ -38,6 +38,15 @@ class Metric(ABC):
             return "influence"
         return "authored"
 
+    @property
+    def frameworks(self) -> list[str]:
+        """Framework tags for this metric (e.g., ['DORA', 'SPACE', 'Lean']).
+
+        Override in subclasses to specify which frameworks this metric belongs to.
+        See METRICS_OVERVIEW.md Framework Legend for valid values.
+        """
+        return []
+
     @abstractmethod
     def run(self, context: MetricContext) -> MetricResult:
         """Run the metric and return the result."""

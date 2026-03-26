@@ -31,6 +31,10 @@ class TemporalLogicalCoupling(Metric):
     def category(self) -> str:
         return "code_quality"
 
+    @property
+    def frameworks(self) -> list[str]:
+        return ["CodeScene"]
+
     def run(self, context: MetricContext) -> MetricResult:
         user = context.user_login
         all_prs = context.ledger.get_prs_for_user(
