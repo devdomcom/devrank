@@ -498,6 +498,33 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x < 40,
         "scores": [(0, 0), (40, 25), (60, 50), (80, 75), (100, 100)],
     },
+    # AI-Assisted PR Rate: measures AI adoption (transparency metric; higher = more AI usage)
+    "ai_assisted_pr_rate": {
+        "key": "ai_rate",
+        "excellent": lambda x: x >= 70,
+        "good": lambda x: 40 <= x < 70,
+        "neutral": lambda x: 10 <= x < 40,
+        "bad": lambda x: x < 10,
+        "scores": [(0, 0), (10, 25), (40, 50), (70, 75), (100, 100)],
+    },
+    # AI Code Quality: rework ratio (AI iterations / human iterations); lower = AI code is higher quality
+    "ai_code_quality": {
+        "key": "quality_ratio",
+        "excellent": lambda x: x <= 0.8,  # AI needs less rework than human
+        "good": lambda x: 0.8 < x <= 1.2,  # Comparable quality
+        "neutral": lambda x: 1.2 < x <= 2.0,  # AI needs somewhat more rework
+        "bad": lambda x: x > 2.0,  # AI needs significantly more rework
+        "scores": [(0, 100), (0.8, 75), (1.2, 50), (2.0, 25), (4.0, 0)],
+    },
+    # AI Suggestion Acceptance: % of AI suggestions accepted (higher = better)
+    "ai_suggestion_acceptance": {
+        "key": "acceptance_rate",
+        "excellent": lambda x: x >= 70,  # High trust in AI suggestions
+        "good": lambda x: 50 <= x < 70,
+        "neutral": lambda x: 30 <= x < 50,
+        "bad": lambda x: x < 30,  # Low trust / poor suggestions
+        "scores": [(0, 0), (30, 25), (50, 50), (70, 75), (100, 100)],
+    },
 }
 
 

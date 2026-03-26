@@ -1,6 +1,8 @@
 # Authored work metrics (engineer-owned PRs/activity)
 from impact.metrics.plugins.authored.active_weeks import ActiveWeeks
 from impact.metrics.plugins.authored.ai_assisted_pr_rate import AIAssistedPRRate
+from impact.metrics.plugins.authored.ai_code_quality import AICodeQuality
+from impact.metrics.plugins.authored.ai_suggestion_acceptance import AISuggestionAcceptance
 from impact.metrics.plugins.authored.bug_fix_focus_rate import BugFixFocusRate
 from impact.metrics.plugins.authored.bus_factor import BusFactor
 from impact.metrics.plugins.authored.burstiness import Burstiness
@@ -82,6 +84,8 @@ def validate_metrics() -> None:
 def get_metrics():
     return {
         "ai_assisted_pr_rate": AIAssistedPRRate,
+        "ai_code_quality": AICodeQuality,
+        "ai_suggestion_acceptance": AISuggestionAcceptance,
         "bus_factor": BusFactor,
         "pr_merge_effectiveness": PRMergeEffectiveness,
         "review_leverage": ReviewLeverage,
