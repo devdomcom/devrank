@@ -364,6 +364,12 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x > 300,
         "scores": [(0, 100), (50, 75), (150, 50), (300, 25), (600, 0)],
     },
+    # Knowledge Islands: descriptive risk metric (no qualitative rating)
+    # High ownership concentration = maintenance risk; informative only
+    "knowledge_islands": {
+        "key": "island_count",
+        "no_rating": True,
+    },
     # Temporal/Logical Coupling: lower max ratio = fewer hidden dependencies
     # Note: coupling_ratio = shared_revisions / avg_revisions × 100, max is 100
     "temporal_logical_coupling": {
@@ -497,6 +503,11 @@ METRIC_THRESHOLDS = {
         "neutral": lambda x: 40 <= x < 60,
         "bad": lambda x: x < 40,
         "scores": [(0, 0), (40, 25), (60, 50), (80, 75), (100, 100)],
+    },
+    # AI Adoption Rate: per-engineer indicator of AI tool usage (descriptive only; no qualitative rating)
+    "ai_adoption_rate": {
+        "key": "has_adopted_ai",
+        "no_rating": True,  # informative/descriptive only (org policy, not skill)
     },
     # AI-Assisted PR Rate: measures AI adoption (transparency metric; higher = more AI usage)
     "ai_assisted_pr_rate": {
