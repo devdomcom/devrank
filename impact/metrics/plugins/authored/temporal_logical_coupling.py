@@ -42,12 +42,18 @@ class TemporalLogicalCoupling(Metric):
         )
         prs = filter_prs_for_contribution(all_prs, exclude_drafts=True, only_merged=False)
 
+        # Cap per-PR file count to avoid O(n^2) explosion on mega-PRs.
+        # Common practice in coupling tools (CodeScene caps at 40 files).
+        MAX_FILES_FOR_COUPLING = 50
+
         file_revision_counts: dict[str, int] = defaultdict(int)
         pair_shared_counts: dict[tuple[str, str], int] = defaultdict(int)
 
         for pr in prs:
             files = context.ledger.get_files_for_pr(pr.number)
             filenames = sorted({f.filename for f in files if not is_generated_file(f.filename, f.patch)})
+            if len(filenames) > MAX_FILES_FOR_COUPLING:
+                continue  # skip mega-PRs -- too noisy for coupling signal
             for filename in filenames:
                 file_revision_counts[filename] += 1
             for i in range(len(filenames)):

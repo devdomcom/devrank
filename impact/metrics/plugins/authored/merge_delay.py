@@ -43,13 +43,20 @@ class MergeDelay(Metric):
         p75 = percentile(delays_hours, 0.75) if delays_hours else 0.0
 
         summary = f"{len(merged_prs)} merged PRs. Median post-approval delay: {median:.2f}h, p75: {p75:.2f}h."
+        period_days = (
+            (context.end_date - context.start_date).total_seconds() / 86400
+            if context.start_date and context.end_date
+            else 0
+        )
         details: dict[str, object] = {
             "merged_count": len(merged_prs),
             "median_hours": median,
             "p75_hours": p75,
             "per_pr_hours": per_pr,
+            "period_days": round(period_days, 1),
         }
-        if not delays_hours:
+        # Combined period+count guard (AGENTS.md mandate)
+        if not delays_hours or (period_days < 14 and len(delays_hours) < 3):
             details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,

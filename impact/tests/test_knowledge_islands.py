@@ -15,6 +15,18 @@ class TestKnowledgeIslandsMetric:
     def metric(self):
         return KnowledgeIslands()
 
+    def _make_mock_pr(self, number: int, author_login: str):
+        """Create a mock PR."""
+        pr = MagicMock()
+        pr.number = number
+        pr.draft = False
+        pr.merged = True
+        user = MagicMock()
+        user.login = author_login
+        pr.user = user
+        pr.created_at = datetime(2024, 1, 15, tzinfo=timezone.utc)
+        return pr
+
     @pytest.fixture
     def mock_context(self):
         """Create a mock context with bundle data for commit-based ownership."""
@@ -30,7 +42,12 @@ class TestKnowledgeIslandsMetric:
         bundle = MagicMock()
         bundle.files = []
         bundle.commits = []
+        bundle.pull_requests = []
         ledger.bundle = bundle
+
+        # Default: no user PRs (individual tests override)
+        ledger.get_prs_for_user.return_value = []
+        ledger.get_files_for_pr.return_value = []
 
         return context, ledger
 
@@ -79,9 +96,19 @@ class TestKnowledgeIslandsMetric:
         commit_alice_pr1 = self._make_commit("a1", "alice", 1)
         commit_bob_pr2 = self._make_commit("b1", "bob", 2)
 
+        # Set up user PRs and files (knowledge_islands now queries user files first)
+        pr1 = self._make_mock_pr(1, "alice")
+        pr2 = self._make_mock_pr(2, "bob")
+        ledger.get_prs_for_user.return_value = [pr1]
+        ledger.get_files_for_pr.side_effect = lambda n: {
+            1: [file1_pr1, file2_pr1],
+            2: [file1_pr2, file2_pr2],
+        }.get(n, [])
+
         bundle = ledger.bundle
         bundle.files = [file1_pr1, file1_pr2, file2_pr1, file2_pr2]
         bundle.commits = [commit_alice_pr1, commit_bob_pr2]
+        bundle.pull_requests = [pr1, pr2]
 
         result = metric.run(context)
 
@@ -94,17 +121,29 @@ class TestKnowledgeIslandsMetric:
         context, ledger = mock_context
 
         # file1: only alice commits on PR1 -> 100% alice ISLAND
-        # file2: alice and bob both commit on PR2 -> 50/50 NOT island
+        # file2: alice (PR2) and bob (PR3) both commit -> 50/50 NOT island
         file1_pr1 = self._make_file_record("src/secret.py", 1)
         file2_pr2 = self._make_file_record("src/shared.py", 2)
+        file2_pr3 = self._make_file_record("src/shared.py", 3)
 
         commit_alice_pr1 = self._make_commit("a1", "alice", 1)
         commit_alice_pr2 = self._make_commit("a2", "alice", 2)
-        commit_bob_pr2 = self._make_commit("b1", "bob", 2)
+        commit_bob_pr3 = self._make_commit("b1", "bob", 3)
+
+        pr1 = self._make_mock_pr(1, "alice")
+        pr2 = self._make_mock_pr(2, "alice")  # alice also touches shared
+        pr3 = self._make_mock_pr(3, "bob")
+        ledger.get_prs_for_user.return_value = [pr1, pr2]
+        ledger.get_files_for_pr.side_effect = lambda n: {
+            1: [file1_pr1],
+            2: [file2_pr2],
+            3: [file2_pr3],
+        }.get(n, [])
 
         bundle = ledger.bundle
-        bundle.files = [file1_pr1, file2_pr2]
-        bundle.commits = [commit_alice_pr1, commit_alice_pr2, commit_bob_pr2]
+        bundle.files = [file1_pr1, file2_pr2, file2_pr3]
+        bundle.commits = [commit_alice_pr1, commit_alice_pr2, commit_bob_pr3]
+        bundle.pull_requests = [pr1, pr2, pr3]
 
         result = metric.run(context)
 
@@ -118,33 +157,41 @@ class TestKnowledgeIslandsMetric:
         assert "Found 1 knowledge island" in result.summary
 
     def test_detects_multiple_islands(self, metric, mock_context):
-        """Multiple files with single owners are all flagged."""
+        """Multiple files with single owners are all flagged.
+
+        Knowledge islands are now scoped to files the user touched. Alice touches:
+        - alice_code.py (PR1, sole author -> island)
+        - shared.py (PR3, shared with bob -> not island)
+        bob_code.py is NOT in alice's scope so we test from alice's perspective only.
+        """
         context, ledger = mock_context
 
-        # file1: alice only on PR1
-        # file2: bob only on PR2
-        # shared: both on PR3
         file1 = self._make_file_record("src/alice_code.py", 1)
-        file2 = self._make_file_record("src/bob_code.py", 2)
         shared_pr3 = self._make_file_record("src/shared.py", 3)
 
         commit_alice_pr1 = self._make_commit("a1", "alice", 1)
-        commit_bob_pr2 = self._make_commit("b1", "bob", 2)
         commit_alice_pr3 = self._make_commit("a3", "alice", 3)
         commit_bob_pr3 = self._make_commit("b3", "bob", 3)
 
+        pr1 = self._make_mock_pr(1, "alice")
+        pr3 = self._make_mock_pr(3, "alice")
+        ledger.get_prs_for_user.return_value = [pr1, pr3]
+        ledger.get_files_for_pr.side_effect = lambda n: {
+            1: [file1], 3: [shared_pr3],
+        }.get(n, [])
+
         bundle = ledger.bundle
-        bundle.files = [file1, file2, shared_pr3]
-        bundle.commits = [commit_alice_pr1, commit_bob_pr2, commit_alice_pr3, commit_bob_pr3]
+        bundle.files = [file1, shared_pr3]
+        bundle.commits = [commit_alice_pr1, commit_alice_pr3, commit_bob_pr3]
+        bundle.pull_requests = [pr1, pr3]
 
         result = metric.run(context)
 
-        assert result.details["island_count"] == 2
-        assert result.details["total_files"] == 3
+        assert result.details["island_count"] == 1  # alice_code.py is the island
+        assert result.details["total_files"] == 2
         islands = result.details["islands"]
         island_files = {i["file"] for i in islands}
         assert "src/alice_code.py" in island_files
-        assert "src/bob_code.py" in island_files
         assert "src/shared.py" not in island_files
 
     def test_island_threshold_at_95_percent(self, metric, mock_context):
@@ -154,13 +201,18 @@ class TestKnowledgeIslandsMetric:
         file1_pr1 = self._make_file_record("src/edge.py", 1)
         file1_pr2 = self._make_file_record("src/edge.py", 2)
 
-        # 19 commits by alice on PR1, 1 by bob on PR2 = 95% alice
         commits = [self._make_commit(f"a{i}", "alice", 1) for i in range(19)]
         commits.append(self._make_commit("b1", "bob", 2))
+
+        pr1 = self._make_mock_pr(1, "alice")
+        pr2 = self._make_mock_pr(2, "bob")
+        ledger.get_prs_for_user.return_value = [pr1]
+        ledger.get_files_for_pr.side_effect = lambda n: {1: [file1_pr1], 2: [file1_pr2]}.get(n, [])
 
         bundle = ledger.bundle
         bundle.files = [file1_pr1, file1_pr2]
         bundle.commits = commits
+        bundle.pull_requests = [pr1, pr2]
 
         result = metric.run(context)
 
@@ -174,9 +226,14 @@ class TestKnowledgeIslandsMetric:
         file1 = self._make_file_record("src/ai_generated.py", 1)
         commit_claude = self._make_commit("c1", "claude", 1)
 
+        pr1 = self._make_mock_pr(1, "alice")
+        ledger.get_prs_for_user.return_value = [pr1]
+        ledger.get_files_for_pr.side_effect = lambda n: {1: [file1]}.get(n, [])
+
         bundle = ledger.bundle
         bundle.files = [file1]
         bundle.commits = [commit_claude]
+        bundle.pull_requests = [pr1]
 
         result = metric.run(context)
 
@@ -192,15 +249,22 @@ class TestKnowledgeIslandsMetric:
         file2_pr2 = self._make_file_record("src/alice_95.py", 2)
         file2_pr3 = self._make_file_record("src/alice_95.py", 3)
 
-        # file1: alice 1 commit = 100% island
         commit_alice_100 = self._make_commit("a1", "alice", 1)
-        # file2: 19 alice commits, 1 bob commit = 95% alice island
         commits_alice_95 = [self._make_commit(f"a{i}", "alice", 2) for i in range(19)]
         commit_bob_5 = self._make_commit("b1", "bob", 3)
+
+        pr1 = self._make_mock_pr(1, "alice")
+        pr2 = self._make_mock_pr(2, "alice")
+        pr3 = self._make_mock_pr(3, "bob")
+        ledger.get_prs_for_user.return_value = [pr1, pr2]
+        ledger.get_files_for_pr.side_effect = lambda n: {
+            1: [file1], 2: [file2_pr2], 3: [file2_pr3],
+        }.get(n, [])
 
         bundle = ledger.bundle
         bundle.files = [file1, file2_pr2, file2_pr3]
         bundle.commits = [commit_alice_100] + commits_alice_95 + [commit_bob_5]
+        bundle.pull_requests = [pr1, pr2, pr3]
 
         result = metric.run(context)
 

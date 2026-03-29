@@ -54,35 +54,33 @@ class BusFactor(Metric):
             else 0
         )
 
-        # Get PRs for the user to determine the scope of analysis
-        all_prs = context.ledger.get_prs_for_user(
+        # Step 1: Determine *which files* the target user touched
+        user_prs = context.ledger.get_prs_for_user(
             context.user_login, context.start_date, context.end_date
         )
-        prs = filter_prs_for_contribution(all_prs, exclude_drafts=True, only_merged=False)
+        prs = filter_prs_for_contribution(user_prs, exclude_drafts=True, only_merged=False)
 
-        # Collect file-level contributions across all PRs
-        # Key: filename, Value: dict of contributor -> contribution score
+        files_in_scope: set[str] = set()
+        for pr in prs:
+            for file in context.ledger.get_files_for_pr(pr.number):
+                if not is_generated_file(file.filename, file.patch):
+                    files_in_scope.add(file.filename)
+
+        # Step 2: Build contributor map from ALL repo PRs that touch those files
+        # This is the critical fix -- bus factor must reflect *all* contributors,
+        # not just the target user, to avoid always returning 1.
         file_contributors: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
 
-        # Track all files touched by the user's PRs in this period
-        files_in_scope: set[str] = set()
-
-        for pr in prs:
-            files = context.ledger.get_files_for_pr(pr.number)
+        for pr in context.ledger.bundle.pull_requests:
             pr_author = pr.user.login
-
-            for file in files:
+            for file in context.ledger.get_files_for_pr(pr.number):
+                if file.filename not in files_in_scope:
+                    continue
                 if is_generated_file(file.filename, file.patch):
                     continue
 
-                files_in_scope.add(file.filename)
-
-                # Calculate contribution weight based on changes
-                # Use both line changes and file presence as signals
                 change_weight = file.changes if file.changes else (file.additions + file.deletions)
                 contribution_score = max(1.0, change_weight)
-
-                # Add the PR author as a contributor to this file
                 file_contributors[file.filename][pr_author] += contribution_score
 
         # If no files found, return no-data

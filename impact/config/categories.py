@@ -22,6 +22,7 @@ CATEGORIES: tuple[Category, ...] = (
     Category("responsiveness", "Responsiveness & Follow-through"),
     Category("review_impact", "Review Impact & Mentorship"),
     Category("review_effectiveness", "Review Effectiveness"),
+    Category("reliability", "Reliability & Stability"),
     Category("contextual", "Contextual Signals"),
 )
 

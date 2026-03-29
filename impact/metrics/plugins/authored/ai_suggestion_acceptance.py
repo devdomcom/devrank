@@ -2,25 +2,51 @@
 AI Suggestion Acceptance Metric
 
 Computes the ratio of accepted vs dismissed AI suggestions.
-AI suggestions are review comments with ```suggestion blocks from known AI bots
-(Copilot, codeant-ai, bito, korbit). Acceptance is heuristically determined by
-checking if the suggested code appears in the file's final patch.
+AI suggestions are review comments with ```suggestion blocks from known AI bots.
+Acceptance is heuristically determined by checking if the suggested code appears
+in the file's final patch.
+
+Detection method: Only matches review comment authors (user.login), not PR titles
+or commit messages. See impact/config/ai_bots.yaml for the bot list.
+
+Known limitations:
+  - False negatives: Local AI tools (Cursor, Cody) that don't leave review
+    comments cannot be detected from GitHub API data.
+  - The [bot] suffix catch-all may match non-AI bots.
 """
 
 import re
+from pathlib import Path
+
+import yaml
+
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import filter_prs_for_contribution
 
-# Known AI review bot logins (GitHub user.login values)
-AI_BOT_LOGINS = frozenset({
-    "copilot",
-    "codeant-ai-for-open-source[bot]",
-    "bito-code-review[bot]",
-    "korbit-ai[bot]",
-    "codewhisperer[bot]",
-    "tabnine[bot]",
-})
+
+def _load_ai_bot_logins() -> frozenset:
+    """Load AI bot logins from config, with hardcoded fallback."""
+    config_path = Path(__file__).resolve().parents[3] / "config" / "ai_bots.yaml"
+    try:
+        with open(config_path) as f:
+            data = yaml.safe_load(f)
+        if data and "ai_review_bots" in data:
+            return frozenset(login.lower() for login in data["ai_review_bots"])
+    except (OSError, yaml.YAMLError):
+        pass
+    # Hardcoded fallback if config is missing
+    return frozenset({
+        "copilot-pull-request-reviewer[bot]",
+        "codeant-ai-for-open-source[bot]",
+        "bito-code-review[bot]",
+        "korbit-ai[bot]",
+        "codewhisperer[bot]",
+        "tabnine[bot]",
+    })
+
+
+AI_BOT_LOGINS = _load_ai_bot_logins()
 
 
 def _is_ai_bot(user_login: str) -> bool:

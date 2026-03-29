@@ -45,11 +45,11 @@ class ComplexityTrend(Metric):
 
     @property
     def name(self) -> str:
-        return "Complexity Trend"
+        return "Nesting Complexity Trend"
 
     @property
     def description(self) -> str:
-        return "Whitespace-based per-file complexity trends (min/max/std dev of indentation)."
+        return "Whitespace nesting depth trend (proxy for cyclomatic complexity; per-file min/max/std dev of indentation)."
 
     @property
     def category(self) -> str:

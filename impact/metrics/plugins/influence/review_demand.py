@@ -71,8 +71,11 @@ class ReviewDemand(Metric):
             "demand_per_week": round(demand_per_week, 1),
             "affected_prs": len(requested_prs),
             "per_pr": per_pr,
-            "no_data": no_data,
         }
+        # Convention: only add no_data key when True (avoids confusing
+        # downstream code that checks `"no_data" in details`)
+        if no_data:
+            details["no_data"] = True
 
         return MetricResult(
             metric_slug=self.slug,

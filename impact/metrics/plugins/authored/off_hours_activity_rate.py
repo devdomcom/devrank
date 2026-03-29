@@ -38,7 +38,7 @@ class OffHoursActivityRate(Metric):
                 metric_slug=self.slug,
                 summary="Off-hours rate: N/A (timezone data not available; cannot classify off-hours without user timezone).",
                 details={
-                    "off_hours_rate": 0.0,
+                    "off_hours_rate": None,  # Cannot compute without timezone
                     "off_count": 0,
                     "total_activities": 0,
                     "weekend_count": 0,

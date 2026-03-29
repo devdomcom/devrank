@@ -80,11 +80,11 @@ class PRSizeDistribution(Metric):
             total_generated_lines += gen_lines
             add = eff_add
             del_ = eff_del
-            ch = add + del_ * 0.5  # Deletions carry half the risk weight of additions
-            raw_ch = add + del_  # Raw total for categorical bucketing (consistent with trivial_contribution_rate)
+            raw_ch = add + del_  # Unweighted total for both percentile stats AND bucketing
+            risk_weighted_ch = add + del_ * 0.5  # Deletions carry half the risk weight
             additions.append(add)
             deletions.append(del_)
-            changes.append(ch)
+            changes.append(raw_ch)  # Use raw consistently for percentile/median
 
             category = get_pr_size_category(raw_ch)
             if category == "trivial":

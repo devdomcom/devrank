@@ -67,12 +67,24 @@ class KnowledgeIslands(Metric):
             else 0
         )
 
-        # Access the full bundle to compute true file ownership from commits
         bundle = context.ledger.bundle
 
-        # Build file -> set of PR numbers that touched it
+        # Step 1: Determine which files the *target user* touched
+        user_prs = context.ledger.get_prs_for_user(
+            context.user_login, context.start_date, context.end_date
+        )
+        user_prs = filter_prs_for_contribution(user_prs, exclude_drafts=True, only_merged=False)
+        user_files: set[str] = set()
+        for pr in user_prs:
+            for f in context.ledger.get_files_for_pr(pr.number):
+                if not is_generated_file(f.filename, getattr(f, "patch", None)):
+                    user_files.add(f.filename)
+
+        # Step 2: Build file -> set of PR numbers from ALL repo PRs (not just user)
         file_to_prs: dict[str, set[int]] = defaultdict(set)
         for f in getattr(bundle, "files", []):
+            if f.filename not in user_files:
+                continue
             if is_generated_file(f.filename, getattr(f, "patch", None)):
                 continue
             file_to_prs[f.filename].add(f.pull_request_number)
@@ -83,7 +95,7 @@ class KnowledgeIslands(Metric):
             if commit.pull_request_number is not None:
                 pr_to_commits[commit.pull_request_number].append(commit)
 
-        # Collect file ownership: filename -> {author_login: commit_count}
+        # Step 3: Collect file ownership from ALL contributors
         file_contributors: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
         files_in_scope: set[str] = set()
 
@@ -94,6 +106,16 @@ class KnowledgeIslands(Metric):
                     author = getattr(commit.author, "login", None) or str(commit.author)
                     if author:
                         file_contributors[filename][author] += 1
+
+        # Also credit PR authors directly for files with no linked commits
+        # (covers PRs where commits don't have pull_request_number set)
+        for pr in bundle.pull_requests:
+            for f in context.ledger.get_files_for_pr(pr.number):
+                if f.filename in user_files and not is_generated_file(f.filename, getattr(f, "patch", None)):
+                    files_in_scope.add(f.filename)
+                    if not file_contributors[f.filename]:
+                        # Only credit PR author when no commit-level data exists
+                        file_contributors[f.filename][pr.user.login] += 1
 
         if not files_in_scope:
             return MetricResult(

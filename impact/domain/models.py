@@ -140,6 +140,59 @@ class TimelineEvent(BaseModel):
     requested_reviewer: User | None = None
 
 
+class ReleaseRecord(BaseModel):
+    """GitHub Release (DORA Deployment Frequency data source).
+
+    Populated by fetching ``GET /repos/{owner}/{repo}/releases``.
+    A new fetch run will pull this data; existing dumps without releases
+    will simply have an empty list.
+    """
+    id: int
+    tag_name: str
+    name: str | None = None
+    created_at: datetime
+    published_at: datetime | None = None
+    draft: bool = False
+    prerelease: bool = False
+    author: User | None = None
+    target_commitish: str | None = None
+
+
+class DeploymentRecord(BaseModel):
+    """GitHub Deployment (DORA Deployment Frequency data source).
+
+    Populated by fetching ``GET /repos/{owner}/{repo}/deployments``.
+    """
+    id: int
+    sha: str
+    ref: str
+    environment: str
+    created_at: datetime
+    updated_at: datetime | None = None
+    creator: User | None = None
+    description: str | None = None
+
+
+class WorkflowRunRecord(BaseModel):
+    """GitHub Actions workflow run (Kanban Flow Efficiency -- CI wait time).
+
+    Populated by fetching ``GET /repos/{owner}/{repo}/actions/runs``.
+    Enables splitting lead time into coding, review, CI, and merge phases.
+    """
+    id: int
+    name: str | None = None
+    head_sha: str
+    event: str | None = None
+    status: str | None = None  # queued, in_progress, completed
+    conclusion: str | None = None  # success, failure, cancelled, ...
+    created_at: datetime
+    updated_at: datetime | None = None
+    run_started_at: datetime | None = None
+    pull_request_number: int | None = None
+    # Duration in seconds (run_started_at to updated_at when completed)
+    duration_seconds: int | None = None
+
+
 class CanonicalBundle(BaseModel):
     users: list[User]
     repositories: list[Repository]
@@ -149,6 +202,10 @@ class CanonicalBundle(BaseModel):
     comments: list[CommentRecord]
     files: list[FileRecord]
     timeline: list[TimelineEvent]
+    # New data sources (populated by expanded fetcher; empty in legacy dumps)
+    releases: list[ReleaseRecord] = []
+    deployments: list[DeploymentRecord] = []
+    workflow_runs: list[WorkflowRunRecord] = []
     # User TZ for off-hours (e.g. Europe/Istanbul for Turkey; data TZ from manifest/Z=UTC)
     user_timezone: str | None = None
 

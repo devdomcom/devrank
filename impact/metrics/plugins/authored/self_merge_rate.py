@@ -25,7 +25,10 @@ class SelfMergeRate(Metric):
         return ["DevRank"]
 
     def run(self, context: MetricContext) -> MetricResult:
-        details = compute_self_merge_rate(context.ledger, context.user_login)
+        details = compute_self_merge_rate(
+            context.ledger, context.user_login,
+            start_date=context.start_date, end_date=context.end_date,
+        )
         rate = details["self_merge_rate"]
         summary = f"Self-merge rate: {rate:.1f}% ({details['no_approval_count']}/{details['engineer_merged_count']} merges; repo {details['repo_self_merge_rate']:.1f}%)."
 
@@ -35,7 +38,8 @@ class SelfMergeRate(Metric):
             period_days = 30.0
         details["period_days"] = round(period_days, 1)
 
-        if period_days < 21 and details["engineer_merged_count"] < 3:
+        # Standardized guard: 14d + count<3 (aligned with other metrics)
+        if period_days < 14 and details["engineer_merged_count"] < 3:
             details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,

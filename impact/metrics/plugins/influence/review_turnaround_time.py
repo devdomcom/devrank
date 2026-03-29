@@ -63,25 +63,29 @@ class ReviewTurnaroundTime(Metric):
                 continue
             first_user_review = min(user_reviews, key=lambda r: r.submitted_at)
 
-            # Try to use review_requested timeline event if available
-            # to measure from when the reviewer was actually assigned
+            # Use review_requested timeline event targeting THIS reviewer
+            # to measure from actual assignment, not PR creation.
             reference_time = pr.created_at
             timeline_events = context.ledger.get_timeline_for_pr(pr_num)
+            # Match by requested_reviewer.login == this reviewer
             review_requested_events = [
                 evt for evt in timeline_events
                 if evt.event == "review_requested"
                 and evt.created_at <= first_user_review.submitted_at
+                and getattr(evt, "requested_reviewer", None)
+                and evt.requested_reviewer.login == context.user_login
             ]
             if review_requested_events:
-                # Use the latest review_requested event before the first review
                 latest_request = max(review_requested_events, key=lambda e: e.created_at)
                 reference_time = latest_request.created_at
 
             delta = first_user_review.submitted_at - reference_time
             hours = delta.total_seconds() / 3600
+            if hours < 0:
+                hours = 0.0  # clock skew guard
             note = None
             if not review_requested_events:
-                note = "Measured from PR creation; may overcount if reviewer was assigned late"
+                note = "Measured from PR creation; no review_requested event for this reviewer"
             entry: dict = {"pr_number": pr_num, "hours": hours}
             if note:
                 entry["note"] = note

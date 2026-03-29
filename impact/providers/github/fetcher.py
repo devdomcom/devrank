@@ -126,5 +126,65 @@ class GitHubFetcher:
 
         return bundle
 
+    # ------------------------------------------------------------------
+    # New data sources for DORA / Kanban metrics
+    # ------------------------------------------------------------------
+
+    def fetch_releases(
+        self, repo: str, *, since: datetime | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch GitHub Releases (DORA Deployment Frequency).
+
+        GET /repos/{owner}/{repo}/releases
+        A new fetch run will call this; existing dumps without releases are fine
+        (CanonicalBundle.releases defaults to []).
+        """
+        params = {"per_page": 100}
+        results = []
+        for release in self.client.paginate(f"/repos/{repo}/releases", params=params):
+            created = datetime.fromisoformat(release["created_at"].replace("Z", "+00:00"))
+            if since and created < since:
+                break  # releases are returned newest-first
+            results.append(release)
+        log.info("Fetched %d releases for %s", len(results), repo)
+        return results
+
+    def fetch_deployments(
+        self, repo: str, *, since: datetime | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch GitHub Deployments (DORA Deployment Frequency).
+
+        GET /repos/{owner}/{repo}/deployments
+        """
+        params = {"per_page": 100}
+        results = []
+        for deploy in self.client.paginate(f"/repos/{repo}/deployments", params=params):
+            created = datetime.fromisoformat(deploy["created_at"].replace("Z", "+00:00"))
+            if since and created < since:
+                break
+            results.append(deploy)
+        log.info("Fetched %d deployments for %s", len(results), repo)
+        return results
+
+    def fetch_workflow_runs(
+        self, repo: str, *, since: datetime | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch GitHub Actions workflow runs (Kanban Flow Efficiency -- CI wait).
+
+        GET /repos/{owner}/{repo}/actions/runs
+        """
+        params: dict[str, Any] = {"per_page": 100}
+        if since:
+            params["created"] = f">={self._since_param(since)}"
+        results = []
+        resp = self.client.get(f"/repos/{repo}/actions/runs", params=params)
+        data = resp.json()
+        for run in data.get("workflow_runs", []):
+            results.append(run)
+        # Note: pagination for Actions uses total_count; we fetch first page only
+        # to stay within rate limits. Expand if needed.
+        log.info("Fetched %d workflow runs for %s", len(results), repo)
+        return results
+
 
 __all__ = ["GitHubFetcher"]

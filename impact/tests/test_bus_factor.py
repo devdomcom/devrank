@@ -51,6 +51,9 @@ class TestBusFactorMetric:
         context.end_date = datetime(2024, 1, 31, tzinfo=timezone.utc)
 
         ledger = MagicMock()
+        # Bus factor now scans bundle.pull_requests for all-repo contributors.
+        # Default to empty; individual tests override as needed.
+        ledger.bundle.pull_requests = []
         context.ledger = ledger
 
         return context, ledger
@@ -83,6 +86,8 @@ class TestBusFactorMetric:
             make_mock_pr(3, "Refactor", "alice"),
         ]
         ledger.get_prs_for_user.return_value = prs
+        # Also set bundle.pull_requests (bus_factor scans ALL repo PRs)
+        ledger.bundle.pull_requests = prs
 
         # All PRs touch different files
         ledger.get_files_for_pr.side_effect = lambda pr_num: {
@@ -110,6 +115,7 @@ class TestBusFactorMetric:
             make_mock_pr(3, "Update feature", "alice"),
         ]
         ledger.get_prs_for_user.return_value = prs
+        ledger.bundle.pull_requests = prs
 
         # Both contributors touch the same file
         shared_file = make_mock_file("src/shared.py", 30)
@@ -138,6 +144,7 @@ class TestBusFactorMetric:
             make_mock_pr(6, "Feature C fix", "alice"),
         ]
         ledger.get_prs_for_user.return_value = prs
+        ledger.bundle.pull_requests = prs
 
         # Each file touched by 2 contributors
         ledger.get_files_for_pr.side_effect = lambda pr_num: {
@@ -166,6 +173,7 @@ class TestBusFactorMetric:
             make_mock_pr(3, "Solo feature", "alice"),  # Only alice touches this
         ]
         ledger.get_prs_for_user.return_value = prs
+        ledger.bundle.pull_requests = prs
 
         ledger.get_files_for_pr.side_effect = lambda pr_num: {
             1: [make_mock_file("src/shared.py")],
@@ -190,6 +198,7 @@ class TestBusFactorMetric:
             make_mock_pr(2, "Small fix", "bob"),
         ]
         ledger.get_prs_for_user.return_value = prs
+        ledger.bundle.pull_requests = prs
 
         # Alice touches file with 100 changes, Bob with 10
         ledger.get_files_for_pr.side_effect = lambda pr_num: {
@@ -212,6 +221,7 @@ class TestBusFactorMetric:
             make_mock_pr(1, "Feature", "alice"),
         ]
         ledger.get_prs_for_user.return_value = prs
+        ledger.bundle.pull_requests = prs
         ledger.get_files_for_pr.return_value = [make_mock_file("src/a.py")]
 
         result = metric.run(context)
@@ -231,6 +241,7 @@ class TestBusFactorMetric:
             make_mock_pr(3, "Feature 3", "alice"),
         ]
         ledger.get_prs_for_user.return_value = prs
+        ledger.bundle.pull_requests = prs
         ledger.get_files_for_pr.side_effect = lambda pr_num: [
             make_mock_file(f"src/{pr_num}.py")
         ]
@@ -249,6 +260,7 @@ class TestBusFactorMetric:
             make_mock_pr(1, "Add generated code", "alice"),
         ]
         ledger.get_prs_for_user.return_value = prs
+        ledger.bundle.pull_requests = prs
 
         # File looks generated (has generated marker in patch)
         gen_file = make_mock_file("generated/api.py", 100)
@@ -270,6 +282,7 @@ class TestBusFactorMetric:
             make_mock_pr(3, "Feature B", "alice"),
         ]
         ledger.get_prs_for_user.return_value = prs
+        ledger.bundle.pull_requests = prs
 
         ledger.get_files_for_pr.side_effect = lambda pr_num: {
             1: [make_mock_file("src/a.py")],
@@ -294,6 +307,7 @@ class TestBusFactorMetric:
             make_mock_pr(3, "Bob solo", "bob"),  # Only Bob touches this
         ]
         ledger.get_prs_for_user.return_value = prs
+        ledger.bundle.pull_requests = prs
 
         ledger.get_files_for_pr.side_effect = lambda pr_num: {
             1: [make_mock_file("src/shared.py", 50)],

@@ -47,22 +47,40 @@ class AbandonedPRRate(Metric):
             else:
                 end_date = None
         threshold = timedelta(days=30)
-        stale_count = sum(
-            1 for pr in open_prs
+        stale_prs = [
+            pr for pr in open_prs
             if end_date and (end_date - pr.created_at) >= threshold
-        )
-        rate = (stale_count / len(open_prs) * 100) if open_prs else 0.0
+        ]
+        rate = (len(stale_prs) / len(open_prs) * 100) if open_prs else 0.0
         period_days = (end_date - context.start_date).days if (context.start_date and end_date) else 30
-        summary = f"Abandoned PR rate: {rate:.1f}% stale ({stale_count}/{len(open_prs)} open)."
+
+        # Age-weighted score: each stale PR contributes severity proportional
+        # to how long it has been open (capped at 5x for very old PRs).
+        # This rewards closing old PRs more than fresh ones.
+        if stale_prs and end_date:
+            severity_sum = sum(
+                min((end_date - pr.created_at).days / 30.0, 5.0)
+                for pr in stale_prs
+            )
+            weighted_score = (severity_sum / len(open_prs)) * 20  # scale to 0-100
+        else:
+            weighted_score = 0.0
+
+        per_pr_details = [
+            {"number": pr.number, "age_days": (end_date - pr.created_at).days if end_date else 0}
+            for pr in open_prs
+        ]
+        summary = f"Abandoned PR rate: {rate:.1f}% stale ({len(stale_prs)}/{len(open_prs)} open; weighted score {weighted_score:.1f})."
         details = {
             "abandoned_rate": rate,
-            "stale_count": stale_count,
+            "stale_count": len(stale_prs),
             "open_pr_count": len(open_prs),
             "period_days": period_days,
-            "weighted_score": rate,
-            "per_pr": [{"number": pr.number, "age_days": (end_date - pr.created_at).days if end_date else 0} for pr in open_prs],
+            "weighted_score": round(weighted_score, 1),
+            "per_pr": per_pr_details,
         }
-        if not open_prs:
+        # Combined period+count guard
+        if not open_prs or (period_days < 14 and len(open_prs) < 3):
             details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,

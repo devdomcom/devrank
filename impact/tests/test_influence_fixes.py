@@ -360,13 +360,14 @@ class TestReviewTurnaroundTime:
         pr = make_pr(1, author, repo, base_time=start, created_delta_hours=0)
         review = make_review(10, 1, reviewer, start + timedelta(hours=8))
 
-        # Timeline event: review_requested at hour 5
+        # Timeline event: review_requested at hour 5 targeting alice
         timeline_event = TimelineEvent(
             id=100,
             event="review_requested",
             actor=author,
             created_at=start + timedelta(hours=5),
             pull_request_number=1,
+            requested_reviewer=reviewer,  # alice was requested
         )
 
         bundle = make_bundle(

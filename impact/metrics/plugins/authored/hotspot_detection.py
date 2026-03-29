@@ -6,14 +6,25 @@ from impact.metrics.utils import filter_prs_for_contribution, is_generated_file
 
 class HotspotDetection(Metric):
     """
-    Identifies 'Hotspots' in the codebase by tracking files with high revision frequency × complexity.
+    Identifies 'Hotspots' in the codebase by tracking files with high revision
+    frequency multiplied by complexity (change volume per revision).
 
-    A hotspot is a file that is frequently modified and contains significant changes,
-    signaling areas of high churn, instability, or architectural complexity.
+    Based on Adam Tornhill's "Software Design X-Rays" (2018) hotspot model:
+        hotspot_score = change_frequency * complexity_proxy * recency_weight
 
-    Formula: score = frequency * average_changes_per_revision
-    - frequency: number of PRs touching the file in the period
-    - complexity: average (additions + deletions) for that file across those PRs
+    In our implementation:
+        - change_frequency  = number of PRs touching the file in the period
+        - complexity_proxy  = average (additions + deletions) across those PRs
+          (serves as a size/churn proxy when full AST complexity is unavailable)
+        - recency_weight    = 1.0 (all PRs in period weighted equally; future
+          enhancement could apply exponential time-decay)
+
+    Coefficients rationale:
+        - Equal weighting of frequency and complexity is the simplest unbiased
+          formulation. Tornhill's original uses log(complexity) for large files,
+          but our per-PR-diff scoping already bounds the magnitude.
+        - The score is dimensionless (revisions * lines) and is only meaningful
+          relative to other files in the same analysis.
 
     Returns top 10 hotspots for the user.
     """

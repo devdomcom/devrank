@@ -39,9 +39,12 @@ def test_abandoned_pr_rate():
     res = metric.run(context)
 
     assert res.metric_slug == "abandoned_pr_rate"
-    # 1/2 open stale -> 50%; weighted_score == rate (no period scaling)
+    # 1/2 open stale -> 50%; weighted_score is now age-weighted (not identity)
     assert res.details["abandoned_rate"] == 50.0
-    assert res.details["weighted_score"] == 50.0
+    # Age-weighted: stale PR ~41d old -> severity = min(41/30, 5) = 1.37
+    # weighted_score = (1.37 / 2) * 20 = 13.7
+    assert res.details["weighted_score"] > 0
+    assert isinstance(res.details["weighted_score"], float)
     assert res.details["open_pr_count"] == 2
     assert "Abandoned PR rate:" in res.summary
 

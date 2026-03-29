@@ -28,7 +28,7 @@ class PRThroughput(Metric):
 
     @property
     def description(self) -> str:
-        return "Quantifies PR volume (opened/merged counts) and success ratio for productivity."
+        return "PR merge ratio (merged/opened); measures conversion rate, not volume (see delivery_volume for throughput volume)."
 
     @property
     def category(self) -> str:

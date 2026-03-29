@@ -60,7 +60,10 @@ class Burstiness(Metric):
         else:
             total_weeks = active_weeks  # fallback
 
-        avg_weekly = total_activities / active_weeks if active_weeks > 0 else 0.0
+        # Use total_weeks (not active_weeks) so inactive weeks inflate the
+        # burst ratio as expected -- a developer who works one week and takes
+        # three off should NOT appear perfectly steady.
+        avg_weekly = total_activities / total_weeks if total_weeks > 0 else 0.0
         max_weekly = max(counts) if counts else 0
         burst_ratio = max_weekly / avg_weekly if avg_weekly > 0 else 0.0
 

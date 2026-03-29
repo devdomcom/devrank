@@ -1,11 +1,15 @@
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import review_led_to_commit
+from impact.metrics.utils import review_led_to_commit, is_bot_user
 
 
 class ChangeInducingReviewRate(Metric):
     """
     Rate of reviews inducing immediate author commits (clear correlation).
+
+    Uses a file-overlap heuristic: a commit is only considered "induced"
+    if it modifies at least one file that the review commented on.
+    This significantly reduces false attribution from routine rebases/CI fixes.
     """
 
     @property
@@ -45,6 +49,30 @@ class ChangeInducingReviewRate(Metric):
         per_review: list[dict] = []
         for rev in reviews:
             induced_change = review_led_to_commit(context.ledger, rev)
+
+            # File-overlap heuristic: verify the post-review commit actually
+            # touches files the review commented on (reduces false attribution
+            # from routine rebases/CI fixes).
+            if induced_change:
+                review_files = {
+                    c.path for c in context.ledger.get_comments_for_pr(rev.pull_request_number)
+                    if c.review_id == rev.id and c.path
+                }
+                if review_files:
+                    # Check if any post-review commit touches those files
+                    pr = context.ledger.get_pr(rev.pull_request_number)
+                    post_commits = [
+                        c for c in context.ledger.get_commits_for_pr(rev.pull_request_number)
+                        if c.date > rev.submitted_at
+                        and pr and c.author.login == pr.user.login
+                    ]
+                    commit_files = set()
+                    for pc in post_commits:
+                        for f in context.ledger.get_files_for_pr(rev.pull_request_number):
+                            commit_files.add(f.filename)
+                    if not (review_files & commit_files):
+                        induced_change = False  # no file overlap -- likely coincidental
+
             if induced_change:
                 inducing_count += 1
             per_review.append(

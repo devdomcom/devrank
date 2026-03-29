@@ -109,9 +109,10 @@ def test_burstiness_uses_active_weeks():
     assert res.details["total_weeks"] == 4
     assert res.details["active_weeks"] == 1
     assert res.details["total_activities"] == 1
-    # avg_weekly = 1 / 1 = 1.0; max_weekly = 1; burst_ratio = 1 / 1 = 1.0
-    assert res.details["avg_weekly"] == 1.0
-    assert res.details["burst_ratio"] == 1.0
+    # avg_weekly = 1 / 4 = 0.25 (uses total_weeks, not active_weeks);
+    # max_weekly = 1; burst_ratio = 1 / 0.25 = 4.0
+    assert res.details["avg_weekly"] == 0.25
+    assert res.details["burst_ratio"] == 4.0
 
 
 def test_burstiness_no_activity():

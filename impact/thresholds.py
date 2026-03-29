@@ -61,7 +61,7 @@ METRIC_THRESHOLDS = {
         "scores": [(0, 100), (4, 75), (12, 50), (24, 25), (48, 0)],
     },
     "pr_merge_effectiveness": {
-        "key": "average_back_and_forth",
+        "key": "merge_effectiveness",  # aligned with detail key
         "excellent": lambda x: x <= 1,
         "good": lambda x: 1 < x <= 2,
         "neutral": lambda x: 2 < x <= 4,
@@ -363,6 +363,15 @@ METRIC_THRESHOLDS = {
         "neutral": lambda x: 150 < x <= 300,
         "bad": lambda x: x > 300,
         "scores": [(0, 100), (50, 75), (150, 50), (300, 25), (600, 0)],
+    },
+    # Bus Factor: higher = more resilient (Tornhill CodeScene benchmarks: >=3 healthy)
+    "bus_factor": {
+        "key": "bus_factor",
+        "excellent": lambda x: x >= 4,
+        "good": lambda x: 3 <= x < 4,
+        "neutral": lambda x: 2 <= x < 3,
+        "bad": lambda x: x < 2,
+        "scores": [(0, 0), (1, 20), (2, 50), (3, 75), (4, 100)],
     },
     # Knowledge Islands: descriptive risk metric (no qualitative rating)
     # High ownership concentration = maintenance risk; informative only

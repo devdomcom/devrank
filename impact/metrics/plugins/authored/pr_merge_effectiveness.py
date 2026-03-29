@@ -87,6 +87,7 @@ class PRMergeEffectiveness(Metric):
                 "merged_pr_count": count,
                 "average_merge_time_hours": avg_merge_time,
                 "average_back_and_forth": avg_back_forth,
+                "merge_effectiveness": round(avg_back_forth, 2),  # threshold key
                 "pr_details": pr_rows,
                 "period_days": period_days,
             }

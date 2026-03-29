@@ -51,12 +51,12 @@ def test_pr_size_distribution_with_various_sizes():
     assert res.details["additions_median"] == 50.0
     # Deletions: 5,20,100,600,0 -> 0,5,20,100,600 median=20
     assert res.details["deletions_median"] == 20.0
-    # Weighted changes (add + del*0.5): 12.5,60,250,800,0 -> sorted: 0,12.5,60,250,800 median=60
-    assert res.details["changes_median"] == 60.0
+    # Raw changes (add + del): 15,70,300,1100,0 -> sorted: 0,15,70,300,1100 median=70
+    assert res.details["changes_median"] == 70.0
     assert res.details["additions_p75"] == 200.0
     assert res.details["deletions_p75"] == 100.0
-    # Changes p75: sorted 0,12.5,60,250,800 -> k=3, 250
-    assert res.details["changes_p75"] == 250.0
+    # Changes p75: sorted 0,15,70,300,1100 -> k=3, 300
+    assert res.details["changes_p75"] == 300.0
     assert res.details["small_pr_count"] == 2  # pr1(15 raw), pr2(70 raw)
     assert res.details["medium_pr_count"] == 1  # pr3(300 raw)
     assert res.details["large_pr_count"] == 1  # pr4(1100 raw)
@@ -98,7 +98,7 @@ def test_pr_size_distribution_single_pr():
     assert res.details["pr_count"] == 1
     assert res.details["additions_median"] == 100.0
     assert res.details["deletions_median"] == 50.0
-    assert res.details["changes_median"] == 125.0  # 100 + 50*0.5 weighted
+    assert res.details["changes_median"] == 150  # 100 + 50 raw (unweighted)
     assert res.details["small_pr_count"] == 0
     assert res.details["medium_pr_count"] == 1
     assert res.details["large_pr_count"] == 0

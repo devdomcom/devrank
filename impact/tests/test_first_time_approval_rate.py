@@ -69,8 +69,12 @@ class TestFirstTimeApprovalRate:
         assert res.details["rate"] == 0.0
         assert res.details["per_pr"][0]["immediate_approval"] is False
 
-    def test_approval_with_inline(self):
-        """Approval with inline comments not first-time."""
+    def test_approval_with_inline_same_review_id(self):
+        """Approval with inline comments from same review ID IS first-time.
+
+        GitHub's batch-review flow attaches inline comments to the same review
+        as the APPROVED state. These are part of the approval, not a prior rejection.
+        """
         author = make_user(id=1, login="alice")
         reviewer = make_user(id=2, login="bob")
         repo = make_repo(id=1, name="repo")
@@ -90,7 +94,33 @@ class TestFirstTimeApprovalRate:
         ctx = make_context(bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=1))
 
         res = FirstTimeApprovalRate().run(ctx)
-        assert res.details["rate"] == 0.0  # inline blocks
+        # Inline comments attached to the approval review_id don't block first-time
+        assert res.details["rate"] == 1.0
+
+    def test_approval_blocked_by_standalone_inline(self):
+        """Standalone inline comment (different review_id) DOES block first-time."""
+        author = make_user(id=1, login="alice")
+        reviewer = make_user(id=2, login="bob")
+        repo = make_repo(id=1, name="repo")
+        start = DEFAULT_START
+        pr = make_pr(1, author, repo, base_time=start, merged_at=start + timedelta(hours=3))
+
+        # Standalone COMMENTED review with inline before the approval
+        review_comment = make_review(5, 1, reviewer, start + timedelta(hours=1), state=ReviewState.COMMENTED)
+        inline = make_comment(100, 1, reviewer, start + timedelta(hours=1), type=CommentType.REVIEW, review_id=5, path="file.py", position=5)
+        review_approved = make_review(10, 1, reviewer, start + timedelta(hours=2), state=ReviewState.APPROVED)
+
+        bundle = make_bundle(
+            users=[author, reviewer],
+            repositories=[repo],
+            pull_requests=[pr],
+            reviews=[review_comment, review_approved],
+            comments=[inline],
+        )
+        ctx = make_context(bundle, user_login="alice", start_date=start, end_date=start + timedelta(days=1))
+
+        res = FirstTimeApprovalRate().run(ctx)
+        assert res.details["rate"] == 0.0  # standalone inline blocks
 
     def test_no_reviews_or_merged(self):
         """No merged PRs/reviews → no_data."""

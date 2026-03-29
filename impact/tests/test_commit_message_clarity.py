@@ -1,7 +1,7 @@
 import pytest
 from datetime import timedelta
 
-from impact.metrics.plugins.authored.commit_message_clarity import ConventionalCommitRate
+from impact.metrics.plugins.authored.conventional_commit_rate import ConventionalCommitRate
 from impact.tests.conftest import (
     DEFAULT_START,
     make_bundle,

@@ -10,11 +10,11 @@ class CodeChurnRate(Metric):
 
     @property
     def name(self) -> str:
-        return "Code Churn Rate"
+        return "Code Churn Spikes"
 
     @property
     def description(self) -> str:
-        return "% lines in PRs modifying own recent code (<=30d; flags output instability)."
+        return "Max weekly % of lines modifying own recent code (<=30d lookback; detects instability spikes vs steady churn)."
 
     @property
     def category(self) -> str:

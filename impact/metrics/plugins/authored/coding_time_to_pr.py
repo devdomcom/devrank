@@ -44,14 +44,21 @@ class CodingTimeToPR(Metric):
         median = percentile(durations_hours, 0.5) if durations_hours else 0.0
         p75 = percentile(durations_hours, 0.75) if durations_hours else 0.0
 
+        period_days = (
+            (context.end_date - context.start_date).total_seconds() / 86400
+            if context.start_date and context.end_date
+            else 0
+        )
         summary = f"{len(filtered_prs)} PRs. Median pre-PR coding: {median:.2f}h, p75: {p75:.2f}h."
         details: dict[str, object] = {
             "pr_count": len(filtered_prs),
             "median_hours": median,
             "p75_hours": p75,
             "per_pr_hours": per_pr,
+            "period_days": round(period_days, 1),
         }
-        if not durations_hours:
+        # Combined period+count guard (AGENTS.md mandate)
+        if not durations_hours or (period_days < 14 and len(durations_hours) < 3):
             details["no_data"] = True
         return MetricResult(
             metric_slug=self.slug,

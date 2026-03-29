@@ -16,7 +16,7 @@ class ReworkRate(Metric):
 
     @property
     def description(self) -> str:
-        return "% changes that rework own code from prior 21 days (DORA-style effort waste)."
+        return "Aggregate % of changed lines that overlap own prior 21d code (cumulative self-rework ratio; complements code_churn_rate spike detector)."
 
     @property
     def category(self) -> str:

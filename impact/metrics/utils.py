@@ -89,7 +89,7 @@ def calculate_coding_time_to_pr_hours(ledger, pr) -> float | None:
     # First commit (sorted by date in ledger)
     first_commit = min(commits, key=lambda c: c.date)
     if first_commit.date >= pr.created_at:
-        return 0.0  # commit at/after open (no pre-PR coding)
+        return None  # commit at/after open -- clock skew, rebase, or force-push
     delta = pr.created_at - first_commit.date
     return delta.total_seconds() / 3600
 
@@ -439,9 +439,17 @@ def is_immediate_approval(ledger: Ledger, pr_number: int, author_login: str) -> 
     for r in non_self[:idx]:
         if is_change_request(r, ledger):
             return False
-    # First approval itself has no inline comments (separate check; approved state ignores is_change_request)
-    if ledger.get_review_comments_for_review(first_approved.id):
-        return False
+    # Group check: inline comments attached to the SAME review ID as the
+    # approval are part of the approval (GitHub's batch-review flow), not a
+    # prior rejection.  Only standalone inline comments before the approval
+    # should count as blocking.
+    approved_review_ids = {r.id for r in non_self if r.state == ReviewState.APPROVED}
+    for r in non_self[:idx]:
+        # Check if this review has standalone inline comments NOT part of an approval
+        if r.state == ReviewState.COMMENTED:
+            comments = ledger.get_review_comments_for_review(r.id)
+            if comments and r.id not in approved_review_ids:
+                return False
     return True
 
 
@@ -920,7 +928,7 @@ def compute_code_churn(
         "churn_per_week": churn_per_week,
         "period_days": period_days,
     }
-    if not prs:
+    if not prs or (period_days < 14 and len(prs) < 3):
         result["no_data"] = True
     return result
 
@@ -1238,9 +1246,18 @@ def compute_rework_rate(ledger, user_login: str, prs: list, window_days: int = 2
     }
 
 
-def compute_self_merge_rate(ledger, user_login: str) -> dict:
-    """% PRs (own+others) merged by author w/o approval; repo rate for culture check."""
+def compute_self_merge_rate(ledger, user_login: str, *, start_date=None, end_date=None) -> dict:
+    """% PRs (own+others) merged by author w/o approval; repo rate for culture check.
+
+    Filters to PRs merged within [start_date, end_date] so the result is
+    period-sensitive (a sprint view and a yearly view return different numbers).
+    """
     all_prs = ledger.bundle.pull_requests
+    # Period filter on merged_at
+    if start_date:
+        all_prs = [p for p in all_prs if p.merged_at and p.merged_at >= start_date]
+    if end_date:
+        all_prs = [p for p in all_prs if p.merged_at and p.merged_at <= end_date]
     # Engineer merges (by user, any PR)
     eng_merged = [
         pr for pr in all_prs
@@ -2105,6 +2122,40 @@ def compute_absolute_churn_trend(
     return result
 
 
+def _parse_hunk_content_hashes(patch: str | None, side: str = "+") -> Counter:
+    """Parse unified diff and return a Counter of content hashes for added/removed lines.
+
+    Unlike _parse_hunk_lines() which tracks line *numbers* (fragile to
+    subsequent insertions/deletions shifting positions), this function hashes
+    the *content* of each changed line.  Two patches that add/remove the same
+    text will produce matching hashes regardless of where the text ends up.
+
+    Args:
+        patch: Unified diff text.
+        side:  "+" to collect added lines, "-" to collect removed lines.
+
+    Returns:
+        Counter mapping ``hash(line.strip())`` -> occurrence count.
+    """
+    if not patch:
+        return Counter()
+    hashes: Counter = Counter()
+    for raw_line in patch.splitlines():
+        if raw_line.startswith("@@") or raw_line.startswith("+++") or raw_line.startswith("---"):
+            continue
+        if raw_line.startswith("\\"):
+            continue  # "\ No newline at end of file"
+        if side == "+" and raw_line.startswith("+"):
+            content = raw_line[1:].strip()
+            if content:  # skip blank lines -- they match everything
+                hashes[hash(content)] += 1
+        elif side == "-" and raw_line.startswith("-"):
+            content = raw_line[1:].strip()
+            if content:
+                hashes[hash(content)] += 1
+    return hashes
+
+
 def compute_code_survival(
     ledger, user_login: str, prs: list, *, start_date=None, end_date=None
 ) -> dict:
@@ -2113,6 +2164,10 @@ def compute_code_survival(
     Identifies how much code contributed by the user in the past remains
     untouched (survives) by subsequent changes (both own and others)
     within the target period.
+
+    Uses **content-fingerprint tracking** instead of line numbers so that
+    subsequent insertions/deletions shifting line positions do not corrupt
+    the survival calculation.
     """
     if not prs:
         return {
@@ -2126,23 +2181,21 @@ def compute_code_survival(
             "no_data": True,
         }
 
-    # 1. Map all line-level contributions by the user (cohorts)
-    # cohort_id -> { filename -> set(line_numbers) }
-    cohorts: dict[int, dict[str, set[int]]] = {}
+    # 1. Build cohorts: PR -> { filename -> Counter[content_hash] }
+    cohorts: dict[int, dict[str, Counter]] = {}
     for pr in prs:
         cohorts[pr.number] = {}
         for f in ledger.get_files_for_pr(pr.number):
             if is_generated_file(f.filename, f.patch):
                 continue
             if f.patch:
-                added = _parse_hunk_lines(f.patch, "+")
-                if added:
-                    cohorts[pr.number][f.filename] = added
+                added_hashes = _parse_hunk_content_hashes(f.patch, "+")
+                if added_hashes:
+                    cohorts[pr.number][f.filename] = added_hashes
 
-    # 2. Track all subsequent changes to those files (to detect churn/death)
-    # We look at ALL PRs in the ledger that happened AFTER each cohort PR
+    # 2. Track subsequent changes -- subtract removed content hashes
     all_prs = sorted(ledger.bundle.pull_requests, key=lambda p: p.created_at or datetime.min)
-    
+
     cohort_survival = []
     total_contributed = 0
     total_survived = 0
@@ -2150,42 +2203,39 @@ def compute_code_survival(
     for pr_num, cohort_files in cohorts.items():
         cohort_pr = next(p for p in prs if p.number == pr_num)
         pr_date = cohort_pr.created_at
-        
-        initial_lines = sum(len(lines) for lines in cohort_files.values())
-        if initial_lines == 0:
-            continue
-            
-        current_lines = {fn: set(lines) for fn, lines in cohort_files.items()}
-        
-        # Find all PRs that happened after this cohort PR
-        subsequent_prs = [p for p in all_prs if p.created_at and p.created_at > pr_date]
-        
-        for sub_pr in subsequent_prs:
-            sub_files = ledger.get_files_for_pr(sub_pr.number)
-            for sf in sub_files:
-                if sf.filename in current_lines:
-                    # If someone modifies (removes or changes) lines in this file
-                    # we need to know WHICH lines were removed.
-                    # _parse_hunk_lines(side='-') gives us lines removed from the OLD file.
-                    if sf.patch:
-                        removed = _parse_hunk_lines(sf.patch, "-")
-                        current_lines[sf.filename] -= removed
 
-        survived_count = sum(len(lines) for lines in current_lines.values())
-        total_contributed += initial_lines
+        initial_count = sum(c.total() for c in cohort_files.values())
+        if initial_count == 0:
+            continue
+
+        # Deep-copy counters so subtraction is isolated per cohort
+        current = {fn: Counter(cnts) for fn, cnts in cohort_files.items()}
+
+        subsequent_prs = [p for p in all_prs if p.created_at and p.created_at > pr_date]
+
+        for sub_pr in subsequent_prs:
+            for sf in ledger.get_files_for_pr(sub_pr.number):
+                if sf.filename in current and sf.patch:
+                    removed_hashes = _parse_hunk_content_hashes(sf.patch, "-")
+                    current[sf.filename].subtract(removed_hashes)
+                    # Clamp negatives to zero (a hash can't survive less than 0 times)
+                    current[sf.filename] = +current[sf.filename]
+
+        survived_count = sum(c.total() for c in current.values())
+        total_contributed += initial_count
         total_survived += survived_count
-        
-        survival_rate = (survived_count / initial_lines * 100) if initial_lines else 0.0
+
+        survival_rate = (survived_count / initial_count * 100) if initial_count else 0.0
         cohort_survival.append({
             "pr_number": pr_num,
             "date": pr_date.date().isoformat() if pr_date else None,
-            "initial_lines": initial_lines,
+            "initial_lines": initial_count,
             "survived_lines": survived_count,
             "survival_rate": round(survival_rate, 1),
         })
 
     overall_rate = (total_survived / total_contributed * 100) if total_contributed else 0.0
-    
+
     if start_date and end_date:
         period_days = (end_date - start_date).total_seconds() / 86400
     elif prs:

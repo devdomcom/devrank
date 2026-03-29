@@ -28,7 +28,7 @@ from impact.metrics.plugins.authored.test_file_ratio import TestFileRatio
 from impact.metrics.plugins.authored.trivial_contribution_rate import TrivialContributionRate
 from impact.metrics.plugins.authored.pr_body_quality import PRBodyQualityScore
 from impact.metrics.plugins.authored.dependency_change_rate import DependencyChangeRate
-from impact.metrics.plugins.authored.commit_message_clarity import ConventionalCommitRate
+from impact.metrics.plugins.authored.conventional_commit_rate import ConventionalCommitRate
 from impact.metrics.plugins.authored.code_churn_rate import CodeChurnRate
 from impact.metrics.plugins.authored.rework_rate import ReworkRate
 from impact.metrics.plugins.authored.self_merge_rate import SelfMergeRate
@@ -48,6 +48,9 @@ from impact.metrics.plugins.authored.sum_of_coupling import SumOfCoupling
 from impact.metrics.plugins.authored.absolute_churn_trend import AbsoluteChurnTrend
 from impact.metrics.plugins.authored.commit_message_mining import CommitMessageMining
 from impact.metrics.plugins.authored.code_survival import CodeSurvival
+from impact.metrics.plugins.authored.wip_load import WIPLoad
+from impact.metrics.plugins.authored.flow_efficiency import FlowEfficiency
+from impact.metrics.plugins.authored.time_to_restore import TimeToRestore
 from impact.metrics.plugins.influence.approval_to_merge_ratio import ApprovalToMergeRatio
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
@@ -148,4 +151,7 @@ def get_metrics():
         "absolute_churn_trend": AbsoluteChurnTrend,
         "commit_message_mining": CommitMessageMining,
         "code_survival": CodeSurvival,
+        "wip_load": WIPLoad,
+        "flow_efficiency": FlowEfficiency,
+        "time_to_restore": TimeToRestore,
     }
