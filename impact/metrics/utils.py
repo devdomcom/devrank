@@ -9,6 +9,42 @@ from impact.domain.models import MetricContext, ReviewState, UserType
 from impact.ledger.ledger import Ledger
 
 
+def is_bot_user(user) -> bool:
+    """Reliable bot detection using multiple GitHub API signals.
+
+    Three-layer defense-in-depth:
+      1. user.type == UserType.BOT  (GitHub API; most reliable single check)
+      2. login ends with ``[bot]``  (GitHub Apps naming convention)
+      3. node_id starts with ``BOT_`` (GitHub GraphQL global-ID prefix)
+
+    Layer 1 alone catches every bot in our sample data.  Layers 2-3 are
+    fallbacks for edge cases such as a missing ``type`` field (the adapter
+    defaults to ``UserType.USER`` when the field is absent).
+
+    The critical case this handles: GitHub Copilot's inline-comment identity
+    is ``Copilot`` (type=Bot, **no** ``[bot]`` suffix).  A suffix-only check
+    would count its 97 inline comments as human review activity.
+    """
+    # Layer 1: GitHub API user.type (covers all bots in current data)
+    if getattr(user, "type", None) == UserType.BOT:
+        return True
+    user_type_raw = getattr(user, "type", None)
+    if isinstance(user_type_raw, str) and user_type_raw == "Bot":
+        return True
+
+    # Layer 2: [bot] suffix (GitHub Apps naming convention)
+    login = getattr(user, "login", "") or ""
+    if login.endswith("[bot]"):
+        return True
+
+    # Layer 3: node_id prefix (GitHub GraphQL global-ID scheme)
+    node_id = getattr(user, "node_id", "") or ""
+    if node_id.startswith("BOT_"):
+        return True
+
+    return False
+
+
 class Interaction(TypedDict):
     actor: str
     kind: str  # review|comment_issue|comment_review|timeline
@@ -82,7 +118,7 @@ def collect_pr_interactions(
 
     # Reviews
     for rev in context.ledger.get_reviews_for_pr(pr_number):
-        if rev.user.login == author or rev.user.type == "Bot":
+        if rev.user.login == author or is_bot_user(rev.user):
             continue
         if cutoff_time and rev.submitted_at >= cutoff_time:
             continue
@@ -92,7 +128,7 @@ def collect_pr_interactions(
 
     # Comments (issue + review)
     for c in context.ledger.get_comments_for_pr(pr_number):
-        if c.user.login == author or c.user.type == "Bot":
+        if c.user.login == author or is_bot_user(c.user):
             continue
         ts = c.created_at
         if cutoff_time and ts >= cutoff_time:
@@ -103,7 +139,7 @@ def collect_pr_interactions(
     # Timeline fallbacks (covers events not already represented)
     seen_ts_ids = {(i["actor"], i["created_at"]) for i in interactions}
     for evt in context.ledger.get_timeline_for_pr(pr_number):
-        if evt.actor.login == author or evt.actor.type == "Bot":
+        if evt.actor.login == author or is_bot_user(evt.actor):
             continue
         if cutoff_time and evt.created_at >= cutoff_time:
             continue
@@ -389,7 +425,7 @@ def is_immediate_approval(ledger: Ledger, pr_number: int, author_login: str) -> 
     reviews = ledger.get_reviews_for_pr(pr_number)
     non_self = [
         r for r in reviews
-        if r.user.login != author_login and getattr(r.user, "type", UserType.USER) != UserType.BOT
+        if r.user.login != author_login and not is_bot_user(r.user)
     ]
     if not non_self:
         return False

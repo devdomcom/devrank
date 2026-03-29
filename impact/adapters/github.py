@@ -141,6 +141,7 @@ class GitHubAdapter(ProviderAdapter):
         def ensure_user(user_dict: dict) -> User:
             """
             Normalize missing type and cache users.
+            Preserves node_id for bot detection (BOT_ prefix).
             """
             if not user_dict:
                 raise ValueError("Missing user")
@@ -149,7 +150,13 @@ class GitHubAdapter(ProviderAdapter):
             normalized = {**user_dict, "type": utype}
             uid = normalized["id"]
             if uid not in users:
-                users[uid] = User(**normalized)
+                users[uid] = User(
+                    id=uid,
+                    login=normalized["login"],
+                    avatar_url=normalized.get("avatar_url"),
+                    type=utype,
+                    node_id=normalized.get("node_id"),
+                )
             return users[uid]
 
         # ---------------------------

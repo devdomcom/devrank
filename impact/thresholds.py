@@ -527,6 +527,13 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x > 2.0,  # AI needs significantly more rework
         "scores": [(0, 100), (0.8, 75), (1.2, 50), (2.0, 25), (4.0, 0)],
     },
+    # AI Phantom Ownership: descriptive/contextual — risk signal, not quality outcome.
+    # Whether unreviewed AI code is "bad" depends on team size, CI maturity,
+    # and code criticality.  Data is fully available for teams to interpret.
+    "ai_phantom_ownership": {
+        "key": "phantom_rate",
+        "no_rating": True,  # descriptive only — team-culture dependent risk signal
+    },
     # AI Suggestion Acceptance: % of AI suggestions accepted (higher = better)
     "ai_suggestion_acceptance": {
         "key": "acceptance_rate",

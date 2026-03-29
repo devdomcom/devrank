@@ -82,6 +82,7 @@ HIDDEN_KEYS = frozenset({
     "per_day",
     "defect_commit_samples",
     "per_cohort",
+    "phantom_files",
 })
 
 # ---------------------------------------------------------------------------
@@ -96,6 +97,16 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
             ("ai_pr_count", "AI PRs", "count"),
             ("human_pr_count", "Human PRs", "count"),
             ("total_pr_count", "Total", "count"),
+        ],
+    },
+    "ai_phantom_ownership": {
+        "name": "AI Phantom Ownership",
+        "stats": [
+            ("phantom_rate", "Phantom Rate", "pct"),
+            ("phantom_file_count", "Phantom Files", "count"),
+            ("total_ai_files", "AI-Touched Files", "count"),
+            ("ai_pr_count", "AI PRs", "count"),
+            ("phantom_line_rate", "Phantom Line Rate", "pct"),
         ],
     },
     # ---- Code Quality & Risk ----

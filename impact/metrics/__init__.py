@@ -2,6 +2,7 @@
 from impact.metrics.plugins.authored.active_weeks import ActiveWeeks
 from impact.metrics.plugins.authored.ai_adoption_rate import AIAdoptionRate
 from impact.metrics.plugins.authored.ai_assisted_pr_rate import AIAssistedPRRate
+from impact.metrics.plugins.authored.ai_phantom_ownership import AIPhantomOwnership
 from impact.metrics.plugins.authored.ai_code_quality import AICodeQuality
 from impact.metrics.plugins.authored.ai_suggestion_acceptance import AISuggestionAcceptance
 from impact.metrics.plugins.authored.bug_fix_focus_rate import BugFixFocusRate
@@ -87,6 +88,7 @@ def get_metrics():
     return {
         "ai_adoption_rate": AIAdoptionRate,
         "ai_assisted_pr_rate": AIAssistedPRRate,
+        "ai_phantom_ownership": AIPhantomOwnership,
         "ai_code_quality": AICodeQuality,
         "ai_suggestion_acceptance": AISuggestionAcceptance,
         "bus_factor": BusFactor,

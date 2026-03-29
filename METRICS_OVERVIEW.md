@@ -1,12 +1,12 @@
 # DevRank Metrics Overview
 
-**57 implemented | 66 planned | 123 total**
+**58 implemented | 65 planned | 123 total**
 
 ---
 
-## Implemented Metrics (57)
+## Implemented Metrics (58)
 
-### Authored (42)
+### Authored (43)
 
 | # | Metric | Description | Framework |
 |---|--------|-------------|-----------|
@@ -52,6 +52,7 @@
 | 40 | Code Survival | % of a developer's contributed lines still alive over time | CodeScene |
 | 41 | Time to First Review | Median time from PR creation to initial reviewer feedback | Lean |
 | 42 | Slow Review Response | Median author response time to changes-requested reviews | Lean |
+| 43 | AI Phantom Ownership | Code primarily touched by AI with low human review depth (descriptive) | DevRank |
 
 ### Influence (14)
 
@@ -118,7 +119,7 @@ In the AI-assisted development era, metric priorities shift significantly from t
 |---|--------|-------------|----------|-----------|--------|
 | 5 | Bus Factor | Min developers who could leave before code is unmaintainable | P0 | CodeScene | **Implemented** |
 | 6 | Knowledge Islands | Files/modules where 95%+ written by one person | P0 | CodeScene | Planned |
-| 7 | AI Phantom Ownership | Code primarily touched by AI with low human review depth | P0 | DevRank | Planned |
+| 7 | AI Phantom Ownership | Code primarily touched by AI with low human review depth | P0 | DevRank | **Implemented** |
 | 8 | Knowledge Loss | Code where 50%+ written by departed/inactive contributors | P1 | CodeScene | Planned |
 | 9 | Knowledge Sharing Index | How evenly reviews distribute across team (0-1) | P1 | Network | Planned |
 | 10 | Code Familiarity | % of codebase known by current active team | P1 | CodeScene | Planned |
@@ -257,7 +258,7 @@ Metrics are tagged with their originating or primary framework(s):
 | Lean | 12 | 19 | 31 | 24% |
 | Traditional | 2 | 8 | 10 | 8% |
 | Network | 3 | 11 | 14 | 11% |
-| DevRank | 28 | 22 | 50 | 39% |
+| DevRank | 29 | 21 | 50 | 39% |
 
 > **Note:** Metrics can belong to multiple frameworks (e.g., Cycle Time is DORA + SPACE + Lean). Totals exceed 130 due to multi-tagging.
 > **New in AI Era:** Added "AI Phantom Ownership" metric to track code primarily touched by AI with low human review depth.

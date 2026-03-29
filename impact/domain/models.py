@@ -32,6 +32,7 @@ class User(BaseModel):
     login: str
     avatar_url: str | None = None
     type: UserType = UserType.USER
+    node_id: str | None = None
 
 
 class Repository(BaseModel):
