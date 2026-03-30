@@ -550,7 +550,10 @@ def _detect_style_uniformity(pr, ledger) -> tuple[bool, dict | None]:
             content = "\n".join(added_lines)
             # Need to parse as complete file; skip if not parseable
             # For patch-only analysis, try to parse but may fail
-            if not any(filename.endswith(ext) for ext in (".py", ".js", ".ts", ".go", ".rs", ".java")):
+            if not any(filename.endswith(ext) for ext in (
+                    ".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java",
+                    ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".cs",
+                    ".rb", ".php", ".kt", ".kts", ".swift", ".scala")):
                 continue
 
         if not content or len(content) < 100:

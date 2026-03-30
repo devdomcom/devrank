@@ -56,12 +56,12 @@ from impact.tests.conftest import (
 # ---------------------------------------------------------------------------
 
 def _bot_user(login: str = "copilot-reviewer[bot]", node_id: str = "BOT_abc123") -> User:
-    return User(id=900, login=login, type=UserType.BOT, node_id=node_id)
+    return User(id=900, login=login, type=UserType.BOT, node_id=node_id, is_bot=True)
 
 
 def _copilot_user() -> User:
     """Copilot inline commenter: type=Bot but NO [bot] suffix."""
-    return User(id=901, login="Copilot", type=UserType.BOT, node_id="BOT_kgDOCnlnWA")
+    return User(id=901, login="Copilot", type=UserType.BOT, node_id="BOT_kgDOCnlnWA", is_bot=True)
 
 
 def _human_reviewer(login: str = "reviewer1", uid: int = 200) -> User:
@@ -100,42 +100,45 @@ def _make_inline_comment(
 # ===========================================================================
 
 class TestIsBotUser:
-    def test_type_bot_enum(self):
-        u = User(id=1, login="somebot", type=UserType.BOT)
+    """Test canonical ``is_bot`` flag read by ``is_bot_user()``.
+
+    The three-layer GitHub-specific detection logic (type/suffix/node_id)
+    now lives in ``GitHubAdapter._is_github_bot()`` which sets the
+    canonical ``is_bot`` field.  ``is_bot_user()`` simply reads it (§7.1).
+    """
+
+    def test_bot_flag_true(self):
+        """Canonical is_bot=True → detected as bot."""
+        u = User(id=1, login="somebot", type=UserType.BOT, is_bot=True)
         assert is_bot_user(u) is True
 
-    def test_type_bot_string(self):
-        """Covers the raw-string fallback path."""
-        class FakeUser:
-            type = "Bot"
-            login = "mybot"
-            node_id = ""
-        assert is_bot_user(FakeUser()) is True
-
-    def test_suffix_bot(self):
-        u = User(id=2, login="dependabot[bot]", type=UserType.USER)
-        assert is_bot_user(u) is True
-
-    def test_node_id_prefix(self):
-        u = User(id=3, login="mystery", type=UserType.USER, node_id="BOT_xyz")
-        assert is_bot_user(u) is True
-
-    def test_human_user(self):
-        u = User(id=4, login="alice", type=UserType.USER, node_id="U_kgDOabc")
+    def test_bot_flag_false(self):
+        """Canonical is_bot=False → not a bot."""
+        u = User(id=2, login="alice", type=UserType.USER, is_bot=False)
         assert is_bot_user(u) is False
 
+    def test_default_flag_is_false(self):
+        """is_bot defaults to False (backward-compatible for old data)."""
+        u = User(id=3, login="alice", type=UserType.USER)
+        assert is_bot_user(u) is False
+
+    def test_suffix_bot_with_flag(self):
+        """Bot with [bot] suffix — adapter sets is_bot=True."""
+        u = User(id=4, login="dependabot[bot]", type=UserType.USER, is_bot=True)
+        assert is_bot_user(u) is True
+
     def test_copilot_no_suffix(self):
-        """Critical edge case: Copilot inline commenter has no [bot] suffix."""
+        """Copilot: type=Bot, no [bot] suffix — adapter sets is_bot=True."""
         u = _copilot_user()
         assert is_bot_user(u) is True
 
     def test_human_with_bot_substring(self):
-        """gabotorresruiz contains 'bot' but is a human user."""
+        """gabotorresruiz contains 'bot' but is_bot=False."""
         u = User(id=5, login="gabotorresruiz", type=UserType.USER)
         assert is_bot_user(u) is False
 
     def test_none_attributes(self):
-        """Gracefully handles None/missing attributes."""
+        """Gracefully handles objects missing the is_bot attribute."""
         class Bare:
             pass
         assert is_bot_user(Bare()) is False

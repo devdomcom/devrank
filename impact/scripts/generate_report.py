@@ -103,7 +103,7 @@ def main():
     parser.add_argument("--fetch-repos", help="Comma-separated repos to fetch (owner/repo)")
     parser.add_argument(
         "--fetch-token",
-        help="GitHub token; defaults to GITHUB_TOKEN/DEVRANK_GITHUB_TOKEN env",
+        help="API token (e.g., GitHub PAT); defaults to GITHUB_TOKEN/DEVRANK_GITHUB_TOKEN env",
     )
     parser.add_argument(
         "--fetch-from", dest="fetch_from", help="ISO start date (default: 365 days ago)"
@@ -140,6 +140,16 @@ def main():
         "--export",
         help="Export mode (e.g. candidate.pdf to generate PDF report; format determines template).",
     )
+    parser.add_argument(
+        "--locale",
+        default="en",
+        help="Locale code for PDF report strings (e.g. en, de). Default: en.",
+    )
+    parser.add_argument(
+        "--page-size",
+        default="letter",
+        help="PDF page size: 'letter' (US, default) or 'a4' (international).",
+    )
 
     args = parser.parse_args()
 
@@ -172,7 +182,7 @@ def main():
         token = args.fetch_token or config.settings.github_token
         if not token:
             raise SystemExit(
-                "fetch requested but no GitHub token provided "
+                "fetch requested but no API token provided "
                 "(--fetch-token or GITHUB_TOKEN/DEVRANK_GITHUB_TOKEN)"
             )
         repos = [r.strip() for r in args.fetch_repos.split(",") if r.strip()]
@@ -336,6 +346,8 @@ def main():
         period_str = f"{start_date.date()} to {end_date.date()}" if start_date and end_date else "N/A"
         generate_candidate_pdf(
             metrics_results, user_login or "Candidate", period_str, args.export, repositories,
+            locale=getattr(args, "locale", "en"),
+            page_size=getattr(args, "page_size", "letter"),
         )
 
     if args.out:

@@ -1,0 +1,43 @@
+# English locale for PDF / CLI report strings.
+# Copy this file and translate values to add a new locale.
+# The report generator loads the locale via --locale (default: en).
+
+report_title: "Engineering Impact Report"
+
+# Rating labels (long form — used in PDF metric cards)
+rating_excellent: "Excellent"
+rating_good: "Good"
+rating_neutral: "Neutral"
+rating_bad: "Needs Work"
+rating_descriptive: "Informational"
+rating_unknown: "Unknown"
+rating_insufficient_data: "Insufficient Data"
+
+# Rating labels (short form — used in compact contexts)
+rating_excellent_short: "Excellent"
+rating_good_short: "Good"
+rating_neutral_short: "Neutral"
+rating_bad_short: "Needs Work"
+rating_descriptive_short: "Info"
+rating_unknown_short: "Unknown"
+rating_insufficient_data_short: "No Data"
+
+# Executive summary
+top_metrics: "Top Metrics"
+low_metrics: "Low Metrics"
+none_in_period: "None in this period"
+overall_score: "Overall Score ({count} groups)"
+
+# Metric card
+bool_yes: "Yes"
+bool_no: "No"
+
+# Category count
+metric_count: "{count} metric"
+metric_count_plural: "{count} metrics"
+
+# Footer
+footer: "Generated {date}  |  Page {page}"
+
+# Header (page 2+)
+header_text: "Engineering Impact Report"

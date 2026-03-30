@@ -4,15 +4,21 @@ Produces a polished, boardroom-ready document with:
 - Executive summary page (overall score, rating distribution, strengths/growth)
 - Category sections with color-coded metric cards
 - Properly formatted values (percentages, hours, counts, clickable PR links)
+
+All user-facing strings are loaded from a locale YAML file
+(``impact/templates/locales/<locale>.yaml``).  Pass ``locale="de"`` (or
+``--locale de`` on the CLI) to generate reports in other languages.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
+import yaml
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
@@ -26,6 +32,46 @@ from reportlab.platypus import (
 )
 
 from impact.config.categories import UNSCORED_CATEGORIES, compute_group_scores, get_category_name, get_category_order
+
+# ---------------------------------------------------------------------------
+# Page size lookup
+# ---------------------------------------------------------------------------
+PAGE_SIZES: dict[str, tuple[float, float]] = {
+    "letter": letter,
+    "a4": A4,
+}
+
+# ---------------------------------------------------------------------------
+# Locale loading
+# ---------------------------------------------------------------------------
+_LOCALES_DIR = Path(__file__).resolve().parent / "locales"
+
+
+def _load_locale(locale: str = "en") -> dict[str, str]:
+    """Load locale strings from ``locales/<locale>.yaml``.
+
+    Falls back to English if the requested locale file is missing.
+    Returns a flat ``{key: string}`` dict.
+    """
+    path = _LOCALES_DIR / f"{locale}.yaml"
+    if not path.exists():
+        path = _LOCALES_DIR / "en.yaml"
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+        return {k: str(v) for k, v in data.items()}
+    except (OSError, yaml.YAMLError):
+        # Ultimate fallback: return empty dict; callers use English defaults.
+        return {}
+
+
+def _t(strings: dict[str, str], key: str, default: str, **kwargs: object) -> str:
+    """Translate helper: look up *key* in *strings*, format with *kwargs*."""
+    template = strings.get(key, default)
+    try:
+        return template.format(**kwargs) if kwargs else template
+    except (KeyError, IndexError):
+        return default
 
 # ---------------------------------------------------------------------------
 # Color palette
@@ -625,29 +671,20 @@ def _fmt_value(v: Any, fmt: str) -> str:
     return FORMATTERS.get(fmt, str)(v)
 
 
-def _rating_label(rating: str, short: bool = False) -> str:
-    """Human-readable rating label. Use short=True for compact contexts."""
-    if short:
-        labels = {
-            "excellent": "Excellent",
-            "good": "Good",
-            "neutral": "Neutral",
-            "bad": "Needs Work",
-            "descriptive": "Info",
-            "unknown": "Unknown",
-            "INSUFFICIENT_DATA": "No Data",
-        }
-    else:
-        labels = {
-            "excellent": "Excellent",
-            "good": "Good",
-            "neutral": "Neutral",
-            "bad": "Needs Work",
-            "descriptive": "Informational",
-            "unknown": "Unknown",
-            "INSUFFICIENT_DATA": "Insufficient Data",
-        }
-    return labels.get(rating, rating)
+def _rating_label(rating: str, short: bool = False, strings: dict[str, str] | None = None) -> str:
+    """Human-readable rating label.  Uses locale *strings* when provided."""
+    s = strings or {}
+    suffix = "_short" if short else ""
+    mapping = {
+        "excellent": _t(s, f"rating_excellent{suffix}", "Excellent" if not short else "Excellent"),
+        "good": _t(s, f"rating_good{suffix}", "Good"),
+        "neutral": _t(s, f"rating_neutral{suffix}", "Neutral"),
+        "bad": _t(s, f"rating_bad{suffix}", "Needs Work"),
+        "descriptive": _t(s, f"rating_descriptive{suffix}", "Informational" if not short else "Info"),
+        "unknown": _t(s, f"rating_unknown{suffix}", "Unknown"),
+        "INSUFFICIENT_DATA": _t(s, f"rating_insufficient_data{suffix}", "Insufficient Data" if not short else "No Data"),
+    }
+    return mapping.get(rating, rating)
 
 
 # ---------------------------------------------------------------------------
@@ -967,14 +1004,15 @@ def _build_metric_card(
     return [card]
 
 
-def _auto_format(v: Any) -> str:
+def _auto_format(v: Any, strings: dict[str, str] | None = None) -> str:
     """Best-effort formatting for unknown values."""
     if isinstance(v, float):
         if 0 <= v <= 1:
             return f"{v * 100:.1f}%"
         return f"{v:.1f}"
     if isinstance(v, bool):
-        return "Yes" if v else "No"
+        s = strings or {}
+        return _t(s, "bool_yes", "Yes") if v else _t(s, "bool_no", "No")
     return str(v)
 
 
@@ -1005,12 +1043,14 @@ def _build_executive_summary(
     period_str: str,
     styles: dict,
     page_width: float,
+    strings: dict[str, str] | None = None,
 ) -> list:
     """Build the first-page executive summary."""
+    s = strings or {}
     elements: list = []
 
     # Title
-    elements.append(Paragraph("Engineering Impact Report", styles["title"]))
+    elements.append(Paragraph(_t(s, "report_title", "Engineering Impact Report"), styles["title"]))
     elements.append(Paragraph(
         f'{user_login}  |  {period_str}',
         styles["subtitle"],
@@ -1031,7 +1071,7 @@ def _build_executive_summary(
             styles["score_big"],
         ))
         elements.append(Paragraph(
-            f"Overall Score ({len(group_scores)} groups)",
+            _t(s, "overall_score", "Overall Score ({count} groups)", count=len(group_scores)),
             styles["score_label"],
         ))
 
@@ -1169,8 +1209,9 @@ def _build_executive_summary(
         )
         rows.append([title_p])
         if not items:
+            none_text = _t(s, "none_in_period", "None in this period")
             rows.append([Paragraph(
-                '<font color="#9CA3AF">None in this period</font>',
+                f'<font color="#9CA3AF">{none_text}</font>',
                 styles["strength_detail"],
             )])
         for m in items:
@@ -1191,8 +1232,12 @@ def _build_executive_summary(
         ]))
         return t
 
-    strengths_t = _highlight_list("Top Metrics", strengths, RATING_COLORS["excellent"])
-    growth_t = _highlight_list("Low Metrics", growth, RATING_COLORS["bad"])
+    strengths_t = _highlight_list(
+        _t(s, "top_metrics", "Top Metrics"), strengths, RATING_COLORS["excellent"],
+    )
+    growth_t = _highlight_list(
+        _t(s, "low_metrics", "Low Metrics"), growth, RATING_COLORS["bad"],
+    )
 
     highlights = Table(
         [[strengths_t, growth_t]],
@@ -1234,7 +1279,9 @@ def _build_category_section(
     metrics: list[dict],
     styles: dict,
     page_width: float,
+    strings: dict[str, str] | None = None,
 ) -> list:
+    s = strings or {}
     elements: list = []
     if not metrics:
         return elements
@@ -1242,7 +1289,8 @@ def _build_category_section(
     # Section header with colored left border
     display_name = get_category_name(category) if category else category
     header_p = Paragraph(display_name, styles["section"])
-    count_text = f"{len(metrics)} metric{'s' if len(metrics) != 1 else ''}"
+    count_key = "metric_count_plural" if len(metrics) != 1 else "metric_count"
+    count_text = _t(s, count_key, f"{len(metrics)} metric{'s' if len(metrics) != 1 else ''}", count=len(metrics))
     count_p = Paragraph(
         f'<font color="{LIGHT_TEXT.hexval()}" size="9">{count_text}</font>',
         ParagraphStyle("CatCount", fontSize=9, alignment=TA_RIGHT),
@@ -1274,24 +1322,33 @@ def _build_category_section(
 # Page header/footer
 # ---------------------------------------------------------------------------
 
-def _header_footer(canvas, doc):
-    """Draw header and footer on every page."""
-    canvas.saveState()
-    w, h = letter
-    # Footer
-    canvas.setFont("Helvetica", 8)
-    canvas.setFillColor(LIGHT_TEXT)
-    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    canvas.drawCentredString(w / 2, 0.4 * inch, f"Generated {now_str}  |  Page {doc.page}")
-    # Header line (subtle)
-    if doc.page > 1:
-        canvas.setStrokeColor(BORDER)
-        canvas.setLineWidth(0.5)
-        canvas.line(0.75 * inch, h - 0.5 * inch, w - 0.75 * inch, h - 0.5 * inch)
+def _make_header_footer(pagesize: tuple[float, float], strings: dict[str, str] | None = None):
+    """Return a header/footer callback bound to *pagesize* and *strings*."""
+    s = strings or {}
+
+    def _header_footer(canvas, doc):
+        canvas.saveState()
+        w, h = pagesize
+        # Footer
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(LIGHT_TEXT)
-        canvas.drawString(0.75 * inch, h - 0.45 * inch, "Engineering Impact Report")
-    canvas.restoreState()
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        footer_text = _t(s, "footer", "Generated {date}  |  Page {page}", date=now_str, page=doc.page)
+        canvas.drawCentredString(w / 2, 0.4 * inch, footer_text)
+        # Header line (subtle)
+        if doc.page > 1:
+            canvas.setStrokeColor(BORDER)
+            canvas.setLineWidth(0.5)
+            canvas.line(0.75 * inch, h - 0.5 * inch, w - 0.75 * inch, h - 0.5 * inch)
+            canvas.setFont("Helvetica", 8)
+            canvas.setFillColor(LIGHT_TEXT)
+            canvas.drawString(
+                0.75 * inch, h - 0.45 * inch,
+                _t(s, "header_text", "Engineering Impact Report"),
+            )
+        canvas.restoreState()
+
+    return _header_footer
 
 
 # ---------------------------------------------------------------------------
@@ -1304,17 +1361,31 @@ def generate_candidate_pdf(
     period_str: str,
     output_path: str = "candidate_report.pdf",
     repositories: list[str] | None = None,
+    locale: str = "en",
+    page_size: str = "letter",
 ) -> None:
-    """Generate a modern executive PDF report."""
+    """Generate a modern executive PDF report.
+
+    Parameters
+    ----------
+    locale : str
+        Locale code (e.g. ``"en"``, ``"de"``).  Loads strings from
+        ``impact/templates/locales/<locale>.yaml``.
+    page_size : str
+        Page size name: ``"letter"`` (US, default) or ``"a4"`` (international).
+    """
+    strings = _load_locale(locale)
+    pagesize = PAGE_SIZES.get(page_size.lower(), letter)
+
     doc = SimpleDocTemplate(
         output_path,
-        pagesize=letter,
+        pagesize=pagesize,
         leftMargin=0.85 * inch,
         rightMargin=0.85 * inch,
         topMargin=0.85 * inch,
         bottomMargin=0.75 * inch,
     )
-    page_width = letter[0] - 1.7 * inch  # usable width
+    page_width = pagesize[0] - 1.7 * inch  # usable width
     styles = _build_styles()
 
     elements: list = []
@@ -1322,6 +1393,7 @@ def generate_candidate_pdf(
     # Page 1: Executive summary
     elements.extend(_build_executive_summary(
         metrics_results, user_login, period_str, styles, page_width,
+        strings=strings,
     ))
 
     # Pages 2+: Category sections
@@ -1330,8 +1402,11 @@ def generate_candidate_pdf(
         cat_metrics = groups.get(category_slug, [])
         if not cat_metrics:
             continue
-        elements.extend(_build_category_section(category_slug, cat_metrics, styles, page_width))
+        elements.extend(_build_category_section(
+            category_slug, cat_metrics, styles, page_width, strings=strings,
+        ))
 
     # Build PDF
-    doc.build(elements, onFirstPage=_header_footer, onLaterPages=_header_footer)
+    hf = _make_header_footer(pagesize, strings)
+    doc.build(elements, onFirstPage=hf, onLaterPages=hf)
     print(f"PDF exported to {output_path}")

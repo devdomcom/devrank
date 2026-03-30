@@ -163,12 +163,14 @@ class TestAISuggestionAcceptanceMetric:
 
         ledger.get_prs_for_user.return_value = [pr]
 
-        # Create AI bot comment with suggestion
+        # Create AI bot comment with suggestion (has_code_suggestion set by adapter)
         comment = MagicMock()
         comment.id = 1
         comment.user.login = "Copilot"
+        comment.user.is_bot = True
         comment.body = "Suggestion:\n```suggestion\nx = 1\n```"
         comment.path = "file.py"
+        comment.has_code_suggestion = True
         comment.created_at = datetime(2024, 1, 10, tzinfo=timezone.utc)
         ledger.get_comments_for_pr.return_value = [comment]
 
@@ -199,8 +201,10 @@ class TestAISuggestionAcceptanceMetric:
         comment = MagicMock()
         comment.id = 1
         comment.user.login = "bito-code-review[bot]"
+        comment.user.is_bot = True
         comment.body = "```suggestion\ncompletely different code\n```"
         comment.path = "file.py"
+        comment.has_code_suggestion = True
         comment.created_at = datetime(2024, 1, 10, tzinfo=timezone.utc)
         ledger.get_comments_for_pr.return_value = [comment]
 
@@ -237,8 +241,10 @@ class TestAISuggestionAcceptanceMetric:
             c = MagicMock()
             c.id = i
             c.user.login = bot
+            c.user.is_bot = True
             c.body = f"```suggestion\n{code}\n```"
             c.path = "file.py"
+            c.has_code_suggestion = True
             c.created_at = datetime(2024, 1, 10, tzinfo=timezone.utc)
             comments.append(c)
 

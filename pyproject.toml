@@ -32,6 +32,15 @@ dependencies = [
     "tree-sitter-go>=0.23",
     "tree-sitter-rust>=0.23",
     "tree-sitter-java>=0.23",
+    # Phase 3 expansion (TODO §3.1): additional language grammars
+    "tree-sitter-c>=0.21",
+    "tree-sitter-cpp>=0.21",
+    "tree-sitter-c-sharp>=0.21",
+    "tree-sitter-ruby>=0.21",
+    "tree-sitter-php>=0.22",
+    "tree-sitter-kotlin>=0.21",
+    "tree-sitter-swift>=0.0.1",
+    "tree-sitter-scala>=0.21",
     "pydantic-settings>=2.5.0",
 ]
 

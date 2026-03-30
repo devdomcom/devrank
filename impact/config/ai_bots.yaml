@@ -1,27 +1,53 @@
-# Known AI code review bot logins (GitHub user.login values).
+# Known AI code review bot logins.
 # Update this list without code changes when new bots appear.
 #
-# Detection method: review comments with ```suggestion blocks from these logins
-# are treated as AI suggestions. Additionally, any login ending with [bot] is
-# treated as a bot regardless of this list.
+# Structure:
+#   common        – Logins checked on ALL providers (cross-provider names).
+#   <provider>    – Provider-specific logins (only checked for that provider).
+#     logins      – Explicit login list.
+#     suffix_patterns – Login suffixes that indicate bot accounts.
+#
+# Detection method: review comments with code suggestions from these logins
+# are treated as AI suggestions. The canonical User.is_bot flag (set by
+# each provider adapter) provides broad bot detection; this config adds
+# AI-specific identification on top.
 #
 # Known limitations:
 #   - False positives: PR titles mentioning "copilot" (e.g. "Fix copilot page")
 #     do NOT affect this list (it only matches review comment authors).
 #   - False negatives: Local AI tools (Cursor, Cody) that don't leave
-#     review comments cannot be detected from GitHub API data.
-#   - The [bot] suffix catch-all may match non-AI bots (e.g. dependabot).
+#     review comments cannot be detected from API data.
 
 ai_review_bots:
-  - copilot
-  - copilot-pull-request-reviewer[bot]
-  - codeant-ai-for-open-source[bot]
-  - bito-code-review[bot]
-  - korbit-ai[bot]
-  - codewhisperer[bot]
-  - tabnine[bot]
-  - sourcery-ai[bot]
-  - codium-ai[bot]
+  # Cross-provider logins (checked regardless of provider)
+  common:
+    - copilot
 
-# Logins checked case-insensitively. The [bot] suffix rule also applies
-# to any login not in this list.
+  # GitHub-specific bot logins and patterns
+  github:
+    logins:
+      - copilot-pull-request-reviewer[bot]
+      - codeant-ai-for-open-source[bot]
+      - bito-code-review[bot]
+      - korbit-ai[bot]
+      - codewhisperer[bot]
+      - tabnine[bot]
+      - sourcery-ai[bot]
+      - codium-ai[bot]
+    suffix_patterns:
+      - "[bot]"
+
+  # GitLab-specific bot logins and patterns
+  gitlab:
+    logins:
+      - gitlab-bot
+    suffix_patterns:
+      - "_bot"
+
+  # Bitbucket-specific bot logins
+  bitbucket:
+    logins:
+      - atlassian-connect
+
+# Logins checked case-insensitively.
+# The suffix_patterns rules apply to any login not in the explicit lists.

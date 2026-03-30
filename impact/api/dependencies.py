@@ -118,7 +118,7 @@ def build_context(
 # FastAPI dependency for GET endpoints (query-param based)
 def get_metric_context_query(
     dump_path: str = Query(..., description="Path to dump directory"),
-    user_login: str | None = Query(None, description="GitHub login (inferred from manifest if omitted)"),
+    user_login: str | None = Query(None, description="User login (inferred from manifest if omitted)"),
     start_date: str | None = Query(None, description="ISO 8601 start date", examples=["2026-01-19T00:00:00Z"]),
     end_date: str | None = Query(None, description="ISO 8601 end date", examples=["2026-01-29T00:00:00Z"]),
 ) -> MetricContext:

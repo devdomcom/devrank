@@ -22,7 +22,7 @@ def parse_args():
     parser.add_argument(
         "--token",
         required=False,
-        help="GitHub token (or set DEVRANK_GITHUB_TOKEN; falls back for legacy GITHUB_TOKEN)",
+        help="API token (e.g., GitHub PAT; or set DEVRANK_GITHUB_TOKEN env var)",
     )
     parser.add_argument("--user", required=True, help="Assessed user login")
     parser.add_argument(
@@ -61,7 +61,7 @@ def main():
     token = args.token or config.settings.github_token
     if not token:
         raise SystemExit(
-            "GitHub token required via --token or GITHUB_TOKEN/DEVRANK_GITHUB_TOKEN env"
+            "API token required via --token or GITHUB_TOKEN/DEVRANK_GITHUB_TOKEN env"
         )
 
     now = datetime.now(UTC)

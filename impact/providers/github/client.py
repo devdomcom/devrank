@@ -96,22 +96,49 @@ class GitHubClient:
             time.sleep(sleep_for)
             raise GitHubSecondaryRateLimitError(resp.text)
 
-        # HTTP 403 — primary rate limit exhausted
-        if resp.status_code == 403 and "rate limit" in resp.text.lower():
-            reset = resp.headers.get("X-RateLimit-Reset")
-            if reset:
-                sleep_for = max(int(reset) - int(time.time()), 0) + 1
-                sleep_for = min(sleep_for, 900)  # cap 15 min
-                log.warning("Primary rate limit exhausted. Sleeping %ss.", sleep_for)
-                time.sleep(sleep_for)
-            raise GitHubRateLimitError(resp.text)
-
-        # HTTP 403 with Retry-After (sometimes GitHub uses 403 instead of 429)
+        # HTTP 403 — primary rate limit exhausted.
+        # Detection uses structural HTTP headers (X-RateLimit-Remaining,
+        # Retry-After) instead of parsing the English error message body,
+        # making this robust against API locale changes or other providers.
         if resp.status_code == 403:
+            remaining = resp.headers.get("X-RateLimit-Remaining")
+            reset = resp.headers.get("X-RateLimit-Reset")
             retry_after = resp.headers.get("Retry-After")
+
+            # Primary rate limit: remaining == 0
+            if remaining is not None:
+                try:
+                    if int(remaining) == 0:
+                        if reset:
+                            sleep_for = max(int(reset) - int(time.time()), 0) + 1
+                            sleep_for = min(sleep_for, 900)  # cap 15 min
+                        else:
+                            sleep_for = 60
+                        log.warning("Primary rate limit exhausted (remaining=0). Sleeping %ss.", sleep_for)
+                        time.sleep(sleep_for)
+                        raise GitHubRateLimitError(resp.text)
+                except ValueError:
+                    pass  # non-numeric header; fall through
+
+            # Retry-After header (GitHub sometimes uses 403 instead of 429)
             if retry_after:
-                sleep_for = min(int(retry_after), 300)
+                try:
+                    sleep_for = min(int(retry_after), 300)
+                except ValueError:
+                    sleep_for = 60
                 log.warning("HTTP 403 with Retry-After. Sleeping %ss.", sleep_for)
+                time.sleep(sleep_for)
+                raise GitHubRateLimitError(resp.text)
+
+            # Fallback: text-based detection for edge cases where headers
+            # are absent (e.g. abuse-detection 403 without Retry-After).
+            if "rate limit" in resp.text.lower():
+                if reset:
+                    sleep_for = max(int(reset) - int(time.time()), 0) + 1
+                    sleep_for = min(sleep_for, 900)
+                else:
+                    sleep_for = 60
+                log.warning("Rate limit detected via response body. Sleeping %ss.", sleep_for)
                 time.sleep(sleep_for)
                 raise GitHubRateLimitError(resp.text)
 

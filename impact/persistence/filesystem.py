@@ -16,8 +16,11 @@ _CANONICAL_FILES = (
 
 
 class FileSystemDumpWriter:
-    """
-    Writes canonical GitHub dump files to a target directory.
+    """Writes canonical dump files to a target directory.
+
+    Provider-neutral: the canonical file names (``pull_requests.jsonl``,
+    ``reviews.jsonl``, etc.) are consistent with the canonical domain
+    model, not tied to any specific hosting provider.
     """
 
     def __init__(self, base_dir: Path):

@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+from impact.adapters.github import GitHubAdapter
 from impact.domain.models import (
     Branch,
     CanonicalBundle,
@@ -11,6 +12,7 @@ from impact.domain.models import (
     ReviewRecord,
     ReviewState,
     User,
+    UserType,
 )
 
 
@@ -156,3 +158,63 @@ def test_github_adapter_parse_dump():
     )
     assert comment.path == "src/logging.py"
     assert comment.user.login == "bob"
+
+
+# ---------------------------------------------------------------------------
+# GitHubAdapter._is_github_bot() — three-layer detection (§7.1)
+# ---------------------------------------------------------------------------
+
+class TestIsGitHubBot:
+    """Tests for GitHub-specific bot detection (moved from metrics to adapter)."""
+
+    def test_type_bot(self):
+        assert GitHubAdapter._is_github_bot({"type": "Bot", "login": "x"}) is True
+
+    def test_type_bot_enum_value(self):
+        assert GitHubAdapter._is_github_bot({"type": UserType.BOT.value, "login": "x"}) is True
+
+    def test_suffix_bot(self):
+        assert GitHubAdapter._is_github_bot({"type": "User", "login": "dependabot[bot]"}) is True
+
+    def test_node_id_prefix(self):
+        assert GitHubAdapter._is_github_bot({"type": "User", "login": "x", "node_id": "BOT_abc"}) is True
+
+    def test_copilot_no_suffix(self):
+        """Copilot has type=Bot but no [bot] suffix."""
+        assert GitHubAdapter._is_github_bot({"type": "Bot", "login": "Copilot"}) is True
+
+    def test_human_user(self):
+        assert GitHubAdapter._is_github_bot({"type": "User", "login": "alice"}) is False
+
+    def test_human_with_bot_substring(self):
+        assert GitHubAdapter._is_github_bot({"type": "User", "login": "gabotorresruiz"}) is False
+
+    def test_missing_fields(self):
+        assert GitHubAdapter._is_github_bot({}) is False
+
+    def test_none_type(self):
+        assert GitHubAdapter._is_github_bot({"login": "x"}) is False
+
+
+# ---------------------------------------------------------------------------
+# GitHubAdapter._has_github_suggestion() — suggestion block detection (§7.2)
+# ---------------------------------------------------------------------------
+
+class TestHasGitHubSuggestion:
+    """Tests for GitHub-specific code suggestion detection."""
+
+    def test_has_suggestion(self):
+        assert GitHubAdapter._has_github_suggestion("Try:\n```suggestion\nx=1\n```") is True
+
+    def test_no_suggestion(self):
+        assert GitHubAdapter._has_github_suggestion("Regular comment") is False
+
+    def test_case_insensitive(self):
+        assert GitHubAdapter._has_github_suggestion("```SUGGESTION\ncode\n```") is True
+
+    def test_empty_body(self):
+        assert GitHubAdapter._has_github_suggestion("") is False
+        assert GitHubAdapter._has_github_suggestion(None) is False
+
+    def test_regular_code_block(self):
+        assert GitHubAdapter._has_github_suggestion("```python\ncode\n```") is False

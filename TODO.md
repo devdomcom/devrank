@@ -824,7 +824,7 @@ These components use programming-language-specific syntax patterns. They
 unsupported languages, but metrics that depend on them will produce **less
 accurate** results for codebases outside the covered languages.
 
-### 3.1 tree-sitter AST Analysis -- 7 Languages
+### 3.1 ✅ FIXED — tree-sitter AST Analysis -- 13 Languages
 
 **File:** `utils.py` -- `_LANGUAGE_REGISTRY`, `parse_functions()`
 
@@ -886,7 +886,7 @@ returns `[]` and the style-uniformity AI detection signal will not fire.
 > dependencies.  Adding them expands style-uniformity detection to cover
 > ~90% of GitHub repositories by language.
 
-### 3.2 Structural Diff Classification -- `_STRUCT_PATTERNS`
+### 3.2 ✅ FIXED — Structural Diff Classification -- `_STRUCT_PATTERNS`
 
 **File:** `utils.py` -- `classify_diff_structure()`
 
@@ -1078,8 +1078,8 @@ Fixes are ordered by **impact x effort** ratio:
 | **P13** | Broaden `Co-authored-by:` to `_COLLAB_TRAILER_RE` | 2.7 | LOGIC | Small regex change. |
 | **P14** | Add `extra_doc_dirs` / `extra_generated_markers` config | 1.7, 1.8 | CONFIG | Org-level customisation for edge cases. |
 | **P15** | Add standalone `\bAI\b` detection signal | 2.2 | LOGIC | Small pattern addition. |
-| **P16** | Refactor `is_bot_user()` for multi-provider bot detection | 7.1 | LOGIC+PROVIDER | Enables influence metrics on non-GitHub providers. |
-| **P17** | Abstract `ai_suggestion_acceptance` from GitHub suggestion syntax | 7.2 | LOGIC+PROVIDER | Currently non-functional on non-GitHub providers. |
+| **P16** ✅ | Refactor `is_bot_user()` for multi-provider bot detection | 7.1 | LOGIC+PROVIDER | Enables influence metrics on non-GitHub providers. |
+| **P17** ✅ | Abstract `ai_suggestion_acceptance` from GitHub suggestion syntax | 7.2 | LOGIC+PROVIDER | Currently non-functional on non-GitHub providers. |
 | **P18** | Ensure cross-ref patterns cover all providers | 1.5 | LOGIC+PROVIDER | `#\d+` misses GitLab `!NNN` and Azure DevOps `AB#NNN`. |
 
 ---
@@ -1093,7 +1093,7 @@ produce incorrect results when DevRank adds GitLab, Bitbucket, or other adapters
 The adapter architecture (`impact/adapters/base.py`) correctly isolates
 raw-API parsing, but some logic in the metrics layer leaks provider details.
 
-### 7.1 `is_bot_user()` -- Bot Detection (GitHub-Only)
+### 7.1 ✅ FIXED `is_bot_user()` -- Bot Detection (GitHub-Only)
 
 **File:** `impact/metrics/utils.py` (lines 12-45)
 
@@ -1139,8 +1139,19 @@ influence metrics.
 >
 > **Impact:** All 10+ metrics that call `is_bot_user()` become
 > provider-independent in one shot.
+>
+> **Implementation (completed):**
+> - Added `is_bot: bool = False` to `User` in `impact/domain/models.py`.
+> - Added `GitHubAdapter._is_github_bot()` static method implementing the
+>   three-layer GitHub-specific detection (type/suffix/node_id).
+> - `ensure_user()` in the adapter now sets `is_bot` via `_is_github_bot()`.
+> - Simplified `is_bot_user()` in `utils.py` to `getattr(user, "is_bot", False)`.
+> - Updated `make_user()` factory in conftest to accept `is_bot` kwarg.
+> - Added `TestIsGitHubBot` tests in `test_github_adapter.py` for the adapter logic.
+> - Updated `TestIsBotUser` in `test_ai_phantom_ownership.py` for canonical field.
+> - 920/920 tests pass.
 
-### 7.2 `ai_suggestion_acceptance` -- GitHub Suggestion Blocks
+### 7.2 ✅ FIXED `ai_suggestion_acceptance` -- GitHub Suggestion Blocks
 
 **File:** `plugins/authored/ai_suggestion_acceptance.py`
 
@@ -1177,8 +1188,21 @@ found" -- a silent false negative.
 > today.  On GitLab it gains suggestion detection via the adapter.  On
 > providers without suggestions, it returns `no_data` rather than a
 > misleading 0%.
+>
+> **Implementation (completed):**
+> - Added `has_code_suggestion: bool = False` to `CommentRecord` in models.
+> - Added `GitHubAdapter._has_github_suggestion()` detecting ```` ```suggestion ````
+>   blocks via regex; called in the review comments section of `parse_dump()`.
+> - Updated `_is_ai_bot()` to accept User objects (with string backward-compat)
+>   and use `is_bot_user()` as the broad catch-all layer.
+> - Metric loop now filters on `c.has_code_suggestion` first, then `_is_ai_bot(c.user)`.
+> - Added `TestHasGitHubSuggestion` tests in `test_github_adapter.py`.
+> - Updated MagicMock tests in `test_ai_suggestion_acceptance.py` with
+>   explicit `has_code_suggestion=True` and `user.is_bot=True`.
+> - `make_comment()` factory in conftest now accepts `has_code_suggestion` kwarg.
+> - 920/920 tests pass.
 
-### 7.3 `WorkflowRunRecord` -- GitHub Actions Assumption
+### 7.3 ✅ FIXED `WorkflowRunRecord` -- GitHub Actions Assumption
 
 **File:** `impact/domain/models.py` (line 176)
 
@@ -1222,8 +1246,18 @@ workflow run" and its docstring references `GET /repos/{owner}/{repo}/actions/ru
 > **Metric soundness:** No metric logic changes.  The field names and
 > semantics are already provider-neutral; only the model name and docstring
 > leak the GitHub assumption.
+>
+> **Implementation (completed):**
+> - Renamed `WorkflowRunRecord` → `CIRunRecord` in `impact/domain/models.py`.
+> - Updated docstring to be provider-neutral (GitHub Actions, GitLab CI, etc.).
+> - Renamed `CanonicalBundle.workflow_runs` → `ci_runs`.
+> - Added backward-compatible alias `WorkflowRunRecord = CIRunRecord` at module level.
+> - Updated `test_new_metrics_gaps.py`: imports, test name, assertion.
+> - GitHub fetcher (`fetch_workflow_runs`) retains its name — it's correctly
+>   scoped to the GitHub-specific provider layer.
+> - 920/920 tests pass.
 
-### 7.4 `ReleaseRecord` / `DeploymentRecord` -- GitHub API References
+### 7.4 ✅ FIXED `ReleaseRecord` / `DeploymentRecord` -- GitHub API References
 
 **Files:** `impact/domain/models.py` (lines 143, 161)
 
@@ -1244,6 +1278,16 @@ themselves are already provider-neutral.
 > ```
 >
 > Each adapter maps its release concept into these fields.
+>
+> **Implementation (completed):**
+> - Updated `ReleaseRecord` docstring: "Release / tag event (DORA Deployment
+>   Frequency data source). Populated from provider release APIs (GitHub
+>   Releases, GitLab Releases, Bitbucket tags, etc.)."
+> - Updated `DeploymentRecord` docstring: "Deployment event (DORA Deployment
+>   Frequency data source). Populated from provider deployment APIs (GitHub
+>   Deployments, GitLab Environments, Bitbucket Deployments, Azure DevOps
+>   Releases, etc.)."
+> - No structural changes — fields were already provider-neutral.
 
 ### 7.5 Domain Terminology: "Pull Request" vs "Merge Request"
 
@@ -1320,7 +1364,7 @@ language-dependent and provider-dependent patterns in the **rest of the
 codebase**: the data-fetching pipeline, report generation, ingestion, CLI,
 API layer, persistence, and configuration.
 
-### 9.1 Report Generation — Hardcoded English Text
+### 9.1 ✅ FIXED Report Generation — Hardcoded English Text
 
 **Files:**
 - `impact/templates/pdf_report.py`
@@ -1376,7 +1420,19 @@ reviewing the report.
 > engineering teams today.  Localisation becomes critical when DevRank
 > reports are consumed by non-technical, non-English management audiences.
 
-### 9.2 Report Generation — US Letter Page Size
+> **Implementation (completed):**
+> - Created `impact/templates/locales/en.yaml` with 25 locale keys covering
+>   all user-facing PDF strings (title, ratings, footer, header, boolean labels,
+>   metric count, executive summary labels).
+> - Added `_load_locale(locale)` and `_t(strings, key, default, **kwargs)` helpers
+>   to `pdf_report.py` for locale-aware string resolution with fallback.
+> - Threaded `locale` parameter through `generate_candidate_pdf()`,
+>   `_build_executive_summary()`, `_build_category_section()`, and
+>   `_make_header_footer()`.
+> - Added `--locale` CLI flag to `generate_report.py`.
+> - All hardcoded English strings replaced with `_t()` calls.
+
+### 9.2 ✅ FIXED Report Generation — US Letter Page Size
 
 **File:** `impact/templates/pdf_report.py` (line 15, 1310)
 
@@ -1408,7 +1464,15 @@ US Letter PDF on A4 paper clips margins or scales down.
 >
 > **Priority:** Low.  Cosmetic impact only.
 
-### 9.3 Fetch Pipeline — No Provider Abstraction for Fetching
+> **Implementation (completed — 9.2):**
+> - Added `page_size` parameter to `generate_candidate_pdf()` accepting
+>   `"letter"` (default) or `"a4"`.
+> - Added `PAGE_SIZES` dict mapping names to reportlab page-size tuples.
+> - `_make_header_footer()` now receives the actual `pagesize` tuple
+>   instead of hardcoding `letter`.
+> - Added `--page-size` CLI flag to `generate_report.py`.
+
+### 9.3 ✅ FIXED Fetch Pipeline — Provider Abstraction for Fetching
 
 **Files:**
 - `impact/providers/github_live.py` — `GitHubLiveFetcher`
@@ -1467,7 +1531,16 @@ equivalent abstraction.**  Everything is hardwired to GitHub:
 > **Priority:** High for multi-provider support.  This is the
 > architectural prerequisite for adding GitLab/Bitbucket fetchers.
 
-### 9.4 Fetch Pipeline — English Error Message Parsing
+> **Implementation (completed):**
+> - Created `impact/providers/base.py` with `FetchConfig` dataclass and
+>   `ProviderFetcher` ABC (`run()` + `check_health()` abstract methods).
+> - Created `impact/providers/registry.py` with dict-based fetcher registry:
+>   `register_fetcher()`, `get_fetcher()`, `available_providers()`.
+> - `GitHubLiveFetcher` now inherits from `ProviderFetcher`;
+>   `LiveFetchConfig` extends `FetchConfig` with `fetch_contents`.
+> - Added `check_health()` implementation for GitHub (calls `/rate_limit`).
+
+### 9.4 ✅ FIXED Fetch Pipeline — English Error Message Parsing
 
 **File:** `impact/providers/github/client.py` (line 100)
 
@@ -1497,7 +1570,13 @@ might return different text.
 >
 > **Priority:** Medium.  Works today but is a latent fragility.
 
-### 9.5 GitHub Adapter — URL Structure Parsing
+> **Implementation (completed):**
+> - Rewrote the HTTP 403 handler in `impact/providers/github/client.py` to
+>   use structural signals first: `X-RateLimit-Remaining: 0` (primary),
+>   `Retry-After` header (secondary), and English text parsing as a
+>   last-resort fallback only when headers are absent.
+
+### 9.5 No Change Needed — GitHub Adapter URL Structure Parsing
 
 **File:** `impact/adapters/github.py` (lines 210, 296, 332)
 
@@ -1528,7 +1607,7 @@ depends on GitHub's URL structure (`/repos/{owner}/{repo}/pulls/{number}`).
 >
 > **Priority:** Low.  Correct as-is within the adapter boundary.
 
-### 9.6 Config — ai_bots.yaml Is GitHub-Specific
+### 9.6 ✅ FIXED Config — ai_bots.yaml Multi-Provider Structure
 
 **File:** `impact/config/ai_bots.yaml`
 
@@ -1580,7 +1659,15 @@ have different login formats (e.g., `project_NNNN_bot`).
 > **Priority:** Medium.  Prerequisite for correct bot filtering on non-GitHub
 > providers.
 
-### 9.7 CLI and API — GitHub-Specific Terminology in Help Text
+> **Implementation (completed):**
+> - Restructured `ai_bots.yaml` into multi-provider format:
+>   `common` (cross-provider), `github` (logins + suffix_patterns),
+>   `gitlab`, `bitbucket` sections.
+> - Updated `_load_ai_bot_logins()` in `ai_suggestion_acceptance.py` to
+>   handle both the new dict structure and the legacy flat list.
+>   All provider sections are merged for the provider-neutral metrics layer.
+
+### 9.7 ✅ FIXED CLI and API — Provider-Neutral Terminology in Help Text
 
 **Files:**
 - `devrank/cli.py` — lines 325, 352–357
@@ -1607,7 +1694,17 @@ have different login formats (e.g., `project_NNNN_bot`).
 >
 > **Priority:** Low.  Cosmetic; does not affect functionality.
 
-### 9.8 Persistence — GitHub Naming in Docstring and JSONL Schema
+> **Implementation (completed):**
+> - `cli.py`: `--user` help text changed from `"GitHub login"` to
+>   `"User login (e.g., GitHub username)"`.
+> - `cli.py`: Added `fetch run --provider` command alongside existing
+>   `fetch github` shortcut (backward compatible).
+> - `generate_report.py`: `--fetch-token` help and error messages now say
+>   `"API token"` instead of `"GitHub token"`.
+> - `dependencies.py`: Query param description now says `"User login"`.
+> - `fetch_github.py`: Token help/error messages now provider-neutral.
+
+### 9.8 ✅ FIXED Persistence — Provider-Neutral Docstring
 
 **Files:**
 - `impact/persistence/filesystem.py` — line 21
@@ -1632,7 +1729,13 @@ GitHub terminology.  GitLab has "merge requests" and "notes" rather than
 >
 > **Priority:** Low.  Docstring fix only.
 
-### 9.9 Adapter Registry — Hardcoded Provider List
+> **Implementation (completed):**
+> - Updated `FileSystemDumpWriter` docstring from
+>   `"Writes canonical GitHub dump files"` to
+>   `"Writes canonical dump files to a target directory."`
+>   with a note about provider-neutral canonical naming.
+
+### 9.9 ✅ FIXED Adapter Registry — Plugin-Based Provider List
 
 **File:** `impact/adapters/registry.py`
 
@@ -1672,7 +1775,13 @@ Adding a new provider requires modifying this function.
 >
 > **Priority:** Medium.  Architectural cleanliness for multi-provider.
 
-### 9.10 Celery Task — Hardwired to GitHub Fetcher
+> **Implementation (completed):**
+> - Rewrote `impact/adapters/registry.py` with dict-based
+>   `_ADAPTER_REGISTRY`, `register_adapter()`, `get_adapter()`,
+>   `available_adapters()`.  GitHub registered via `_register_builtins()`.
+>   New adapters call `register_adapter("gitlab", GitLabAdapter)`.
+
+### 9.10 ✅ FIXED Celery Task — Provider-Dispatched via Registry
 
 **File:** `impact/tasks/fetch.py`
 
@@ -1699,7 +1808,13 @@ conditional logic.
 >     return {...}
 > ```
 >
-> **Priority:** High.  Same as section 9.3 — architectural prerequisite.
+> **Priority:** High.  Same as section 9.3
+>
+> **Implementation (completed):**
+> - `run_fetch()` now accepts a `provider` parameter (default `"github"`).
+> - Uses `_build_config()` to create provider-specific `FetchConfig` subclass.
+> - Dispatches through `get_fetcher(provider, cfg)` from the fetcher registry.
+> - Adding a new provider requires zero changes to the Celery task.
 
 ---
 
@@ -1717,26 +1832,26 @@ Additions from section 9, merged into the existing priority framework:
 
 | Priority | Fix | Section | Tag | Rationale |
 |---|---|---|---|---|
-| **P19** | Define `ProviderFetcher` base class + fetcher registry | 9.3 | MODEL+PROVIDER | Architectural prerequisite for any non-GitHub fetcher. |
-| **P20** | Update Celery task to dispatch through fetcher registry | 9.10 | LOGIC+PROVIDER | Depends on P19. |
-| **P21** | Update CLI `fetch` to accept `--provider` | 9.7 | LOGIC | Depends on P19. |
-| **P22** | Restructure `ai_bots.yaml` as multi-provider config | 9.6 | CONFIG+PROVIDER | Prerequisite for bot filtering on non-GitHub providers. |
-| **P23** | Replace English error-message parsing with HTTP headers | 9.4 | LOGIC | Latent fragility; small fix. |
-| **P24** | Make adapter registry plugin-based | 9.9 | LOGIC | Architectural cleanliness. |
+| **P19** ✅ | Define `ProviderFetcher` base class + fetcher registry | 9.3 | MODEL+PROVIDER | Architectural prerequisite for any non-GitHub fetcher. |
+| **P20** ✅ | Update Celery task to dispatch through fetcher registry | 9.10 | LOGIC+PROVIDER | Depends on P19. |
+| **P21** ✅ | Update CLI `fetch` to accept `--provider` | 9.7 | LOGIC | Depends on P19. |
+| **P22** ✅ | Restructure `ai_bots.yaml` as multi-provider config | 9.6 | CONFIG+PROVIDER | Prerequisite for bot filtering on non-GitHub providers. |
+| **P23** ✅ | Replace English error-message parsing with HTTP headers | 9.4 | LOGIC | Latent fragility; small fix. |
+| **P24** ✅ | Make adapter registry plugin-based | 9.9 | LOGIC | Architectural cleanliness. |
 
 ### Phase 5: Broader Codebase — Report Localisation
 
 | Priority | Fix | Section | Tag | Rationale |
 |---|---|---|---|---|
-| **P25** | Extract PDF report strings to locale file | 9.1 | CONFIG | Enables non-English report output for management audiences. |
-| **P26** | Add A4 page size option | 9.2 | CONFIG | International paper standard. |
+| **P25** ✅ | Extract PDF report strings to locale file | 9.1 | CONFIG | Enables non-English report output for management audiences. |
+| **P26** ✅ | Add A4 page size option | 9.2 | CONFIG | International paper standard. |
 
 ### Phase 6: Cosmetic / Low Priority
 
 | Priority | Fix | Section | Tag | Rationale |
 |---|---|---|---|---|
-| **P27** | Replace "GitHub" with provider-neutral text in CLI/API help | 9.7 | LOGIC | Cosmetic terminology. |
-| **P28** | Fix FileSystemDumpWriter docstring | 9.8 | LOGIC | One-line docstring fix. |
+| **P27** ✅ | Replace "GitHub" with provider-neutral text in CLI/API help | 9.7 | LOGIC | Cosmetic terminology. |
+| **P28** ✅ | Fix FileSystemDumpWriter docstring | 9.8 | LOGIC | One-line docstring fix. |
 
 ---
 

@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -24,6 +25,9 @@ from impact.domain.models import (
     UserType,
 )
 
+# GitHub-specific code-suggestion block pattern (```suggestion ... ```)
+_GITHUB_SUGGESTION_RE = re.compile(r"```suggestion\b", re.IGNORECASE)
+
 
 class GitHubAdapter(ProviderAdapter):
     """
@@ -35,6 +39,36 @@ class GitHubAdapter(ProviderAdapter):
     This trims noisy data (e.g., PRs where the user was merely assigned or
     requested as reviewer but never acted).
     """
+
+    @staticmethod
+    def _is_github_bot(user_dict: dict) -> bool:
+        """GitHub-specific bot detection (three-layer defense-in-depth).
+
+        Layer 1: ``user.type == "Bot"`` (GitHub API; most reliable)
+        Layer 2: login ends with ``[bot]`` (GitHub Apps naming convention)
+        Layer 3: ``node_id`` starts with ``BOT_`` (GraphQL global-ID prefix)
+
+        The critical edge case: GitHub Copilot's inline-comment identity is
+        ``Copilot`` (type=Bot, **no** ``[bot]`` suffix).  A suffix-only check
+        would mis-classify it as human.
+        """
+        utype = user_dict.get("type", "")
+        if utype == UserType.BOT.value or utype == UserType.BOT:
+            return True
+        if isinstance(utype, str) and utype == "Bot":
+            return True
+        if (user_dict.get("login") or "").endswith("[bot]"):
+            return True
+        if (user_dict.get("node_id") or "").startswith("BOT_"):
+            return True
+        return False
+
+    @staticmethod
+    def _has_github_suggestion(body: str | None) -> bool:
+        """Detect GitHub-native ````` ```suggestion ````` blocks in a comment."""
+        if not body:
+            return False
+        return bool(_GITHUB_SUGGESTION_RE.search(body))
 
     @staticmethod
     def _normalize_timeline_event(
@@ -139,10 +173,7 @@ class GitHubAdapter(ProviderAdapter):
         acted_pr_numbers: set[int] = set()  # PRs where vetted user acted
 
         def ensure_user(user_dict: dict) -> User:
-            """
-            Normalize missing type and cache users.
-            Preserves node_id for bot detection (BOT_ prefix).
-            """
+            """Normalize missing type, set canonical ``is_bot``, and cache users."""
             if not user_dict:
                 raise ValueError("Missing user")
             # Default to regular user if type missing
@@ -156,6 +187,7 @@ class GitHubAdapter(ProviderAdapter):
                     avatar_url=normalized.get("avatar_url"),
                     type=utype,
                     node_id=normalized.get("node_id"),
+                    is_bot=GitHubAdapter._is_github_bot(normalized),
                 )
             return users[uid]
 
@@ -308,11 +340,12 @@ class GitHubAdapter(ProviderAdapter):
                         continue
 
                     user = ensure_user(comment_dict["user"])
+                    body = comment_dict.get("body") or ""
                     comments.append(
                         CommentRecord(
                             id=comment_dict["id"],
                             user=user,
-                            body=comment_dict["body"],
+                            body=body,
                             created_at=created_at,
                             updated_at=comment_dict.get("updated_at"),
                             type=CommentType.REVIEW,
@@ -321,6 +354,7 @@ class GitHubAdapter(ProviderAdapter):
                             in_reply_to_id=comment_dict.get("in_reply_to_id"),
                             path=comment_dict.get("path"),
                             position=comment_dict.get("position"),
+                            has_code_suggestion=self._has_github_suggestion(body),
                         )
                     )
                     if user.login == user_login:

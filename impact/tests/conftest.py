@@ -28,9 +28,11 @@ from impact.ledger.ledger import Ledger
 DEFAULT_START = datetime(2026, 1, 1, tzinfo=UTC)
 
 
-def make_user(id: int = 1, login: str = "alice", type: str = "User") -> User:
+def make_user(
+    id: int = 1, login: str = "alice", type: str = "User", *, is_bot: bool = False,
+) -> User:
     """Create a User for testing."""
-    return User(id=id, login=login, type=type)
+    return User(id=id, login=login, type=type, is_bot=is_bot)
 
 
 def make_repo(id: int = 1, name: str = "repo", owner: User | None = None) -> Repository:
@@ -144,6 +146,8 @@ def make_comment(
     body: str = "Comment",
     position: int | None = None,
     path: str | None = None,
+    *,
+    has_code_suggestion: bool = False,
 ) -> CommentRecord:
     """Create a CommentRecord for testing."""
     return CommentRecord(
@@ -156,6 +160,7 @@ def make_comment(
         review_id=review_id,
         position=position,
         path=path,
+        has_code_suggestion=has_code_suggestion,
         url="",
         html_url="",
         issue_url="",

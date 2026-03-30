@@ -10,32 +10,33 @@ from pathlib import Path
 from impact.adapters.github import GitHubAdapter  # reusing adapter for parsing canonical dump
 from impact.domain.models import CanonicalBundle
 from impact.persistence.filesystem import FileSystemDumpWriter
+from impact.providers.base import FetchConfig, ProviderFetcher
 from impact.providers.github.client import GitHubClient
 from impact.providers.github.fetcher import GitHubFetcher
 
 
 @dataclass
-class LiveFetchConfig:
-    user_login: str
-    repos: list[str]
-    start: datetime
-    end: datetime
-    token: str
-    out_dir: Path
-    user_timezone: str | None = None
-    notes: str | None = None
+class LiveFetchConfig(FetchConfig):
+    """GitHub-specific fetch configuration.
+
+    Extends the provider-neutral ``FetchConfig`` with GitHub-only options.
+    """
+
     fetch_contents: bool = False
 
 
-class GitHubLiveFetcher:
-    """
-    Fetches live GitHub data for a user-selected repo set and time window,
-    writes canonical dump via a persistence layer, and returns a CanonicalBundle.
-    Anonymization hook to be added later.
+class GitHubLiveFetcher(ProviderFetcher):
+    """Fetch live GitHub data for a user-selected repo set and time window.
+
+    Writes a canonical dump via the persistence layer and returns a
+    ``CanonicalBundle``.  Implements the ``ProviderFetcher`` interface so
+    that the fetch pipeline can dispatch to it via the fetcher registry.
     """
 
-    def __init__(self, cfg: LiveFetchConfig):
+    def __init__(self, cfg: FetchConfig):
+        # Accept any FetchConfig; extract GitHub-specific options gracefully.
         self.cfg = cfg
+        self._fetch_contents: bool = getattr(cfg, "fetch_contents", False)
 
     def run(self) -> CanonicalBundle:
         client = GitHubClient(self.cfg.token)
@@ -136,7 +137,7 @@ class GitHubLiveFetcher:
             future_to_pr = {
                 executor.submit(
                     fetcher.fetch_pr_bundle, repo, number,
-                    fetch_contents=self.cfg.fetch_contents,
+                    fetch_contents=self._fetch_contents,
                 ): (repo, number)
                 for repo, number in pr_numbers
             }
@@ -154,3 +155,13 @@ class GitHubLiveFetcher:
 
         adapter = GitHubAdapter()
         return adapter.parse_dump(str(self.cfg.out_dir))
+
+    def check_health(self) -> bool:
+        """Verify GitHub API connectivity and token validity."""
+        try:
+            client = GitHubClient(self.cfg.token)
+            resp = client.get("/rate_limit")
+            client.close()
+            return resp.status_code == 200
+        except Exception:  # noqa: BLE001
+            return False

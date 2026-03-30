@@ -2,17 +2,20 @@
 AI Suggestion Acceptance Metric
 
 Computes the ratio of accepted vs dismissed AI suggestions.
-AI suggestions are review comments with ```suggestion blocks from known AI bots.
+AI suggestions are review comments flagged with ``has_code_suggestion``
+(set by the provider adapter) from known AI bots.
 Acceptance is heuristically determined by checking if the suggested code appears
 in the file's final patch.
 
-Detection method: Only matches review comment authors (user.login), not PR titles
-or commit messages. See impact/config/ai_bots.yaml for the bot list.
+Detection method: The canonical ``has_code_suggestion`` field on CommentRecord
+abstracts provider-specific suggestion syntax (GitHub ````` ```suggestion `````,
+GitLab suggestions API, etc.).  Bot detection uses the canonical ``is_bot``
+flag plus the AI review bot login list from ``ai_bots.yaml``.
 
 Known limitations:
   - False negatives: Local AI tools (Cursor, Cody) that don't leave review
-    comments cannot be detected from GitHub API data.
-  - The [bot] suffix catch-all may match non-AI bots.
+    comments cannot be detected from API data.
+  - The broad ``is_bot`` catch-all may match non-AI bots.
 """
 
 import re
@@ -22,21 +25,69 @@ import yaml
 
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import filter_prs_for_contribution
+from impact.metrics.utils import filter_prs_for_contribution, is_bot_user
 
 
 def _load_ai_bot_logins() -> frozenset:
-    """Load AI bot logins from config, with hardcoded fallback."""
+    """Load AI bot logins from config, with hardcoded fallback.
+
+    Supports both the new multi-provider structure::
+
+        ai_review_bots:
+          common: [copilot]
+          github:
+            logins: [copilot-pull-request-reviewer[bot], ...]
+
+    and the legacy flat list::
+
+        ai_review_bots:
+          - copilot
+          - copilot-pull-request-reviewer[bot]
+
+    When the new structure is detected, logins from *all* provider
+    sections are merged (the metric layer is provider-neutral; the
+    adapter sets ``is_bot`` for provider-specific suffix matching).
+    """
     config_path = Path(__file__).resolve().parents[3] / "config" / "ai_bots.yaml"
     try:
         with open(config_path) as f:
             data = yaml.safe_load(f)
-        if data and "ai_review_bots" in data:
-            return frozenset(login.lower() for login in data["ai_review_bots"])
-    except (OSError, yaml.YAMLError):
+        if not data or "ai_review_bots" not in data:
+            raise ValueError("missing ai_review_bots key")
+
+        bots_section = data["ai_review_bots"]
+
+        # Legacy flat list: ai_review_bots: [login1, login2, ...]
+        if isinstance(bots_section, list):
+            return frozenset(login.lower() for login in bots_section)
+
+        # New multi-provider dict structure
+        logins: set[str] = set()
+
+        # Common (cross-provider) logins
+        for login in bots_section.get("common", []):
+            logins.add(login.lower())
+
+        # Per-provider logins (merge all providers — metric layer is neutral)
+        for key, section in bots_section.items():
+            if key == "common":
+                continue
+            if isinstance(section, dict):
+                for login in section.get("logins", []):
+                    logins.add(login.lower())
+            elif isinstance(section, list):
+                # Fallback: provider key holds a plain list
+                for login in section:
+                    logins.add(login.lower())
+
+        if logins:
+            return frozenset(logins)
+    except (OSError, yaml.YAMLError, ValueError):
         pass
-    # Hardcoded fallback if config is missing
+
+    # Hardcoded fallback if config is missing or unparseable
     return frozenset({
+        "copilot",
         "copilot-pull-request-reviewer[bot]",
         "codeant-ai-for-open-source[bot]",
         "bito-code-review[bot]",
@@ -49,11 +100,30 @@ def _load_ai_bot_logins() -> frozenset:
 AI_BOT_LOGINS = _load_ai_bot_logins()
 
 
-def _is_ai_bot(user_login: str) -> bool:
-    """Check if a user login is a known AI bot."""
-    if not user_login:
+def _is_ai_bot(user) -> bool:
+    """Check if a user is a known AI review bot.
+
+    Two-layer check:
+      1. Login is in the explicit AI review bot list (``ai_bots.yaml``).
+      2. Canonical ``is_bot`` flag (broad catch-all set by the adapter).
+
+    Accepts a User object (preferred) or a plain login string (backward-
+    compatible for tests).
+    """
+    if user is None:
         return False
-    return user_login.lower() in AI_BOT_LOGINS or user_login.endswith("[bot]")
+    # Support both User objects and plain strings
+    if isinstance(user, str):
+        login = user
+        return login.lower() in AI_BOT_LOGINS or login.endswith("[bot]")
+    login = getattr(user, "login", None) or ""
+    if not login:
+        return False
+    # Layer 1: explicit AI bot login list (config-driven, provider-neutral)
+    if login.lower() in AI_BOT_LOGINS:
+        return True
+    # Layer 2: canonical bot flag (broad — catches all bots)
+    return is_bot_user(user)
 
 
 def _extract_suggestion_blocks(body: str) -> list[str]:
@@ -160,11 +230,15 @@ class AISuggestionAcceptance(Metric):
         for pr in prs:
             # Get review comments for this PR
             comments = context.ledger.get_comments_for_pr(pr.number)
-            
-            # Filter to AI bot comments with suggestion blocks
+
+            # Filter to AI bot comments with code suggestions.
+            # Uses canonical ``has_code_suggestion`` (set by adapter) instead
+            # of parsing provider-specific suggestion syntax (§7.2).
             ai_suggestions = []
             for c in comments:
-                if not _is_ai_bot(c.user.login):
+                if not getattr(c, "has_code_suggestion", False):
+                    continue
+                if not _is_ai_bot(c.user):
                     continue
                 blocks = _extract_suggestion_blocks(c.body)
                 for block in blocks:

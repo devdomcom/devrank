@@ -5,44 +5,23 @@ from datetime import datetime, timedelta
 from typing import Any, TypedDict
 import re
 
-from impact.domain.models import MetricContext, ReviewState, UserType
+from impact.domain.models import MetricContext, ReviewState
 from impact.ledger.ledger import Ledger
 
 
 def is_bot_user(user) -> bool:
-    """Reliable bot detection using multiple GitHub API signals.
+    """Check whether a user is a bot.
 
-    Three-layer defense-in-depth:
-      1. user.type == UserType.BOT  (GitHub API; most reliable single check)
-      2. login ends with ``[bot]``  (GitHub Apps naming convention)
-      3. node_id starts with ``BOT_`` (GitHub GraphQL global-ID prefix)
+    Relies on the canonical ``is_bot`` flag set by the provider adapter.
+    Each adapter applies its own provider-specific detection logic:
 
-    Layer 1 alone catches every bot in our sample data.  Layers 2-3 are
-    fallbacks for edge cases such as a missing ``type`` field (the adapter
-    defaults to ``UserType.USER`` when the field is absent).
+    * GitHub: ``type == Bot``, ``[bot]`` suffix, ``BOT_`` node_id prefix
+    * GitLab: ``bot: true`` API flag
+    * Bitbucket: ``type == "app"``
 
-    The critical case this handles: GitHub Copilot's inline-comment identity
-    is ``Copilot`` (type=Bot, **no** ``[bot]`` suffix).  A suffix-only check
-    would count its 97 inline comments as human review activity.
+    This keeps provider knowledge out of the metrics layer (§7.1).
     """
-    # Layer 1: GitHub API user.type (covers all bots in current data)
-    if getattr(user, "type", None) == UserType.BOT:
-        return True
-    user_type_raw = getattr(user, "type", None)
-    if isinstance(user_type_raw, str) and user_type_raw == "Bot":
-        return True
-
-    # Layer 2: [bot] suffix (GitHub Apps naming convention)
-    login = getattr(user, "login", "") or ""
-    if login.endswith("[bot]"):
-        return True
-
-    # Layer 3: node_id prefix (GitHub GraphQL global-ID scheme)
-    node_id = getattr(user, "node_id", "") or ""
-    if node_id.startswith("BOT_"):
-        return True
-
-    return False
+    return getattr(user, "is_bot", False)
 
 
 class Interaction(TypedDict):
@@ -1169,30 +1148,48 @@ def get_function_churn_map(ledger, prs: list) -> dict[str, dict]:
 # Structural diff classification (Phase 1e)
 # ---------------------------------------------------------------------------
 
-# Patterns matched against added lines to classify what a diff structurally does
+# Patterns matched against added lines to classify what a diff structurally does.
+# Covers Python, JS/TS, Java/Kotlin, Rust, Go, C/C++, C#, Ruby, PHP, Swift,
+# Scala and more.  Cross-language keywords (class, import, if) naturally cover
+# many languages beyond those explicitly listed.
 _STRUCT_PATTERNS: dict[str, list[re.Pattern]] = {
     # Order matters — more specific patterns must come before general ones.
     "test_code": [
-        re.compile(r"^\s*(?:def\s+test_|(?:it|test|describe)(?:\.each)?\s*\(|@Test\b|#\[test\]|func\s+Test\w+)"),
+        # Python def test_, JS/TS describe/it/test, Java/Kotlin @Test,
+        # Rust #[test], Go func Test*, C# [TestMethod]/[Fact]/[Theory],
+        # Ruby RSpec describe/context/it, PHP @test / function test*
+        re.compile(r"^\s*(?:def\s+test_|(?:it|test|describe|context)(?:\.each)?\s*\(|@Test\b|#\[test\]|func\s+Test\w+)"),
+        re.compile(r"^\s*\[(?:TestMethod|Fact|Theory|TestCase)\]"),  # C#/NUnit
+        re.compile(r"^\s*(?:public|protected|private)?\s*function\s+test\w+"),  # PHP
     ],
     "new_class": [
         re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+\w+"),
         re.compile(r"^\s*(?:interface|struct|enum|type)\s+\w+"),
+        # Ruby module, Scala object/trait, Swift protocol, Rust trait
+        re.compile(r"^\s*(?:module|object|trait|protocol)\s+\w+"),
     ],
     "new_function": [
-        re.compile(r"^\s*(?:def|function|func|fn|pub\s+fn|static|async\s+function)\s+\w+"),
+        # Python def, JS function, Go func, Rust fn/pub fn, Kotlin fun,
+        # PHP function, Swift func, C/C++/Java return-type patterns
+        re.compile(r"^\s*(?:def|function|func|fn|pub\s+fn|fun|sub|async\s+function)\s+\w+"),
         re.compile(r"^\s*(?:export\s+)?(?:default\s+)?function\s+\w+"),
         re.compile(r"^\s*const\s+\w+\s*=\s*(?:\(|async)"),
+        # C/C++/C#/Java: return-type + name + parens (common pattern)
+        re.compile(r"^\s*(?:public|private|protected|internal|static|virtual|override|async|inline)\s+\w+\s+\w+\s*\("),
     ],
     "conditional_change": [
-        re.compile(r"^\s*(?:if|else|elif|else\s+if|switch|case|guard|when|match)\b"),
+        re.compile(r"^\s*(?:if|else|elif|else\s+if|switch|case|guard|when|match|unless)\b"),
     ],
     "import_change": [
         re.compile(r"^\s*(?:import|from\s+\S+\s+import|require\s*\(|use\s+)"),
         re.compile(r"^\s*(?:export\s+\{|module\.exports)"),
+        # C/C++ #include, C# using, Ruby require/require_relative
+        re.compile(r"^\s*#\s*include\s+[<\"]"),
+        re.compile(r"^\s*using\s+(?:static\s+)?\w+"),
+        re.compile(r"^\s*require(?:_relative)?\s+"),
     ],
     "error_handling": [
-        re.compile(r"^\s*(?:try|catch|except|finally|rescue|throw|raise|panic)\b"),
+        re.compile(r"^\s*(?:try|catch|except|finally|rescue|throw|raise|panic|defer)\b"),
     ],
 }
 
@@ -1672,20 +1669,42 @@ _LANGUAGE_REGISTRY: dict[str, tuple[str, str]] = {
     ".go": ("tree_sitter_go", "language"),
     ".rs": ("tree_sitter_rust", "language"),
     ".java": ("tree_sitter_java", "language"),
+    # Phase 3 expansion (TODO §3.1): ~90% GitHub repo coverage by language.
+    # Each grammar is an optional dependency; _get_language() returns None
+    # when the pip package is not installed (graceful degradation).
+    ".c": ("tree_sitter_c", "language"),
+    ".h": ("tree_sitter_c", "language"),
+    ".cc": ("tree_sitter_cpp", "language"),
+    ".cpp": ("tree_sitter_cpp", "language"),
+    ".cxx": ("tree_sitter_cpp", "language"),
+    ".hpp": ("tree_sitter_cpp", "language"),
+    ".cs": ("tree_sitter_c_sharp", "language"),
+    ".rb": ("tree_sitter_ruby", "language"),
+    ".php": ("tree_sitter_php", "language_php"),
+    ".kt": ("tree_sitter_kotlin", "language"),
+    ".kts": ("tree_sitter_kotlin", "language"),
+    ".swift": ("tree_sitter_swift", "language"),
+    ".scala": ("tree_sitter_scala", "language"),
 }
 
 # Node types that represent function/method definitions per language
 _FUNCTION_NODE_TYPES: frozenset[str] = frozenset({
-    # Python
+    # Python, C, C++, PHP, Scala
     "function_definition",
+    # JavaScript/TypeScript, Kotlin, Swift
+    "function_declaration",
     # JavaScript/TypeScript
-    "function_declaration", "method_definition", "arrow_function",
-    # Go
-    "function_declaration", "method_declaration",
+    "method_definition", "arrow_function",
+    # Go, Java, C#, PHP
+    "method_declaration",
+    # Java, C#, Kotlin
+    "constructor_declaration",
     # Rust
     "function_item",
-    # Java
-    "method_declaration", "constructor_declaration",
+    # Ruby
+    "method", "singleton_method",
+    # Swift
+    "init_declaration",
 })
 
 # Node types that count as body statements
@@ -1704,6 +1723,29 @@ _STATEMENT_TYPES: frozenset[str] = frozenset({
     "let_declaration", "macro_invocation",
     # Java
     "local_variable_declaration", "enhanced_for_statement",
+    # C/C++ (§3.1 expansion)
+    "declaration",          # C/C++ variable and type declarations
+    "do_statement",         # C/C++/C#/PHP do-while
+    # C# (§3.1 expansion)
+    "foreach_statement",    # C#/PHP foreach
+    "using_statement",      # C# using blocks
+    "lock_statement",       # C# lock blocks
+    # Ruby (§3.1 expansion)
+    "call",                 # Ruby method calls as statements
+    # PHP (§3.1 expansion)
+    "echo_statement",       # PHP echo
+    # Kotlin (§3.1 expansion)
+    "property_declaration", # Kotlin val/var
+    "return_expression",    # Kotlin return (expression, not statement)
+    # Swift (§3.1 expansion)
+    "guard_statement",      # Swift guard-let
+    "for_in_statement",     # Swift for-in
+    "control_transfer_statement",  # Swift return/break/continue
+    # Scala (§3.1 expansion)
+    "val_definition",       # Scala val
+    "var_definition",       # Scala var
+    "match_expression",     # Scala pattern matching
+    "call_expression",      # Scala/Kotlin function calls as statements
 })
 
 # Cache parsed languages to avoid repeated imports
@@ -1740,19 +1782,53 @@ def _count_body_statements(node: Any) -> int:
     for child in node.children:
         if child.type in _STATEMENT_TYPES:
             count += 1
-        elif child.type in ("block", "statement_block", "statement_list"):
+        elif child.type in _BLOCK_NODE_TYPES:
             count += _count_body_statements(child)
     return count
+
+
+# Node types that represent block containers (recursed into by _count_body_statements)
+_BLOCK_NODE_TYPES: frozenset[str] = frozenset({
+    "block", "statement_block", "statement_list",  # Python/JS/TS/Go/Rust/Java/Scala
+    "compound_statement",  # C/C++/PHP
+    "body_statement",      # Ruby
+    "function_body",       # Kotlin/Swift
+    "statements",          # Swift (inside function_body)
+    "declaration_list",    # C#
+})
 
 
 def _get_parameter_count(node: Any) -> int:
     """Extract parameter count from a function definition node."""
     params = node.child_by_field_name("parameters")
     if not params:
-        # Try "parameter_list" (Go)
-        params = node.child_by_field_name("parameter_list")
+        # Try alternate field names used by different grammars
+        for alt in ("parameter_list", "formal_parameters",
+                    "function_value_parameters", "method_parameters",
+                    "class_parameters"):
+            params = node.child_by_field_name(alt)
+            if params:
+                break
     if not params:
-        return 0
+        # C/C++: parameters live inside the declarator node
+        declarator = node.child_by_field_name("declarator")
+        if declarator:
+            params = declarator.child_by_field_name("parameters")
+    if not params:
+        # Kotlin/Swift/etc.: param list may be a child node, not a named field
+        _PARAM_NODE_TYPES = {"parameters", "parameter_list", "formal_parameters",
+                             "function_value_parameters", "method_parameters",
+                             "class_parameters"}
+        for child in node.children:
+            if child.type in _PARAM_NODE_TYPES:
+                params = child
+                break
+    if not params:
+        # Swift: parameters are direct children of the function node (no wrapper)
+        return sum(
+            1 for c in node.children
+            if c.type in ("parameter", "simple_parameter", "class_parameter")
+        )
     # Count actual parameter nodes (skip punctuation like commas/parens)
     return sum(
         1 for c in params.children
@@ -1763,25 +1839,38 @@ def _get_parameter_count(node: Any) -> int:
 
 def _classify_function_kind(node: Any) -> str:
     """Classify a function node as function, method, or constructor."""
-    # AST node type is the most reliable signal (Java, Kotlin)
+    # AST node type is the most reliable signal (Java, C#, Kotlin)
     if node.type == "constructor_declaration":
+        return "constructor"
+    # Swift initialiser
+    if node.type == "init_declaration":
         return "constructor"
     if node.type in ("method_definition", "method_declaration"):
         name_node = node.child_by_field_name("name")
         if name_node and name_node.text:
             name = name_node.text.decode("utf-8", errors="replace")
             # Explicit constructor names: Python (__init__), JS/TS (constructor),
-            # Swift (init), Rust convention (new)
-            if name in ("__init__", "constructor", "init", "new"):
+            # Swift (init), Rust convention (new), PHP (__construct)
+            if name in ("__init__", "constructor", "init", "new", "__construct"):
                 return "constructor"
             # Go convention: NewFoo() is a constructor
             if re.match(r'^New[A-Z]', name):
                 return "constructor"
         return "method"
-    # Python: check if inside a class
+    # Ruby: method and singleton_method are always inside a class
+    if node.type in ("method", "singleton_method"):
+        name_node = node.child_by_field_name("name")
+        if name_node and name_node.text:
+            name = name_node.text.decode("utf-8", errors="replace")
+            if name == "initialize":
+                return "constructor"
+        return "method"
+    # Check if inside a class (Python, C, C++, PHP, Kotlin, Scala, etc.)
     parent = node.parent
     while parent:
-        if parent.type in ("class_definition", "class_declaration", "class_body"):
+        if parent.type in ("class_definition", "class_declaration", "class_body",
+                           "class_specifier", "field_declaration_list",
+                           "declaration_list", "template_body"):
             return "method"
         parent = parent.parent
     return "function"
@@ -1845,10 +1934,27 @@ def parse_functions(content: str, filename: str) -> list[FunctionInfo]:
 
     def _walk(node: Any) -> None:
         if node.type in _FUNCTION_NODE_TYPES:
+            # --- Name extraction ---
             name_node = node.child_by_field_name("name")
+            if not name_node:
+                # C/C++: name is inside the declarator node
+                declarator = node.child_by_field_name("declarator")
+                if declarator:
+                    name_node = (declarator.child_by_field_name("name")
+                                 or declarator.child_by_field_name("declarator"))
+                    # function_declarator wraps identifier + params
+                    if name_node and name_node.type == "function_declarator":
+                        name_node = name_node.child_by_field_name("declarator")
             name = name_node.text.decode("utf-8", errors="replace") if name_node else "<anonymous>"
 
+            # --- Body extraction ---
             body = node.child_by_field_name("body")
+            if not body:
+                # Kotlin/Swift: body is a function_body child, not a "body" field
+                for child in node.children:
+                    if child.type in _BLOCK_NODE_TYPES:
+                        body = child
+                        break
             stmt_count = _count_body_statements(body) if body else 0
             param_count = _get_parameter_count(node)
             kind = _classify_function_kind(node)

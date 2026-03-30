@@ -4,7 +4,7 @@ Tests covering gaps identified in the REVIEW.md audit:
 - change_inducing_review_rate file-overlap heuristic
 - pr_merge_effectiveness merge_effectiveness threshold key
 - review_quality.py re-export shim
-- domain models (ReleaseRecord, DeploymentRecord, WorkflowRunRecord)
+- domain models (ReleaseRecord, DeploymentRecord, CIRunRecord)
 - ai_bots.yaml config loading
 - conventional_commit_rate direct import (renamed file)
 """
@@ -12,11 +12,11 @@ Tests covering gaps identified in the REVIEW.md audit:
 from datetime import UTC, datetime, timedelta
 
 from impact.domain.models import (
+    CIRunRecord,
     CommentType,
     DeploymentRecord,
     ReleaseRecord,
     ReviewState,
-    WorkflowRunRecord,
 )
 from impact.metrics.plugins.authored.temporal_logical_coupling import TemporalLogicalCoupling
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
@@ -279,10 +279,10 @@ def test_deployment_record_model():
     assert deploy.sha == "abc123"
 
 
-def test_workflow_run_record_model():
-    """WorkflowRunRecord should be constructible with expected fields."""
+def test_ci_run_record_model():
+    """CIRunRecord should be constructible with expected fields."""
     now = datetime(2026, 3, 1, tzinfo=UTC)
-    run = WorkflowRunRecord(
+    run = CIRunRecord(
         id=1,
         head_sha="def456",
         created_at=now,
@@ -298,7 +298,7 @@ def test_canonical_bundle_new_fields_default_empty():
     bundle = make_bundle()
     assert bundle.releases == []
     assert bundle.deployments == []
-    assert bundle.workflow_runs == []
+    assert bundle.ci_runs == []
 
 
 # ── AI bots YAML config ──────────────────────────────────────────

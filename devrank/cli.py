@@ -322,7 +322,7 @@ cli.add_typer(report_app, name="report")
 @report_app.command("generate")
 def report_generate(
     # Forward key params; full delegation to avoid dup (see generate_report.py for others)
-    user_login: str = typer.Option(..., "--user", help="GitHub login"),
+    user_login: str = typer.Option(..., "--user", help="User login (e.g., GitHub username)"),
     role: str = typer.Option("senior_dev", "--role"),
     dump_path: Optional[str] = typer.Option(None, "--dump", help="Existing dump path"),
     # ... extend as needed; DRY by calling main/func
@@ -344,20 +344,39 @@ def report_generate(
     typer.echo("Report generated.")
 
 
-# ── Fetch subcommand (impact/scripts/fetch_github) ─────────────────────────
-fetch_app = typer.Typer(help="Fetch GitHub data dumps.")
+# ── Fetch subcommand (provider-neutral with --provider flag) ────────────────
+fetch_app = typer.Typer(help="Fetch provider data dumps (GitHub, GitLab, etc.).")
 cli.add_typer(fetch_app, name="fetch")
+
+
+@fetch_app.command("run")
+def fetch_run(
+    user_login: str = typer.Option(..., "--user", help="User login (e.g., GitHub username)"),
+    provider: str = typer.Option("github", "--provider", "-p", help="Provider name (e.g., github)"),
+    # Extend params as needed; delegate to preserve DRY
+):
+    """Fetch data from a provider (default: github).
+
+    Delegates to the provider-neutral fetch pipeline via
+    impact/scripts/fetch_github.py (GitHub) or the fetcher registry.
+    """
+    if provider == "github":
+        from impact.scripts.fetch_github import main as fetch_main
+
+        sys.argv = ["fetch_github.py", "--user-login", user_login]
+        fetch_main()
+    else:
+        typer.echo(f"Provider '{provider}' is not yet supported for CLI fetch.", err=True)
+        raise typer.Exit(1)
 
 
 @fetch_app.command("github")
 def fetch_github(
-    user_login: str = typer.Option(..., "--user"),
-    # Extend params as needed; delegate to preserve DRY
+    user_login: str = typer.Option(..., "--user", help="User login (GitHub username)"),
 ):
-    """Fetch GitHub dump (delegates to impact/scripts/fetch_github.py)."""
+    """Fetch GitHub dump (shortcut for ``fetch run --provider github``)."""
     from impact.scripts.fetch_github import main as fetch_main
 
-    # Param forward via sys.argv (simple for argparse scripts; full Typer parse possible)
     sys.argv = ["fetch_github.py", "--user-login", user_login]
     fetch_main()
 

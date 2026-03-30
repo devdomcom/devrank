@@ -33,6 +33,10 @@ class User(BaseModel):
     avatar_url: str | None = None
     type: UserType = UserType.USER
     node_id: str | None = None
+    # Canonical bot flag — set by the provider adapter using provider-specific
+    # signals (GitHub: type/suffix/node_id, GitLab: bot flag, etc.).
+    # Metrics use ``is_bot_user()`` which delegates to this field.
+    is_bot: bool = False
 
 
 class Repository(BaseModel):
@@ -113,6 +117,11 @@ class CommentRecord(BaseModel):
     in_reply_to_id: int | None = None
     path: str | None = None
     position: int | None = None
+    # Canonical code-suggestion flag — set by the adapter when the comment
+    # contains a provider-native code suggestion (GitHub: ```suggestion block,
+    # GitLab: suggestions API, etc.).  Metrics check this instead of parsing
+    # provider-specific markdown.
+    has_code_suggestion: bool = False
 
 
 class FileRecord(BaseModel):
@@ -147,11 +156,11 @@ class TimelineEvent(BaseModel):
 
 
 class ReleaseRecord(BaseModel):
-    """GitHub Release (DORA Deployment Frequency data source).
+    """Release / tag event (DORA Deployment Frequency data source).
 
-    Populated by fetching ``GET /repos/{owner}/{repo}/releases``.
-    A new fetch run will pull this data; existing dumps without releases
-    will simply have an empty list.
+    Populated from provider release APIs (GitHub Releases, GitLab
+    Releases, Bitbucket tags, etc.).  A new fetch run will pull this
+    data; existing dumps without releases will simply have an empty list.
     """
     id: int
     tag_name: str
@@ -165,9 +174,10 @@ class ReleaseRecord(BaseModel):
 
 
 class DeploymentRecord(BaseModel):
-    """GitHub Deployment (DORA Deployment Frequency data source).
+    """Deployment event (DORA Deployment Frequency data source).
 
-    Populated by fetching ``GET /repos/{owner}/{repo}/deployments``.
+    Populated from provider deployment APIs (GitHub Deployments, GitLab
+    Environments, Bitbucket Deployments, Azure DevOps Releases, etc.).
     """
     id: int
     sha: str
@@ -179,11 +189,12 @@ class DeploymentRecord(BaseModel):
     description: str | None = None
 
 
-class WorkflowRunRecord(BaseModel):
-    """GitHub Actions workflow run (Kanban Flow Efficiency -- CI wait time).
+class CIRunRecord(BaseModel):
+    """CI pipeline run (provider-neutral).
 
-    Populated by fetching ``GET /repos/{owner}/{repo}/actions/runs``.
-    Enables splitting lead time into coding, review, CI, and merge phases.
+    Populated from CI systems: GitHub Actions, GitLab CI, Bitbucket
+    Pipelines, Azure DevOps Builds, etc.  Enables splitting lead time
+    into coding, review, CI, and merge phases.
     """
     id: int
     name: str | None = None
@@ -211,7 +222,7 @@ class CanonicalBundle(BaseModel):
     # New data sources (populated by expanded fetcher; empty in legacy dumps)
     releases: list[ReleaseRecord] = []
     deployments: list[DeploymentRecord] = []
-    workflow_runs: list[WorkflowRunRecord] = []
+    ci_runs: list[CIRunRecord] = []
     # User TZ for off-hours (e.g. Europe/Istanbul for Turkey; data TZ from manifest/Z=UTC)
     user_timezone: str | None = None
 
@@ -232,3 +243,8 @@ class MetricResult(BaseModel):
         """Delegate to central no-data check."""
         from impact.metrics.utils import is_no_data
         return is_no_data(self.details or {})
+
+
+# Backward-compatible alias (§7.3 rename WorkflowRunRecord → CIRunRecord).
+# TODO: Remove after all consumers are migrated.
+WorkflowRunRecord = CIRunRecord
