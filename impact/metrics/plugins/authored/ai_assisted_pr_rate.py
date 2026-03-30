@@ -52,6 +52,8 @@ _AI_TOOL_SIGNATURES = [
     r"generated[_\s]?by[_\s]?ai",
     r"ai[_\s]?generated",
     r"generated[_\s]?with[_\s]?ai",
+    # Standalone AI mention (catches cross-language: "AIが生成", "generado por AI")
+    r"\bAI\b",
     # 2026 standard trailers (generic fallback)
     r"generated[-_\s]with:\s*\w+",
     r"generated[-_\s]by:\s*\w+",
@@ -366,8 +368,9 @@ def _analyze_pr_for_ai(pr, ledger) -> tuple[bool, str | None, list[dict]]:
     if style_suspicious and style_evidence:
         evidence.append(style_evidence)
 
-    # Check for additional AI signals
-    additional_signals = _detect_additional_ai_signals(pr, ledger)
+    # Check for additional AI signals — pass whether we already have primary evidence
+    has_primary = len(evidence) > 0
+    additional_signals = _detect_additional_ai_signals(pr, ledger, has_primary_signal=has_primary)
     evidence.extend(additional_signals)
 
     # Determine overall AI assistance status
@@ -610,12 +613,13 @@ def _detect_style_uniformity(pr, ledger) -> tuple[bool, dict | None]:
     return False, None
 
 
-def _detect_additional_ai_signals(pr, ledger) -> list[dict]:
+def _detect_additional_ai_signals(pr, ledger, has_primary_signal: bool = False) -> list[dict]:
     """
     Detect additional AI assistance signals from PR content.
 
     Signals detected:
-    - TODO/FIXME markers (humans leave these, AI often doesn't)
+    - TODO/FIXME markers (humans leave these, AI often doesn't) — only fires
+      as corroborating signal when has_primary_signal is True (§2.3 fix)
     - Comment density (AI may add verbose comments or omit them)
     - Uniform naming patterns (all camelCase, all snake_case)
 
@@ -651,18 +655,22 @@ def _detect_additional_ai_signals(pr, ledger) -> list[dict]:
         for line in added_lines:
             total_code_lines += 1
 
-            # TODO/FIXME detection
-            line_lower = line.lower().strip()
-            if "todo" in line_lower or "fixme" in line_lower:
+            # TODO/FIXME detection — broadened to catch any ALL-CAPS annotation
+            # (e.g., TODO:, FIXME:, HACK:, NOTE:, XXX: — universal convention)
+            stripped = line.strip()
+            if re.search(r'\b[A-Z]{2,}:', stripped):
+                total_todo_fixme += 1
+            elif "todo" in stripped.lower() or "fixme" in stripped.lower():
                 total_todo_fixme += 1
 
-            # Comment detection (simple heuristic)
-            stripped = line.strip()
-            if stripped.startswith("#") or stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
+            # Comment detection — expanded prefixes for all major languages (§3.3)
+            # #(Python/Ruby/Perl), //(C/Java/JS/Go/Rust), /*(C-family), *(doc),
+            # --(SQL/Haskell/Lua), <!--(HTML/XML), %(MATLAB/LaTeX), ;(Lisp/ASM), (*(OCaml/Pascal)
+            _comment_prefixes = ("#", "//", "/*", "*", "--", "<!--", "%", ";", "(*")
+            if any(stripped.startswith(p) for p in _comment_prefixes):
                 total_comments += 1
 
             # Naming pattern detection (simple heuristic on identifiers)
-            import re
             # Find potential identifiers
             identifiers = re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b", stripped)
             for ident in identifiers:
@@ -676,7 +684,10 @@ def _detect_additional_ai_signals(pr, ledger) -> list[dict]:
                     naming_patterns["lowercase"] = naming_patterns.get("lowercase", 0) + 1
 
     # Signal 1: No TODO/FIXME in substantial PR (AI often doesn't leave these)
-    if total_code_lines > 100 and total_todo_fixme == 0:
+    # Downgraded to corroborating-only: only fires when a primary AI signal exists.
+    # This avoids false positives for non-English teams that use native-language
+    # annotations instead of TODO/FIXME.
+    if has_primary_signal and total_code_lines > 100 and total_todo_fixme == 0:
         evidence.append({
             "source": "no_todo_fixme",
             "tool": "ai_assisted",

@@ -9,11 +9,9 @@ When GitHub Releases/Deployments API data is available (see data pipeline),
 this metric can be enhanced with deployment-aware incident detection.
 """
 
-import re
-
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import percentile
+from impact.metrics.utils import is_revert_indicator, percentile
 
 
 class TimeToRestore(Metric):
@@ -63,9 +61,8 @@ class TimeToRestore(Metric):
 
         all_commits.sort(key=lambda c: c.date)
 
-        # Step 1: Identify revert commits
-        revert_pattern = re.compile(r'^Revert\s', re.IGNORECASE)
-        revert_commits = [c for c in all_commits if revert_pattern.match(c.message or "")]
+        # Step 1: Identify revert commits (centralised detection with SHA fallback)
+        revert_commits = [c for c in all_commits if is_revert_indicator(c.message or "")]
 
         restore_times: list[float] = []
         incidents: list[dict] = []
@@ -87,7 +84,7 @@ class TimeToRestore(Metric):
             for candidate in all_commits:
                 if candidate.date <= revert.date:
                     continue
-                if revert_pattern.match(candidate.message or ""):
+                if is_revert_indicator(candidate.message or ""):
                     continue  # skip other reverts
                 if not candidate.pull_request_number:
                     continue

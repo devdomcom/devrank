@@ -3,7 +3,12 @@ from collections import Counter
 
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import filter_prs_for_contribution
+from impact.metrics.utils import (
+    filter_prs_for_contribution,
+    is_test_file,
+    is_documentation_file,
+    is_dependency_file,
+)
 
 # Conventional commit types (conventionalcommits.org)
 _CATEGORY_TYPES = [
@@ -15,14 +20,83 @@ _PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Label → category mapping (language-neutral, team-applied metadata)
+_LABEL_TO_CATEGORY: dict[str, str] = {
+    "bug": "fix", "fix": "fix", "hotfix": "fix", "type:bug": "fix",
+    "type:fix": "fix", "kind/bug": "fix", "kind/fix": "fix",
+    "feature": "feat", "enhancement": "feat", "type:feature": "feat",
+    "kind/feature": "feat",
+    "documentation": "docs", "docs": "docs", "type:docs": "docs",
+    "test": "test", "testing": "test", "type:test": "test",
+    "ci": "ci", "cd": "ci", "devops": "ci", "type:ci": "ci",
+    "dependencies": "chore", "chore": "chore", "type:chore": "chore",
+    "performance": "perf", "type:perf": "perf",
+    "refactor": "refactor", "type:refactor": "refactor",
+    "style": "style", "type:style": "style",
+}
 
-def _classify_pr(title: str, body: str | None) -> str:
-    """Classify a PR into a category from its title or body."""
+# CI config paths (cross-provider)
+_CI_CONFIG_PATHS: tuple[str, ...] = (
+    ".github/workflows/", ".gitlab-ci.yml", "bitbucket-pipelines.yml",
+    "azure-pipelines.yml", ".circleci/", "Jenkinsfile", ".drone.yml",
+    ".travis.yml", ".buildkite/",
+)
+
+
+def _is_ci_config_file(filename: str) -> bool:
+    f_lower = filename.lower()
+    return any(f_lower.startswith(p) or ("/" + p) in f_lower or f_lower.endswith(p) for p in _CI_CONFIG_PATHS)
+
+
+def _classify_by_labels(labels: list[str]) -> str | None:
+    """Classify PR by labels (language-neutral, team-applied metadata)."""
+    for label in labels:
+        cat = _LABEL_TO_CATEGORY.get(label.lower())
+        if cat:
+            return cat
+    return None
+
+
+def _classify_by_diff(filenames: list[str]) -> str | None:
+    """Classify PR by file-path structure (language-neutral)."""
+    if not filenames:
+        return None
+    if all(is_test_file(fn) for fn in filenames):
+        return "test"
+    if all(is_documentation_file(fn) for fn in filenames):
+        return "docs"
+    if all(_is_ci_config_file(fn) for fn in filenames):
+        return "ci"
+    if all(is_dependency_file(fn) for fn in filenames):
+        return "chore"
+    return None
+
+
+def _classify_pr(title: str, body: str | None, labels: list[str] | None = None, filenames: list[str] | None = None) -> str:
+    """Classify a PR into a category — multi-signal, language-neutral layers.
+
+    Priority:
+      1. Conventional commit prefix (spec-defined, universal)
+      2. PR labels (team-applied metadata, universal)
+      3. Structural diff analysis (file-path-based, universal)
+      4. English keyword fallback (backward-compatible)
+    """
+    # Priority 1: Conventional commit prefix
     for text in [title, body or ""]:
         m = _PREFIX_RE.match(text.strip())
         if m:
             return m.group(1).lower()
-    # Fallback heuristics from title keywords
+    # Priority 2: PR labels
+    if labels:
+        cat = _classify_by_labels(labels)
+        if cat:
+            return cat
+    # Priority 3: Structural diff analysis
+    if filenames:
+        cat = _classify_by_diff(filenames)
+        if cat:
+            return cat
+    # Priority 4: English keyword fallback (backward-compatible)
     t = title.lower()
     if any(w in t for w in ["fix", "bug", "hotfix", "patch"]):
         return "fix"
@@ -78,7 +152,9 @@ class PRCategoryDiversity(Metric):
         per_pr: list[dict] = []
 
         for pr in prs:
-            cat = _classify_pr(pr.title, pr.body)
+            pr_files = context.ledger.get_files_for_pr(pr.number)
+            filenames = [f.filename for f in pr_files] if pr_files else None
+            cat = _classify_pr(pr.title, pr.body, labels=getattr(pr, 'labels', None), filenames=filenames)
             category_counts[cat] += 1
             per_pr.append({"number": pr.number, "category": cat})
 

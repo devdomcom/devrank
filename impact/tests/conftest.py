@@ -170,6 +170,7 @@ def make_commit(
     pr_number: int,
     message: str = "commit",
     committer: User | None = None,
+    parent_count: int = 1,
 ) -> Commit:
     """Create a Commit for testing."""
     return Commit(
@@ -180,6 +181,7 @@ def make_commit(
         date=date,
         pull_request_number=pr_number,
         idx=None,
+        parent_count=parent_count,
     )
 
 

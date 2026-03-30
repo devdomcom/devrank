@@ -74,6 +74,9 @@ class PullRequest(BaseModel):
     merged_by: User | None = None
     comments: int
     review_comments: int
+    # Provider-normalised labels (e.g. ["bug", "enhancement"]).
+    # Populated by adapter from provider API (GitHub: labels[].name).
+    labels: list[str] = []
 
 
 class Commit(BaseModel):
@@ -84,6 +87,9 @@ class Commit(BaseModel):
     date: datetime
     pull_request_number: int | None = None
     idx: int | None = None
+    # Git DAG parent count: 1 = normal, >=2 = merge commit.
+    # Populated by adapter from provider API (e.g. len(parents)).
+    parent_count: int = 1
 
 
 class ReviewRecord(BaseModel):

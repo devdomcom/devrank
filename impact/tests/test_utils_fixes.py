@@ -171,7 +171,7 @@ class TestApprovalWasFinal:
 
         merge_commit = make_commit(
             sha="some_other_sha", author=user, date=merge_time, pr_number=1,
-            message="Merge branch 'main' into feature"
+            message="Merge branch 'main' into feature", parent_count=2
         )
 
         ledger = self._make_ledger_mock(pr, [merge_commit], [review])
@@ -336,30 +336,27 @@ class TestCollectPrInteractionsDedup:
 
 class TestComputePrBodyQualityDoubleAward:
     def test_fixes_ref_no_double_award(self):
-        """'Fixes #1234' should get +15 for the issue ref, but NOT also +10 for generic #N."""
+        """'Fixes #1234' should get +15 for the cross-ref, no double-counting."""
         # Body >= 100 chars -> +25 for length
-        # Has "Fixes #1234" -> +15 for issue ref
-        # The #1234 should NOT also trigger +10 for generic #N (elif chain prevents it)
+        # Has #1234 -> +15 for cross-ref (provider-neutral pattern)
         body = "Fixes #1234\n" + "x" * 100
         score = compute_pr_body_quality(body)
-        # Expected: 25 (length) + 15 (issue ref) = 40
-        # Before fix: 25 + 15 + 10 = 50 (double counted)
+        # Expected: 25 (length) + 15 (cross-ref) = 40
         assert score == 40
 
     def test_pr_ref_without_issue_ref(self):
-        """PR #123 without issue ref should get +15 for PR ref."""
+        """PR #123 should get +15 for cross-ref."""
         body = "See PR #123 for context\n" + "x" * 100
         score = compute_pr_body_quality(body)
-        # 25 (length) + 15 (PR ref) = 40
+        # 25 (length) + 15 (cross-ref) = 40
         assert score == 40
 
     def test_generic_hash_without_issue_or_pr_ref(self):
-        """Generic #45 (2-digit, won't match 3+ digit standalone pattern) without
-        issue/PR keywords should fall through to the generic #N branch (+10)."""
+        """Any #NN cross-ref now gets +15 (provider-neutral unified pattern)."""
         body = "Related to #45\n" + "x" * 100
         score = compute_pr_body_quality(body)
-        # 25 (length) + 10 (generic #N) = 35
-        assert score == 35
+        # 25 (length) + 15 (cross-ref) = 40
+        assert score == 40
 
     def test_no_refs_at_all(self):
         """No refs should get 0 for references."""

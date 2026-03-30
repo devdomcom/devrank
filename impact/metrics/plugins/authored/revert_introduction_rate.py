@@ -4,6 +4,29 @@ from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import is_revert_indicator
 
+# SHA pattern for extracting reverted commit references
+_SHA_RE = re.compile(r'\b([a-f0-9]{7,40})\b')
+
+
+def _extract_reverted_sha(message: str, known_shas: set[str]) -> str | None:
+    """Extract the SHA of the commit being reverted — English fast-path, then structural.
+
+    Priority 1: English format (``reverts? commit <sha>``) — fast path.
+    Priority 2: Any SHA in the message body verified against known commits.
+    """
+    # Priority 1: English format (fast path, backward-compatible)
+    m = re.search(r'reverts? commit ([a-f0-9]{7,40})', message, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    # Priority 2: Any SHA in the message body that exists in commit history
+    body = message.split("\n", 1)[1] if "\n" in message else ""
+    for m in _SHA_RE.finditer(body):
+        candidate = m.group(1)
+        # Full match or prefix match against known SHAs
+        if candidate in known_shas or any(s.startswith(candidate) for s in known_shas):
+            return candidate
+    return None
+
 
 class RevertIntroductionRate(Metric):
     """Rate of reverts attributed to the user's original code (low = stable)."""
@@ -46,15 +69,14 @@ class RevertIntroductionRate(Metric):
 
         # Build a lookup of all commit SHAs to their author
         sha_to_commit = {c.sha: c for c in all_commits}
+        known_shas = set(sha_to_commit.keys())
 
         user_reverted = []
         for rc in revert_commits:
-            # Parse original SHA from revert message
-            # GitHub format: "Revert ... This reverts commit <sha>"
-            match = re.search(r'reverts? commit ([a-f0-9]{7,40})', rc.message, re.IGNORECASE)
-            if not match:
+            # Extract original SHA — English fast-path, then structural fallback
+            original_sha = _extract_reverted_sha(rc.message, known_shas)
+            if not original_sha:
                 continue
-            original_sha = match.group(1)
             # Find the original commit (support prefix matching)
             original_commit = sha_to_commit.get(original_sha)
             if not original_commit:

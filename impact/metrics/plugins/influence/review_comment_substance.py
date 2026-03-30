@@ -34,13 +34,22 @@ def _score_comment(body: str) -> int:
     if re.search(r"https?://", body) or re.search(r"#\d+", body):
         score += 10
 
-    # Actionable language (up to 10 points)
-    actionable = [
-        "should", "could", "consider", "suggest", "recommend",
-        "instead", "rather", "prefer", "nit:", "todo:",
-    ]
-    if any(w in body.lower() for w in actionable):
-        score += 10
+    # Structured feedback dimension (replaces English "actionable language", up to 10 pts)
+    # Uses language-neutral structural signals instead of English word list
+    structured_signals = 0
+    # Bullet / numbered lists (suggests organised feedback)
+    if re.search(r'(?m)^\s*[-*]\s+\S', body) or re.search(r'(?m)^\s*\d+[.)]\s+\S', body):
+        structured_signals += 5
+    # @mentions (suggests targeted, directed feedback)
+    if re.search(r'@[a-zA-Z0-9_-]+', body):
+        structured_signals += 3
+    # Fenced code block in review comment (concrete code feedback — provider-neutral)
+    if re.search(r'```\w*\n', body):
+        structured_signals += 5
+    # Structured labels like "nit:", "NOTE:", "提案:" (colon-terminated, any language)
+    if re.search(r'\b[A-Z]{2,}:', body) or re.search(r'[\u3000-\u9FFF]+:', body):
+        structured_signals += 2
+    score += min(structured_signals, 10)
 
     return min(score, 100)
 

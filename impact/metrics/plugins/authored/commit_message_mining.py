@@ -1,6 +1,6 @@
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import classify_defect_commit
+from impact.metrics.utils import classify_defect_commit, is_merge_commit
 
 
 class CommitMessageMining(Metric):
@@ -30,9 +30,19 @@ class CommitMessageMining(Metric):
         all_commits = context.ledger.get_commits_for_user(
             context.user_login, context.start_date, context.end_date
         )
-        commits = [c for c in all_commits if not c.message.strip().lower().startswith("merge ")]
+        commits = [c for c in all_commits if not is_merge_commit(c)]
 
-        defect_commits = [c for c in commits if classify_defect_commit(c.message)]
+        # Pass PR labels to classify_defect_commit for language-neutral detection
+        pr_labels_cache: dict[int, list[str]] = {}
+        def _get_pr_labels(pr_number: int | None) -> list[str] | None:
+            if pr_number is None:
+                return None
+            if pr_number not in pr_labels_cache:
+                pr = context.ledger.get_pr(pr_number)
+                pr_labels_cache[pr_number] = getattr(pr, 'labels', []) if pr else []
+            return pr_labels_cache[pr_number]
+
+        defect_commits = [c for c in commits if classify_defect_commit(c.message, labels=_get_pr_labels(c.pull_request_number))]
         total = len(commits)
         defect_count = len(defect_commits)
         defect_rate = (defect_count / total * 100) if total else 0.0

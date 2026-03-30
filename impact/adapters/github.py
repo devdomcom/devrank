@@ -271,6 +271,10 @@ class GitHubAdapter(ProviderAdapter):
                     if not message:
                         continue
 
+                    # Git DAG parent count for merge-commit detection
+                    parents = commit_dict.get("parents")
+                    parent_count = len(parents) if isinstance(parents, list) else 1
+
                     commits.append(
                         Commit(
                             sha=commit_dict["sha"],
@@ -280,6 +284,7 @@ class GitHubAdapter(ProviderAdapter):
                             date=commit_dt,
                             pull_request_number=pr_number,
                             idx=commit_dict.get("idx"),
+                            parent_count=parent_count,
                         )
                     )
                     if author.login == user_login:
@@ -486,6 +491,7 @@ class GitHubAdapter(ProviderAdapter):
                     merged_by=merged_by,
                     comments=pr_dict.get("comments", 0),
                     review_comments=pr_dict.get("review_comments", 0),
+                    labels=[l["name"] for l in pr_dict.get("labels", []) if isinstance(l, dict) and "name" in l],
                 )
             )
 

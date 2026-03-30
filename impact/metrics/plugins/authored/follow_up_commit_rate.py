@@ -1,6 +1,6 @@
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import filter_prs_for_contribution
+from impact.metrics.utils import filter_prs_for_contribution, is_merge_commit
 
 
 class FollowUpCommitRate(Metric):
@@ -42,7 +42,7 @@ class FollowUpCommitRate(Metric):
             author_commits = sorted(
                 [c for c in commits
                  if c.author.login == context.user_login
-                 and not c.message.lower().startswith("merge ")],
+                 and not is_merge_commit(c)],
                 key=lambda c: c.date,
             )
             has_follow_up = len(author_commits) > 1

@@ -66,7 +66,7 @@ def test_commit_message_mining_filters_merge_commits():
     start = DEFAULT_START
 
     commits = [
-        make_commit("sha1", user, start, 1, message="merge branch 'main'"),
+        make_commit("sha1", user, start, 1, message="merge branch 'main'", parent_count=2),
         make_commit("sha2", user, start + timedelta(hours=1), 1, message="fix: crash on start"),
     ]
 

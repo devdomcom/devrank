@@ -38,7 +38,7 @@ class BugFixFocusRate(Metric):
             context.user_login, context.start_date, context.end_date
         )
 
-        bug_prs = [pr for pr in prs if is_bug_fix_indicator(pr.title) or is_bug_fix_indicator(pr.body or "")]
+        bug_prs = [pr for pr in prs if is_bug_fix_indicator(pr.title, labels=getattr(pr, 'labels', None)) or is_bug_fix_indicator(pr.body or "", labels=getattr(pr, 'labels', None))]
         bug_commits = [c for c in commits if is_bug_fix_indicator(c.message)]
 
         # Deduplicate: collect SHAs of commits belonging to bug-fix PRs

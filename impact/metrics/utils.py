@@ -396,13 +396,13 @@ def approval_was_final(ledger, review, max_hours_to_merge=48) -> bool:
         return False
     pr_num = review.pull_request_number
     rev_time = review.submitted_at
-    # No later commits or CRs? (exclude merge commits)
+    # No later commits or CRs? (exclude merge commits via parent count)
     pr = ledger.get_pr(pr_num)
     later_commits = [
         c for c in ledger.get_commits_for_pr(pr_num)
         if c.date > rev_time
         and c.sha != getattr(pr, 'merge_commit_sha', None)
-        and not c.message.lower().startswith("merge ")
+        and not is_merge_commit(c)
     ]
     later_crs = [
         r
@@ -453,19 +453,68 @@ def is_immediate_approval(ledger: Ledger, pr_number: int, author_login: str) -> 
     return True
 
 
-def is_bug_fix_indicator(text: str) -> bool:
-    """DRY helper to detect bug-fix focus in titles/bodies/messages."""
+def is_merge_commit(commit) -> bool:
+    """Structural merge detection via Git DAG parent count.
+
+    A merge commit has >=2 parents.  This is language-neutral (no English
+    message parsing) and works regardless of the developer's Git locale.
+    Falls back to English prefix check when parent_count is unavailable.
+    """
+    parent_count = getattr(commit, "parent_count", None)
+    if parent_count is not None:
+        return parent_count >= 2
+    # Legacy fallback: English merge-commit prefix (for older data without parent_count)
+    msg = getattr(commit, "message", "") or ""
+    return msg.lower().startswith("merge ")
+
+
+# Configurable bug-fix label set (team-applied metadata — most reliable signal).
+# Covers common label conventions across GitHub, GitLab, Jira, etc.
+_BUG_LABELS: frozenset[str] = frozenset({
+    "bug", "fix", "hotfix", "bugfix",
+    "type:bug", "type:fix", "kind/bug", "kind/fix",
+    "type/bug", "type/fix", "priority/critical",
+    "defect", "regression",
+})
+
+# Provider-neutral cross-reference pattern: #NNN, !NNN, AB#NNN
+_CROSS_REF_RE = re.compile(r'(?<!\w)(?:AB)?[#!]\d{1,6}\b')
+
+
+def is_bug_fix_indicator(text: str, labels: list[str] | None = None) -> bool:
+    """Multi-signal bug-fix detection — labels-first, then structural, then English.
+
+    Priority:
+      1. PR labels (language-neutral, team-applied ground truth)
+      2. Conventional commit prefix ``fix:`` (spec-defined protocol token)
+      3. Cross-reference pattern (#NNN, !NNN — provider-neutral)
+      4. English keyword fallback (backward-compatible)
+    """
+    # Priority 1: labels
+    if labels:
+        if any(l.lower() in _BUG_LABELS for l in labels):
+            return True
+
     if not text:
         return False
     text_lower = text.lower()
-    # Conventional commit: fix: or fix(scope): or fix!:
+
+    # Priority 2: Conventional commit prefix (spec-defined, not English)
     if re.match(r'^fix(\(.*?\))?!?:', text_lower):
         return True
-    # Specific prefix patterns (no false positives)
+
+    # Priority 3: Cross-reference patterns (provider-neutral numeric refs)
+    if _CROSS_REF_RE.search(text):
+        # Specific prefix patterns that combine a bug keyword with a ref
+        prefix_patterns = ["bugfix:", "bug fix", "bug:", "hotfix"]
+        if any(p in text_lower for p in prefix_patterns):
+            return True
+
+    # Priority 4: English keyword fallback (backward-compatible)
     prefix_patterns = ["bugfix:", "bug fix", "bug:", "hotfix"]
     if any(p in text_lower for p in prefix_patterns):
         return True
-    # Issue/PR refs require actual digits after # (avoids PR template boilerplate)
+    # Issue/PR refs with English verbs
     if re.search(r'(?:fixes|closes|resolves|issue)\s*#\d+', text_lower):
         return True
     # Ambiguous terms need word boundaries
@@ -473,13 +522,24 @@ def is_bug_fix_indicator(text: str) -> bool:
     return any(re.search(p, text_lower) for p in word_boundary_patterns)
 
 
+_REVERT_SHA_RE = re.compile(r'[a-f0-9]{40}')
+
+
 def is_revert_indicator(text: str) -> bool:
-    """DRY helper to detect reverts (per proposal; assumes Git revert msg/SHA)."""
+    """Detect reverts via Git platform prefix and structural SHA-based fallback.
+
+    Layer 1: English ``Revert`` prefix / ``reverts commit`` phrase (Git default).
+    Layer 2: Any 40-char hex SHA in the message body (language-neutral).
+    """
     if not text:
         return False
     text_lower = text.lower()
-    # Common GitHub revert patterns (from sample data)
-    return text_lower.startswith("revert") or "reverts commit" in text_lower
+    # Layer 1 (platform default): Git always inserts English "Revert" prefix
+    if text_lower.startswith("revert") or "reverts commit" in text_lower:
+        return True
+    # Layer 2 (structural): body contains a 40-char SHA — strong revert signal
+    body = text.split("\n", 1)[1] if "\n" in text else ""
+    return bool(_REVERT_SHA_RE.search(body))
 
 
 def is_test_file(filename: str) -> bool:
@@ -601,11 +661,12 @@ def compute_pr_body_quality(body: str | None) -> int:
         score += 30
     elif sections >= 1:
         score += 20
-    if re.search(r"(?i)(?:fixes|closes|resolves|refs?)\s*#?\d+", body) or re.search(r"(?<!\w)#\d{3,}", body):
+    # Provider-neutral cross-reference bonus: #NNN, !NNN (GitLab MR),
+    # AB#NNN (Azure DevOps work items).  Replaces English-only "fixes/closes".
+    if re.search(r'(?<!\w)(?:AB)?[#!]\d{1,6}\b', body):
         score += 15
-    elif re.search(r"(?i)pr\s*#?\d+", body) or "pull request" in body.lower():
-        score += 15
-    elif re.search(r"#\d+", body):
+    # URL reference fallback (links to any tracker: Jira, Linear, etc.)
+    elif re.search(r'https?://\S+', body):
         score += 10
     return min(score, 100)
 
@@ -693,9 +754,15 @@ _GENERATED_DIRS: tuple[str, ...] = (
     "migrations/",
 )
 
-# Header markers in patch content that signal auto-generated files
+# Header markers in patch content that signal auto-generated files.
+# Ordered by language-neutrality: tool-convention markers first (@generated,
+# @auto-generated), English phrases as secondary bonus layer.
 _GENERATED_MARKERS: tuple[str, ...] = (
+    # Tool conventions (never localised — primary markers)
     "@generated",
+    "@auto-generated",
+    "@autogenerated",
+    # English phrases (secondary — bonus layer for English codebases)
     "auto-generated",
     "automatically generated",
     "do not edit",
@@ -789,13 +856,34 @@ def is_generated_file(filename: str, patch: str | None = None) -> bool:
 
 
 # DRY conventional commit checker (industry best practices: type(scope)!: desc; types from conventionalcommits.org)
+
+# Strict: only the 11 spec-defined English type tokens
+_CC_STRICT_RE = re.compile(
+    r'^(?:feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)'
+    r'(?:\(.+?\))?!?:\s', re.IGNORECASE,
+)
+# Broad: any single-word type + optional scope + colon (covers non-English types
+# like 機能:, fonctionnalite:, etc.)
+_CC_BROAD_RE = re.compile(r'^[a-zA-Z\u00C0-\u024F\u3000-\u9FFF]+(?:\(.+?\))?!?:\s')
+
+
 def is_conventional_commit(message: str) -> bool:
+    """Strict check: message matches one of the 11 Conventional Commits spec types."""
     if not message:
         return False
-    msg = message.strip().lower()
-    types = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"]
-    # Match type!(scope): or type: 
-    return any(msg.startswith(t + ":") or msg.startswith(t + "!:") or msg.startswith(t + "(") for t in types)
+    return bool(_CC_STRICT_RE.match(message.strip()))
+
+
+def is_structured_commit(message: str) -> bool:
+    """Broad check: any ``word(scope?):`` prefix, including non-English types.
+
+    This catches teams using non-English type prefixes (e.g., ``機能:``, ``修正:``,
+    ``fonctionnalite:``) that follow the structured ``type: description`` pattern
+    without being one of the 11 English spec types.
+    """
+    if not message:
+        return False
+    return bool(_CC_BROAD_RE.match(message.strip()))
 
 
 # Commit message defect mining: regex patterns for defect-related changes
@@ -827,8 +915,25 @@ _DEFECT_PATTERNS: list[re.Pattern] = [
 ]
 
 
-def classify_defect_commit(message: str) -> bool:
-    """Return True if commit message suggests defect-related work."""
+# Configurable defect label set (same infrastructure as _BUG_LABELS)
+_DEFECT_LABELS: frozenset[str] = frozenset({
+    "bug", "defect", "type:bug", "kind/bug", "incident",
+    "hotfix", "regression", "type:defect",
+})
+
+
+def classify_defect_commit(message: str, labels: list[str] | None = None) -> bool:
+    """Return True if commit is defect-related — labels-first, then English regex.
+
+    Priority:
+      1. PR labels (language-neutral, team-applied ground truth)
+      2. English keyword regex (backward-compatible fallback)
+    """
+    # Priority 1: labels
+    if labels:
+        if any(l.lower() in _DEFECT_LABELS for l in labels):
+            return True
+    # Priority 2: English regex fallback
     if not message:
         return False
     normalized = message.strip()
@@ -1658,15 +1763,21 @@ def _get_parameter_count(node: Any) -> int:
 
 def _classify_function_kind(node: Any) -> str:
     """Classify a function node as function, method, or constructor."""
+    # AST node type is the most reliable signal (Java, Kotlin)
+    if node.type == "constructor_declaration":
+        return "constructor"
     if node.type in ("method_definition", "method_declaration"):
         name_node = node.child_by_field_name("name")
         if name_node and name_node.text:
             name = name_node.text.decode("utf-8", errors="replace")
-            if name in ("__init__", "constructor", "init"):
+            # Explicit constructor names: Python (__init__), JS/TS (constructor),
+            # Swift (init), Rust convention (new)
+            if name in ("__init__", "constructor", "init", "new"):
+                return "constructor"
+            # Go convention: NewFoo() is a constructor
+            if re.match(r'^New[A-Z]', name):
                 return "constructor"
         return "method"
-    if node.type == "constructor_declaration":
-        return "constructor"
     # Python: check if inside a class
     parent = node.parent
     while parent:

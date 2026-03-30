@@ -623,7 +623,7 @@ class TestFollowUpCommitRateMergeFiltering:
         # 1 real commit + 1 merge commit = only 1 real commit (no follow-up)
         c1 = make_commit("sha1", alice, start + timedelta(hours=1), 1, message="feat: initial impl")
         c2 = make_commit("sha2", alice, start + timedelta(hours=5), 1,
-                         message="Merge branch 'main' into feature-1")
+                         message="Merge branch 'main' into feature-1", parent_count=2)
 
         bundle = make_bundle(
             users=[alice, owner],

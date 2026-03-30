@@ -4,7 +4,14 @@ from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import filter_prs_for_contribution
 
-CO_AUTHOR_PATTERN = re.compile(r'Co-authored-by:\s*(.+)', re.IGNORECASE)
+# Broadened collaboration trailer pattern: catches Co-authored-by:,
+# Pair-programmed-with:, Paired-with:, Helped-by:, Mentored-by:,
+# Reviewed-by: (kernel style), and any X-by:/X-with: trailer.
+CO_AUTHOR_PATTERN = re.compile(
+    r'(?:Co-authored-by|Pair(?:ed)?-(?:programmed-)?with|'
+    r'Helped-by|Mentored-by|Reviewed-by):\s*(.+)',
+    re.IGNORECASE,
+)
 
 
 class CoAuthorContributionRate(Metric):

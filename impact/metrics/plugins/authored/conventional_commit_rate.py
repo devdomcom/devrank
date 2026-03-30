@@ -1,6 +1,6 @@
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import is_conventional_commit
+from impact.metrics.utils import is_conventional_commit, is_structured_commit, is_merge_commit
 
 
 class ConventionalCommitRate(Metric):
@@ -28,15 +28,20 @@ class ConventionalCommitRate(Metric):
         all_commits = context.ledger.get_commits_for_user(
             context.user_login, context.start_date, context.end_date
         )
-        # Filter out merge commits — they penalize merge-commit workflows unfairly
-        commits = [c for c in all_commits if not c.message.strip().lower().startswith("merge ")]
+        # Filter out merge commits via parent count (language-neutral)
+        commits = [c for c in all_commits if not is_merge_commit(c)]
         conventional = sum(1 for c in commits if is_conventional_commit(c.message))
+        structured = sum(1 for c in commits if is_structured_commit(c.message))
         total = len(commits)
         rate = (conventional / total * 100) if total else 0.0
+        structured_rate = (structured / total * 100) if total else 0.0
         summary = f"Conventional commit rate: {rate:.1f}% ({conventional}/{total} commits)."
         details: dict[str, object] = {
             "conventional_commit_rate": rate,
             "conventional_count": conventional,
+            # Broad structured rate: any word(scope?): prefix (non-English types credited)
+            "structured_rate": structured_rate,
+            "structured_count": structured,
             "total_commits": total,
             "commit_messages_sample": [c.message[:100] for c in commits[:5]],  # for verify
         }
