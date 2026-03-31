@@ -513,6 +513,15 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x < 40,
         "scores": [(0, 0), (40, 25), (60, 50), (80, 75), (100, 100)],
     },
+    # Review Coverage: higher % of files with inline review comments = better quality gate
+    "review_coverage": {
+        "key": "coverage_pct",
+        "excellent": lambda x: x >= 80,
+        "good": lambda x: 60 <= x < 80,
+        "neutral": lambda x: 40 <= x < 60,
+        "bad": lambda x: x < 40,
+        "scores": [(0, 0), (40, 25), (60, 50), (80, 75), (100, 100)],
+    },
     # AI Adoption Rate: per-engineer indicator of AI tool usage (descriptive only; no qualitative rating)
     "ai_adoption_rate": {
         "key": "has_adopted_ai",

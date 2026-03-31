@@ -606,6 +606,17 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
             ("total_churned", "Churned Lines", "count"),
         ],
     },
+    # ---- Review Coverage ----
+    "review_coverage": {
+        "name": "Review Coverage",
+        "stats": [
+            ("coverage_pct", "Coverage", "pct"),
+            ("reviewed_files", "Reviewed Files", "count"),
+            ("total_files", "Total Files", "count"),
+            ("fully_reviewed_prs", "Fully Reviewed PRs", "count"),
+            ("unreviewed_prs", "Unreviewed PRs", "count"),
+        ],
+    },
 }
 
 

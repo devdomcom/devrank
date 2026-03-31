@@ -48,6 +48,7 @@ from impact.metrics.plugins.authored.sum_of_coupling import SumOfCoupling
 from impact.metrics.plugins.authored.absolute_churn_trend import AbsoluteChurnTrend
 from impact.metrics.plugins.authored.commit_message_mining import CommitMessageMining
 from impact.metrics.plugins.authored.code_survival import CodeSurvival
+from impact.metrics.plugins.authored.review_coverage import ReviewCoverage
 from impact.metrics.plugins.authored.wip_load import WIPLoad
 from impact.metrics.plugins.authored.flow_efficiency import FlowEfficiency
 from impact.metrics.plugins.authored.time_to_restore import TimeToRestore
@@ -151,6 +152,7 @@ def get_metrics():
         "absolute_churn_trend": AbsoluteChurnTrend,
         "commit_message_mining": CommitMessageMining,
         "code_survival": CodeSurvival,
+        "review_coverage": ReviewCoverage,
         "wip_load": WIPLoad,
         "flow_efficiency": FlowEfficiency,
         "time_to_restore": TimeToRestore,

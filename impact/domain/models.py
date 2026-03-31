@@ -245,6 +245,3 @@ class MetricResult(BaseModel):
         return is_no_data(self.details or {})
 
 
-# Backward-compatible alias (§7.3 rename WorkflowRunRecord → CIRunRecord).
-# TODO: Remove after all consumers are migrated.
-WorkflowRunRecord = CIRunRecord

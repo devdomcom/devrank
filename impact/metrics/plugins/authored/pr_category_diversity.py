@@ -4,6 +4,7 @@ from collections import Counter
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
 from impact.metrics.utils import (
+    _load_customization,
     filter_prs_for_contribution,
     is_test_file,
     is_documentation_file,
@@ -20,8 +21,8 @@ _PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Label → category mapping (language-neutral, team-applied metadata)
-_LABEL_TO_CATEGORY: dict[str, str] = {
+# Built-in label → category mapping (language-neutral, team-applied metadata)
+_LABEL_TO_CATEGORY_BUILTIN: dict[str, str] = {
     "bug": "fix", "fix": "fix", "hotfix": "fix", "type:bug": "fix",
     "type:fix": "fix", "kind/bug": "fix", "kind/fix": "fix",
     "feature": "feat", "enhancement": "feat", "type:feature": "feat",
@@ -34,6 +35,18 @@ _LABEL_TO_CATEGORY: dict[str, str] = {
     "refactor": "refactor", "type:refactor": "refactor",
     "style": "style", "type:style": "style",
 }
+
+
+def _get_label_to_category() -> dict[str, str]:
+    """Return the full label-to-category mapping (built-in + config extras)."""
+    cfg = _load_customization()
+    extras = cfg.get("extra_label_to_category") or {}
+    if not extras:
+        return _LABEL_TO_CATEGORY_BUILTIN
+    merged = dict(_LABEL_TO_CATEGORY_BUILTIN)
+    for label, cat in extras.items():
+        merged[label.lower()] = cat.lower()
+    return merged
 
 # CI config paths (cross-provider)
 _CI_CONFIG_PATHS: tuple[str, ...] = (
@@ -50,8 +63,9 @@ def _is_ci_config_file(filename: str) -> bool:
 
 def _classify_by_labels(labels: list[str]) -> str | None:
     """Classify PR by labels (language-neutral, team-applied metadata)."""
+    label_map = _get_label_to_category()
     for label in labels:
-        cat = _LABEL_TO_CATEGORY.get(label.lower())
+        cat = label_map.get(label.lower())
         if cat:
             return cat
     return None

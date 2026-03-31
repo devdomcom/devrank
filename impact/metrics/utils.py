@@ -1,12 +1,58 @@
 import math
+import os
 import zlib
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, TypedDict
 import re
 
+import yaml
+
 from impact.domain.models import MetricContext, ReviewState
 from impact.ledger.ledger import Ledger
+
+
+# ---------------------------------------------------------------------------
+# Customisation config loader (§P14)
+# ---------------------------------------------------------------------------
+_customization_cache: dict[str, Any] | None = None
+
+
+def _load_customization() -> dict[str, Any]:
+    """Load organisation-level customisation from ``customization.yaml``.
+
+    Resolution order:
+      1. ``DEVRANK_CUSTOMIZATION_PATH`` env var (explicit override).
+      2. ``impact/config/customization.yaml`` (repo default).
+
+    Returns an empty dict on any load error (graceful degradation).
+    The result is cached for the process lifetime.
+    """
+    global _customization_cache
+    if _customization_cache is not None:
+        return _customization_cache
+
+    env_path = os.environ.get("DEVRANK_CUSTOMIZATION_PATH")
+    if env_path:
+        config_path = Path(env_path)
+    else:
+        config_path = Path(__file__).resolve().parents[2] / "config" / "customization.yaml"
+
+    try:
+        with open(config_path) as f:
+            data = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError):
+        data = {}
+
+    _customization_cache = data
+    return data
+
+
+def _reset_customization_cache() -> None:
+    """Reset the cached customisation data (for testing)."""
+    global _customization_cache
+    _customization_cache = None
 
 
 def is_bot_user(user) -> bool:
@@ -447,14 +493,23 @@ def is_merge_commit(commit) -> bool:
     return msg.lower().startswith("merge ")
 
 
-# Configurable bug-fix label set (team-applied metadata — most reliable signal).
+# Built-in bug-fix label set (team-applied metadata — most reliable signal).
 # Covers common label conventions across GitHub, GitLab, Jira, etc.
-_BUG_LABELS: frozenset[str] = frozenset({
+_BUG_LABELS_BUILTIN: frozenset[str] = frozenset({
     "bug", "fix", "hotfix", "bugfix",
     "type:bug", "type:fix", "kind/bug", "kind/fix",
     "type/bug", "type/fix", "priority/critical",
     "defect", "regression",
 })
+
+
+def _get_bug_labels() -> frozenset[str]:
+    """Return the full bug-fix label set (built-in + config extras)."""
+    cfg = _load_customization()
+    extras = cfg.get("extra_bug_labels") or []
+    if not extras:
+        return _BUG_LABELS_BUILTIN
+    return _BUG_LABELS_BUILTIN | frozenset(l.lower() for l in extras)
 
 # Provider-neutral cross-reference pattern: #NNN, !NNN, AB#NNN
 _CROSS_REF_RE = re.compile(r'(?<!\w)(?:AB)?[#!]\d{1,6}\b')
@@ -471,7 +526,8 @@ def is_bug_fix_indicator(text: str, labels: list[str] | None = None) -> bool:
     """
     # Priority 1: labels
     if labels:
-        if any(l.lower() in _BUG_LABELS for l in labels):
+        bug_labels = _get_bug_labels()
+        if any(l.lower() in bug_labels for l in labels):
             return True
 
     if not text:
@@ -677,26 +733,60 @@ _DOC_BASENAMES: frozenset[str] = frozenset({
     "readme", "changelog", "contributing", "license", "notice",
     "authors", "faq", "glossary", "mkdocs.yml",
 })
-_DOC_DIRS: tuple[str, ...] = ("docs/", "doc/", "documentation/", "wiki/", "guides/", "manual/")
+_DOC_DIRS_BUILTIN: tuple[str, ...] = ("docs/", "doc/", "documentation/", "wiki/", "guides/", "manual/")
 
 
-def is_documentation_file(filename: str) -> bool:
+def _get_doc_dirs() -> tuple[str, ...]:
+    """Return the full doc-directory list (built-in + config extras)."""
+    cfg = _load_customization()
+    extras = cfg.get("extra_doc_dirs") or []
+    if not extras:
+        return _DOC_DIRS_BUILTIN
+    return _DOC_DIRS_BUILTIN + tuple(d.lower() for d in extras)
+
+
+def is_documentation_file(
+    filename: str,
+    all_filenames: list[str] | None = None,
+) -> bool:
+    """Detect documentation files by extension, basename, directory, or context.
+
+    Layers (in priority order):
+      1. Extension-based (``.md``, ``.rst``, ``.adoc``) — always language-neutral.
+      2. Basename-based (``readme``, ``changelog``, etc.) — de-facto universal.
+      3. Directory-based (``docs/``, ``doc/``, etc. + ``extra_doc_dirs`` config).
+      4. Context-based fallback: if *all_filenames* is provided and the file's
+         sibling directory contains >50% ``.md`` files, treat it as documentation.
+    """
     if not filename:
         return False
     f_lower = filename.lower()
     basename = f_lower.rsplit("/", 1)[-1]
-    # Extension-based
+    # Layer 1: Extension-based (primary — fully language-neutral)
     dot_idx = basename.rfind(".")
     if dot_idx >= 0 and basename[dot_idx:] in _DOC_EXTENSIONS:
         return True
-    # Basename-based (strip extension for comparison)
+    # Layer 2: Basename-based (strip extension for comparison)
     name_no_ext = basename[:dot_idx] if dot_idx >= 0 else basename
     if name_no_ext in _DOC_BASENAMES or basename in _DOC_BASENAMES:
         return True
-    # Path segment: file lives under a docs directory
-    for d in _DOC_DIRS:
+    # Layer 3: Path segment — file lives under a docs directory (built-in + config)
+    doc_dirs = _get_doc_dirs()
+    for d in doc_dirs:
         if f_lower.startswith(d) or ("/" + d) in f_lower:
             return True
+    # Layer 4: Context-based fallback — sibling directory has >50% .md files
+    if all_filenames and "/" in f_lower:
+        parent_dir = f_lower.rsplit("/", 1)[0] + "/"
+        siblings = [
+            fn for fn in all_filenames
+            if fn.lower().startswith(parent_dir)
+            and "/" not in fn.lower()[len(parent_dir):]  # same level only
+        ]
+        if len(siblings) >= 2:
+            md_count = sum(1 for s in siblings if s.lower().endswith(".md"))
+            if md_count / len(siblings) > 0.5:
+                return True
     return False
 
 
@@ -736,7 +826,7 @@ _GENERATED_DIRS: tuple[str, ...] = (
 # Header markers in patch content that signal auto-generated files.
 # Ordered by language-neutrality: tool-convention markers first (@generated,
 # @auto-generated), English phrases as secondary bonus layer.
-_GENERATED_MARKERS: tuple[str, ...] = (
+_GENERATED_MARKERS_BUILTIN: tuple[str, ...] = (
     # Tool conventions (never localised — primary markers)
     "@generated",
     "@auto-generated",
@@ -750,6 +840,15 @@ _GENERATED_MARKERS: tuple[str, ...] = (
     "code generated by",
     "generated by",
 )
+
+
+def _get_generated_markers() -> tuple[str, ...]:
+    """Return the full generated-file marker list (built-in + config extras)."""
+    cfg = _load_customization()
+    extras = cfg.get("extra_generated_markers") or []
+    if not extras:
+        return _GENERATED_MARKERS_BUILTIN
+    return _GENERATED_MARKERS_BUILTIN + tuple(m.lower() for m in extras)
 
 
 def _shannon_entropy(data: bytes) -> float:
@@ -814,7 +913,7 @@ def is_generated_file(filename: str, patch: str | None = None) -> bool:
             header_text = "\n".join(added_lines[:10]).lower()
 
             # 4. Header markers in first 10 added lines
-            if any(marker in header_text for marker in _GENERATED_MARKERS):
+            if any(marker in header_text for marker in _get_generated_markers()):
                 return True
 
             # 5. Entropy + compression (only on substantial patches)
@@ -894,11 +993,20 @@ _DEFECT_PATTERNS: list[re.Pattern] = [
 ]
 
 
-# Configurable defect label set (same infrastructure as _BUG_LABELS)
-_DEFECT_LABELS: frozenset[str] = frozenset({
+# Built-in defect label set (same infrastructure as bug labels)
+_DEFECT_LABELS_BUILTIN: frozenset[str] = frozenset({
     "bug", "defect", "type:bug", "kind/bug", "incident",
     "hotfix", "regression", "type:defect",
 })
+
+
+def _get_defect_labels() -> frozenset[str]:
+    """Return the full defect label set (built-in + config extras)."""
+    cfg = _load_customization()
+    extras = cfg.get("extra_defect_labels") or []
+    if not extras:
+        return _DEFECT_LABELS_BUILTIN
+    return _DEFECT_LABELS_BUILTIN | frozenset(l.lower() for l in extras)
 
 
 def classify_defect_commit(message: str, labels: list[str] | None = None) -> bool:
@@ -910,7 +1018,8 @@ def classify_defect_commit(message: str, labels: list[str] | None = None) -> boo
     """
     # Priority 1: labels
     if labels:
-        if any(l.lower() in _DEFECT_LABELS for l in labels):
+        defect_labels = _get_defect_labels()
+        if any(l.lower() in defect_labels for l in labels):
             return True
     # Priority 2: English regex fallback
     if not message:
@@ -1865,6 +1974,14 @@ def _classify_function_kind(node: Any) -> str:
             if name == "initialize":
                 return "constructor"
         return "method"
+    # Go convention: standalone NewFoo() functions are constructors by convention.
+    # In Go, constructors are package-level function_declaration nodes (not methods).
+    if node.type == "function_declaration":
+        name_node = node.child_by_field_name("name")
+        if name_node and name_node.text:
+            name = name_node.text.decode("utf-8", errors="replace")
+            if re.match(r'^New[A-Z]', name):
+                return "constructor"
     # Check if inside a class (Python, C, C++, PHP, Kotlin, Scala, etc.)
     parent = node.parent
     while parent:

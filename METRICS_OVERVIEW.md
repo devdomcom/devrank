@@ -1,12 +1,12 @@
 # DevRank Metrics Overview
 
-**58 implemented | 65 planned | 123 total**
+**65 implemented | 57 planned | 122 total**
 
 ---
 
-## Implemented Metrics (58)
+## Implemented Metrics (65)
 
-### Authored (43)
+### Authored (50)
 
 | # | Metric | Description | Framework |
 |---|--------|-------------|-----------|
@@ -53,6 +53,13 @@
 | 41 | Time to First Review | Median time from PR creation to initial reviewer feedback | Lean |
 | 42 | Slow Review Response | Median author response time to changes-requested reviews | Lean |
 | 43 | AI Phantom Ownership | Code primarily touched by AI with low human review depth (descriptive) | DevRank |
+| 44 | AI Code Quality | Rework rate comparison: AI-assisted PRs vs human PRs (review iterations) | DevRank |
+| 45 | AI Suggestion Acceptance | Ratio of accepted vs dismissed AI suggestions from review bots | DevRank |
+| 46 | AI Adoption Rate | Per-engineer indicator of AI tool usage (inferred from commit/PR signatures) | DevRank |
+| 47 | Knowledge Islands | Files/modules where 95%+ written by one person — ownership concentration risk | CodeScene |
+| 48 | Flow Efficiency | Active coding time / total lead time for merged PRs (Kanban flow health) | Lean |
+| 49 | WIP Load | Concurrent open PRs per day (Lean WIP indicator; high WIP = context-switching overhead) | Lean |
+| 50 | Review Coverage | % of PR files with at least one human inline review comment | DevRank |
 
 ### Influence (14)
 
@@ -81,7 +88,7 @@
 
 ---
 
-## Planned Metrics (66)
+## Planned Metrics (57)
 
 ### AI-Era Prioritization Rationale
 
@@ -109,16 +116,16 @@ In the AI-assisted development era, metric priorities shift significantly from t
 | # | Metric | Description | Priority | Framework | Status |
 |---|--------|-------------|----------|-----------|--------|
 | 1 | AI-Assisted PR Rate | % PRs created with Copilot/Cursor/Claude Code detected via commit/PR signatures | P0 | DevRank | **Implemented** |
-| 2 | AI Code Quality | Rework rate on AI-assisted vs human PRs | P0 | DevRank | Planned |
-| 3 | AI Suggestion Acceptance | Ratio of accepted vs dismissed AI suggestions | P1 | DevRank | Planned |
-| 4 | AI Adoption Rate | % team members with AI coding tool licenses | P1 | DevRank | Planned |
+| 2 | AI Code Quality | Rework rate on AI-assisted vs human PRs | P0 | DevRank | **Implemented** |
+| 3 | AI Suggestion Acceptance | Ratio of accepted vs dismissed AI suggestions | P1 | DevRank | **Implemented** |
+| 4 | AI Adoption Rate | Per-engineer AI tool usage (inferred from commit/PR signatures) | P1 | DevRank | **Implemented** |
 
 ### A2. Knowledge Ownership & Risk (Critical with AI-Generated Code)
 
 | # | Metric | Description | Priority | Framework | Status |
 |---|--------|-------------|----------|-----------|--------|
 | 5 | Bus Factor | Min developers who could leave before code is unmaintainable | P0 | CodeScene | **Implemented** |
-| 6 | Knowledge Islands | Files/modules where 95%+ written by one person | P0 | CodeScene | Planned |
+| 6 | Knowledge Islands | Files/modules where 95%+ written by one person | P0 | CodeScene | **Implemented** |
 | 7 | AI Phantom Ownership | Code primarily touched by AI with low human review depth | P0 | DevRank | **Implemented** |
 | 8 | Knowledge Loss | Code where 50%+ written by departed/inactive contributors | P1 | CodeScene | Planned |
 | 9 | Knowledge Sharing Index | How evenly reviews distribute across team (0-1) | P1 | Network | Planned |
@@ -130,20 +137,14 @@ In the AI-assisted development era, metric priorities shift significantly from t
 
 ### A3. DORA & Deployment (The Delivery Foundation)
 
-| # | Metric | Description | Priority | Framework |
-|---|--------|-------------|----------|-----------|
-| 15 | Lead Time for Changes | Commit to production duration (end-to-end) | P0 | DORA |
-| 16 | Deployment Frequency | How often code deploys to production | P0 | DORA |
-| 17 | Change Failure Rate | % deployments causing failures | P0 | DORA |
-| 18 | Mean Time to Recovery | Incident recovery duration | P0 | DORA |
-| 19 | Time to Deploy | PR merge to production deployment | P1 | DORA • Lean |
+> **All 5 metrics in this section are deferred.** They require deployment pipeline data (`deployments.jsonl`, `releases.jsonl`) that the fetcher does not yet collect. See [Deferred: Missing Data Sources](#deferred-missing-data-sources) below.
 
 ### A4. PR Quality & Risk (AI-Era Quality Gates)
 
 | # | Metric | Description | Priority | Framework |
 |---|--------|-------------|----------|-----------|
 | 20 | Delivery Risk Score (1-10) | Per-commit risk based on code, file count, diffusion, experience | P0 | DevRank |
-| 21 | Review Coverage | % of PR files/hunks with at least one review comment | P0 | DevRank |
+| 21 | Review Coverage | % of PR files/hunks with at least one review comment | P0 | DevRank | **Implemented** |
 | 22 | PR Maturity Ratio | How much a PR changes between open and merge | P1 | DevRank |
 | 23 | Discussion Cycles | Alternating-person comment exchanges | P1 | DevRank |
 | 24 | Estimated Review Time | ML-based minutes estimate per PR | P1 | DevRank |
@@ -151,7 +152,6 @@ In the AI-assisted development era, metric priorities shift significantly from t
 | 26 | Productive Impact | Impact minus rework: Impact × (1 - Rework Rate) | P1 | Lean |
 | 27 | PRs Unlinked | % PRs not linked to issue tracker | P2 | DevRank |
 | 28 | tt100 (Time to 100) | Time to write 100 lines of productive code | P2 | Lean |
-| 29 | Commitment Reliability Rate | Sprint completion excluding injected issues | P2 | Lean |
 
 > **Notes:**
 > - Unreviewed PR Rate is covered by Self-Merge Rate
@@ -177,7 +177,6 @@ In the AI-assisted development era, metric priorities shift significantly from t
 | 38 | Work Type Breakdown | New Work vs Refactor vs Rework vs Help Others | P0 | Lean |
 | 39 | Innovation Rate | % merged PRs representing new feature work | P1 | DevRank |
 | 40 | Defect Rate | % merged PRs addressing defects | P1 | DevRank |
-| 41 | Investment Balance | Time allocation: roadmap vs bugs vs tech debt vs unplanned | P1 | Lean |
 | 42 | Inefficiency Pool | PR idle time, friction, wasted effort | P2 | Lean |
 
 ### A7. Cycle Time Sub-Phases (Flow Optimization)
@@ -186,7 +185,6 @@ In the AI-assisted development era, metric priorities shift significantly from t
 |---|--------|-------------|----------|-----------|
 | 43 | Pickup Time | PR opened to first non-author review activity | P0 | Lean |
 | 44 | Time to Approve | First review activity to first approval | P1 | Lean |
-| 45 | Deploy Time | Merge to production release | P1 | DORA • Lean |
 
 ### A8. Graph/Network Collaboration (Human-AI Team Dynamics)
 
@@ -204,17 +202,14 @@ In the AI-assisted development era, metric priorities shift significantly from t
 
 ### A9. Developer Experience (AI Should Reduce Load)
 
-| # | Metric | Description | Priority | Framework |
-|---|--------|-------------|----------|-----------|
-| 55 | Flow Efficiency | % of days an issue was actively worked on vs total lifetime | P1 | Lean |
-| 56 | Cognitive Load Distribution | How evenly complex work distributes across team | P1 | SPACE |
-| 57 | Context Switch Frequency | Intra-day switches between repos/projects | P2 | SPACE |
-| 58 | Decision Latency | Time from problem identification to decision | P2 | DevRank |
-| 59 | On-Call Burden | Time/frequency of on-call rotations | P2 | SPACE |
-| 60 | Collaboration Asymmetry | Help-given vs help-received ratio | P2 | Network |
-| 61 | Onboarding Time | Time for new hires to reach first productive contribution | P2 | SPACE |
-| 62 | Work-Life Balance Signals | Late-night/weekend patterns beyond off-hours rate | P2 | SPACE |
-| 63 | Time Spent in Meetings | Meeting load as productivity drain | P3 | SPACE |
+| # | Metric | Description | Priority | Framework | Status |
+|---|--------|-------------|----------|-----------|--------|
+| 55 | Flow Efficiency | Active coding time / total lead time for merged PRs | P1 | Lean | **Implemented** |
+| 56 | Cognitive Load Distribution | How evenly complex work distributes across team | P1 | SPACE | Planned |
+| 57 | Context Switch Frequency | Intra-day switches between repos/projects | P2 | SPACE | Planned |
+| 58 | Decision Latency | Time from problem identification to decision | P2 | DevRank | Planned |
+| 60 | Collaboration Asymmetry | Help-given vs help-received ratio | P2 | Network | Planned |
+| 62 | Work-Life Balance Signals | Late-night/weekend patterns beyond off-hours rate | P2 | SPACE | Planned |
 
 ### A10. Codebase Evolution (Long-Term Health)
 
@@ -223,6 +218,48 @@ In the AI-assisted development era, metric priorities shift significantly from t
 | 64 | Code Age | Months since last modification per file | P2 | CodeScene |
 | 65 | History Complexity (Entropy) | Normalized entropy of changes across files | P3 | CodeScene |
 | 66 | Hunks Count (Change Fragmentation) | Median diff hunks per file — scattered hunks = higher risk | P3 | CodeScene |
+
+### Deferred: Missing Data Sources
+
+The following metrics are **blocked by missing data** in the current fetcher pipeline. The domain models (`ReleaseRecord`, `DeploymentRecord`, `CIRunRecord`) already exist, but the GitHub fetcher does not yet pull from the required APIs. These metrics will become implementable once the corresponding data sources are integrated.
+
+#### D1. Deployment Pipeline Data Required
+
+These metrics need deployment and release lifecycle data. The GitHub fetcher must be extended to pull from the **Deployments API** (`GET /repos/{owner}/{repo}/deployments`), the **Releases API** (`GET /repos/{owner}/{repo}/releases`), and optionally the **Actions API** for CI run data.
+
+| # | Metric | Description | Priority | Framework | Data Needed |
+|---|--------|-------------|----------|-----------|-------------|
+| 15 | Lead Time for Changes | Commit to production duration (end-to-end) | P0 | DORA | `deployments.jsonl` — deployment timestamps to measure commit-to-production |
+| 16 | Deployment Frequency | How often code deploys to production | P0 | DORA | `deployments.jsonl` or `releases.jsonl` — deployment/release records |
+| 17 | Change Failure Rate | % deployments causing failures | P0 | DORA | `deployments.jsonl` — deployment status (success/failure) tracking |
+| 18 | Mean Time to Recovery | Incident recovery duration | P0 | DORA | `deployments.jsonl` — failure + subsequent recovery timestamps |
+| 19 | Time to Deploy | PR merge to production deployment | P1 | DORA | `deployments.jsonl` — merge-to-deployment timestamps |
+| 45 | Deploy Time | Merge to production release | P1 | DORA | `releases.jsonl` — merge-to-release timestamps |
+
+> **Unblock path:** Extend `impact/providers/github/fetcher.py` to call GitHub's Deployments and Releases APIs. Store as `deployments.jsonl` and `releases.jsonl` in the canonical dump. The domain models `DeploymentRecord` and `ReleaseRecord` are already defined in `impact/domain/models.py`. The adapter in `impact/adapters/github.py` needs corresponding parse methods.
+
+#### D2. Issue Tracker / Project Management Data Required
+
+These metrics need issue lifecycle and sprint data from external project management tools (Jira, Linear, Azure DevOps Boards, GitHub Projects, etc.). Git data alone cannot provide sprint boundaries or work-item type classifications at the fidelity these metrics require.
+
+| # | Metric | Description | Priority | Framework | Data Needed |
+|---|--------|-------------|----------|-----------|-------------|
+| 29 | Commitment Reliability Rate | Sprint completion excluding injected issues | P2 | Lean | Sprint/iteration data — planned vs completed work items per sprint |
+| 41 | Investment Balance | Time allocation: roadmap vs bugs vs tech debt vs unplanned | P1 | Lean | Issue type categorization — each work item tagged as roadmap/bug/debt/unplanned |
+
+> **Unblock path:** Add a Jira/Linear adapter to the provider system (`impact/providers/`). Define an `IssueRecord` domain model with fields for issue type, sprint, status transitions, and timestamps. Partial inference from PR labels and conventional commit prefixes (`fix:`, `feat:`, `chore:`) is possible but insufficient for accurate sprint-level measurement.
+
+#### D3. External Platform Integration Required
+
+These metrics require data from platforms entirely outside the Git/code-review ecosystem. They measure organizational and human factors that are not captured by any code hosting provider API.
+
+| # | Metric | Description | Priority | Framework | Data Needed |
+|---|--------|-------------|----------|-----------|-------------|
+| 59 | On-Call Burden | Time/frequency of on-call rotations | P2 | SPACE | On-call schedule data from PagerDuty, OpsGenie, or Grafana OnCall |
+| 61 | Onboarding Time | Time for new hires to reach first productive contribution | P2 | SPACE | Employee start dates from HR system or directory service |
+| 63 | Time Spent in Meetings | Meeting load as productivity drain | P3 | SPACE | Calendar data from Google Calendar, Outlook, or similar |
+
+> **Unblock path:** These require purpose-built integrations with external services, each with their own authentication, rate limiting, and data models. Recommended approach: define a plugin interface in `impact/providers/` for non-Git data sources, with adapters per platform. Lowest-effort option: accept CSV/YAML imports for on-call schedules and employee directories.
 
 ---
 
@@ -250,15 +287,15 @@ Metrics are tagged with their originating or primary framework(s):
 
 ### Framework Coverage Summary
 
-| Framework | Implemented | Planned | Total | % of All |
-|-----------|-------------|---------|-------|----------|
-| DORA | 1 | 5 | 6 | 5% |
-| SPACE | 25 | 10 | 35 | 27% |
-| CodeScene | 9 | 10 | 19 | 15% |
-| Lean | 12 | 19 | 31 | 24% |
-| Traditional | 2 | 8 | 10 | 8% |
-| Network | 3 | 11 | 14 | 11% |
-| DevRank | 29 | 21 | 50 | 39% |
+| Framework | Implemented | Planned | Deferred | Total | % of All |
+|-----------|-------------|---------|----------|-------|----------|
+| DORA | 1 | 0 | 6 | 7 | 5% |
+| SPACE | 25 | 7 | 3 | 35 | 27% |
+| CodeScene | 10 | 9 | 0 | 19 | 15% |
+| Lean | 13 | 15 | 4 | 32 | 24% |
+| Traditional | 2 | 8 | 0 | 10 | 8% |
+| Network | 3 | 11 | 0 | 14 | 11% |
+| DevRank | 33 | 17 | 0 | 50 | 39% |
 
-> **Note:** Metrics can belong to multiple frameworks (e.g., Cycle Time is DORA + SPACE + Lean). Totals exceed 130 due to multi-tagging.
-> **New in AI Era:** Added "AI Phantom Ownership" metric to track code primarily touched by AI with low human review depth.
+> **Note:** Metrics can belong to multiple frameworks (e.g., Cycle Time is DORA + SPACE + Lean). Totals exceed 124 due to multi-tagging.
+> **Deferred column** counts metrics blocked by missing data sources (deployment pipeline, issue tracker, or external platform integrations). See [Deferred: Missing Data Sources](#deferred-missing-data-sources) for details and unblock paths.
