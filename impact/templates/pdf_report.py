@@ -165,6 +165,24 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
             ("single_contributor_files_count", "Single-Contrib Files", "count"),
         ],
     },
+    "knowledge_loss": {
+        "name": "Knowledge Loss",
+        "stats": [
+            ("loss_count", "At-Risk Files", "count"),
+            ("overall_loss_pct", "Overall Loss", "pct"),
+            ("total_files", "Files Analyzed", "count"),
+            ("active_contributors_count", "Active Contributors", "count"),
+        ],
+    },
+    "knowledge_sharing_index": {
+        "name": "Knowledge Sharing Index",
+        "stats": [
+            ("sharing_index", "Sharing Index", "ratio"),
+            ("reviewer_count", "Reviewers", "count"),
+            ("total_reviews", "Total Reviews", "count"),
+            ("entropy", "Entropy", "ratio"),
+        ],
+    },
     # ---- Productivity & Throughput ----
     "pr_throughput": {
         "name": "PR Throughput",

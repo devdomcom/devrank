@@ -8,6 +8,7 @@ from impact.metrics.plugins.authored.ai_suggestion_acceptance import AISuggestio
 from impact.metrics.plugins.authored.bug_fix_focus_rate import BugFixFocusRate
 from impact.metrics.plugins.authored.bus_factor import BusFactor
 from impact.metrics.plugins.authored.knowledge_islands import KnowledgeIslands
+from impact.metrics.plugins.authored.knowledge_loss import KnowledgeLoss
 from impact.metrics.plugins.authored.burstiness import Burstiness
 from impact.metrics.plugins.authored.cycle_time import CycleTime
 from impact.metrics.plugins.authored.coding_time_to_pr import CodingTimeToPR
@@ -70,6 +71,7 @@ from impact.metrics.plugins.influence.mentorship_signal import MentorshipSignal
 from impact.metrics.plugins.influence.review_demand import ReviewDemand
 from impact.metrics.plugins.influence.first_reviewer_rate import FirstReviewerRate
 from impact.metrics.plugins.influence.inline_comment_density import InlineCommentDensity
+from impact.metrics.plugins.influence.knowledge_sharing_index import KnowledgeSharingIndex
 
 # Mixed metrics (both authored and influence signals)
 from impact.metrics.plugins.mixed.co_author_contribution_rate import CoAuthorContributionRate
@@ -97,6 +99,7 @@ def get_metrics():
         "ai_suggestion_acceptance": AISuggestionAcceptance,
         "bus_factor": BusFactor,
         "knowledge_islands": KnowledgeIslands,
+        "knowledge_loss": KnowledgeLoss,
         "pr_merge_effectiveness": PRMergeEffectiveness,
         "review_leverage": ReviewLeverage,
         "pr_throughput": PRThroughput,
@@ -156,4 +159,5 @@ def get_metrics():
         "wip_load": WIPLoad,
         "flow_efficiency": FlowEfficiency,
         "time_to_restore": TimeToRestore,
+        "knowledge_sharing_index": KnowledgeSharingIndex,
     }

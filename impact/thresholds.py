@@ -379,6 +379,18 @@ METRIC_THRESHOLDS = {
         "key": "island_count",
         "no_rating": True,
     },
+    # Knowledge Loss: descriptive risk metric (no qualitative rating)
+    # Code written by departed/inactive contributors = knowledge gap risk; informative only
+    "knowledge_loss": {
+        "key": "loss_count",
+        "no_rating": True,
+    },
+    # Knowledge Sharing Index: descriptive team metric (no qualitative rating)
+    # Measures how evenly reviews distribute across team (0-1 scale); informative only
+    "knowledge_sharing_index": {
+        "key": "sharing_index",
+        "no_rating": True,
+    },
     # Temporal/Logical Coupling: lower max ratio = fewer hidden dependencies
     # Note: coupling_ratio = shared_revisions / avg_revisions × 100, max is 100
     "temporal_logical_coupling": {

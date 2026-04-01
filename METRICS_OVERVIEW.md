@@ -1,12 +1,12 @@
 # DevRank Metrics Overview
 
-**65 implemented | 57 planned | 122 total**
+**67 implemented | 55 planned | 122 total**
 
 ---
 
-## Implemented Metrics (65)
+## Implemented Metrics (66)
 
-### Authored (50)
+### Authored (51)
 
 | # | Metric | Description | Framework |
 |---|--------|-------------|-----------|
@@ -57,11 +57,12 @@
 | 45 | AI Suggestion Acceptance | Ratio of accepted vs dismissed AI suggestions from review bots | DevRank |
 | 46 | AI Adoption Rate | Per-engineer indicator of AI tool usage (inferred from commit/PR signatures) | DevRank |
 | 47 | Knowledge Islands | Files/modules where 95%+ written by one person — ownership concentration risk | CodeScene |
-| 48 | Flow Efficiency | Active coding time / total lead time for merged PRs (Kanban flow health) | Lean |
-| 49 | WIP Load | Concurrent open PRs per day (Lean WIP indicator; high WIP = context-switching overhead) | Lean |
-| 50 | Review Coverage | % of PR files with at least one human inline review comment | DevRank |
+| 48 | Knowledge Loss | Code where 50%+ written by departed/inactive contributors | CodeScene |
+| 49 | Flow Efficiency | Active coding time / total lead time for merged PRs (Kanban flow health) | Lean |
+| 50 | WIP Load | Concurrent open PRs per day (Lean WIP indicator; high WIP = context-switching overhead) | Lean |
+| 51 | Review Coverage | % of PR files with at least one human inline review comment | DevRank |
 
-### Influence (14)
+### Influence (15)
 
 | # | Metric | Description | Framework |
 |---|--------|-------------|-----------|
@@ -79,6 +80,7 @@
 | 52 | Blocking Comment Rate | % of review comments that block merge | DevRank |
 | 53 | First Reviewer Rate | % of reviews where this person was the first reviewer | DevRank |
 | 54 | Mentorship Signal | Reviews targeting PRs from low-activity contributors | SPACE • Network |
+| 55 | Knowledge Sharing Index | How evenly code reviews distribute across team (0-1 entropy-based) | Network |
 
 ### Mixed (1)
 
@@ -88,7 +90,7 @@
 
 ---
 
-## Planned Metrics (57)
+## Planned Metrics (56)
 
 ### AI-Era Prioritization Rationale
 
@@ -127,8 +129,8 @@ In the AI-assisted development era, metric priorities shift significantly from t
 | 5 | Bus Factor | Min developers who could leave before code is unmaintainable | P0 | CodeScene | **Implemented** |
 | 6 | Knowledge Islands | Files/modules where 95%+ written by one person | P0 | CodeScene | **Implemented** |
 | 7 | AI Phantom Ownership | Code primarily touched by AI with low human review depth | P0 | DevRank | **Implemented** |
-| 8 | Knowledge Loss | Code where 50%+ written by departed/inactive contributors | P1 | CodeScene | Planned |
-| 9 | Knowledge Sharing Index | How evenly reviews distribute across team (0-1) | P1 | Network | Planned |
+| 8 | Knowledge Loss | Code where 50%+ written by departed/inactive contributors | P1 | CodeScene | **Implemented** |
+| 9 | Knowledge Sharing Index | How evenly reviews distribute across team (0-1) | P1 | Network | **Implemented** |
 | 10 | Code Familiarity | % of codebase known by current active team | P1 | CodeScene | Planned |
 | 11 | Main Developer (by lines) | Primary author per file by lines added | P2 | CodeScene | Planned |
 | 12 | Main Developer (by revisions) | Primary author per file by commit count | P2 | CodeScene | Planned |
@@ -291,7 +293,7 @@ Metrics are tagged with their originating or primary framework(s):
 |-----------|-------------|---------|----------|-------|----------|
 | DORA | 1 | 0 | 6 | 7 | 5% |
 | SPACE | 25 | 7 | 3 | 35 | 27% |
-| CodeScene | 10 | 9 | 0 | 19 | 15% |
+| CodeScene | 11 | 8 | 0 | 19 | 15% |
 | Lean | 13 | 15 | 4 | 32 | 24% |
 | Traditional | 2 | 8 | 0 | 10 | 8% |
 | Network | 3 | 11 | 0 | 14 | 11% |
