@@ -41,6 +41,8 @@ from impact.metrics.plugins.authored.off_hours_activity_rate import OffHoursActi
 from impact.metrics.plugins.authored.follow_up_commit_rate import FollowUpCommitRate
 from impact.metrics.plugins.authored.hotspot_detection import HotspotDetection
 from impact.metrics.plugins.authored.main_developer import MainDeveloperByRevisions, MainDeveloperByLines
+from impact.metrics.plugins.authored.contributor_experience import ContributorExperience
+from impact.metrics.plugins.authored.entity_ownership import EntityOwnership
 from impact.metrics.plugins.authored.temporal_logical_coupling import TemporalLogicalCoupling
 from impact.metrics.plugins.authored.pr_category_diversity import PRCategoryDiversity
 from impact.metrics.plugins.authored.first_time_approval_rate import FirstTimeApprovalRate
@@ -154,6 +156,8 @@ def get_metrics():
         "main_developer_by_lines": MainDeveloperByLines,
         "temporal_logical_coupling": TemporalLogicalCoupling,
         "entity_fragmentation": EntityFragmentation,
+        "contributor_experience": ContributorExperience,
+        "entity_ownership": EntityOwnership,
         "complexity_trend": ComplexityTrend,
         "change_proximity": ChangeProximity,
         "sum_of_coupling": SumOfCoupling,

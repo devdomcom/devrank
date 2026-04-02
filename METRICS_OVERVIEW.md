@@ -44,16 +44,18 @@
 | 32 | Bus Factor | Min developers who could leave before code is unmaintainable | CodeScene |
 | 33 | Temporal / Logical Coupling | Files that always change together (hidden dependencies) | CodeScene |
 | 34 | Entity Fragmentation | Herfindahl-like index of author scatter per file | CodeScene |
-| 35 | Complexity Trend | Whitespace-based complexity tracked per file over time | Traditional |
-| 36 | Change Proximity | Sum of distances between changed lines within a file | CodeScene |
-| 37 | Sum of Coupling | Per-entity total coupling score across all revisions | CodeScene |
-| 38 | Absolute Churn Trend | Lines added/deleted per date — detects integration bottlenecks | CodeScene |
-| 39 | Commit Message Mining | Regex search of commit messages for defect indicators | CodeScene |
-| 40 | Code Survival | % of a developer's contributed lines still alive over time | CodeScene |
-| 41 | Time to First Review | Median time from PR creation to initial reviewer feedback | Lean |
-| 42 | Slow Review Response | Median author response time to changes-requested reviews | Lean |
-| 43 | AI Phantom Ownership | Code primarily touched by AI with low human review depth (descriptive) | DevRank |
-| 44 | AI Code Quality | Rework rate comparison: AI-assisted PRs vs human PRs (review iterations) | DevRank |
+| 35 | Entity Ownership | Per-author contribution percentages per file | CodeScene |
+| 36 | Contributor Experience | Relative share of codebase activity by the target developer | CodeScene |
+| 37 | Complexity Trend | Whitespace-based complexity tracked per file over time | Traditional |
+| 38 | Change Proximity | Sum of distances between changed lines within a file | CodeScene |
+| 39 | Sum of Coupling | Per-entity total coupling score across all revisions | CodeScene |
+| 39 | Absolute Churn Trend | Lines added/deleted per date — detects integration bottlenecks | CodeScene |
+| 40 | Commit Message Mining | Regex search of commit messages for defect indicators | CodeScene |
+| 41 | Code Survival | % of a developer's contributed lines still alive over time | CodeScene |
+| 42 | Time to First Review | Median time from PR creation to initial reviewer feedback | Lean |
+| 43 | Slow Review Response | Median author response time to changes-requested reviews | Lean |
+| 44 | AI Phantom Ownership | Code primarily touched by AI with low human review depth (descriptive) | DevRank |
+| 45 | AI Code Quality | Rework rate comparison: AI-assisted PRs vs human PRs (review iterations) | DevRank |
 | 45 | AI Suggestion Acceptance | Ratio of accepted vs dismissed AI suggestions from review bots | DevRank |
 | 46 | AI Adoption Rate | Per-engineer indicator of AI tool usage (inferred from commit/PR signatures) | DevRank |
 | 47 | Knowledge Islands | Files/modules where 95%+ written by one person — ownership concentration risk | CodeScene |
@@ -134,8 +136,8 @@ In the AI-assisted development era, metric priorities shift significantly from t
 | 10 | Code Familiarity | % of codebase known by current active team | P1 | CodeScene | **Implemented** |
 | 11 | Main Developer (by lines) | Primary author per file by lines added | P2 | CodeScene | **Implemented** |
 | 12 | Main Developer (by revisions) | Primary author per file by commit count | P2 | CodeScene | **Implemented** |
-| 13 | Entity Ownership | Per-author contribution percentages per file | P2 | CodeScene | Planned |
-| 14 | Contributor Experience | % of lines by the top contributor per file | P3 | CodeScene | Planned |
+| 13 | Entity Ownership | Per-author contribution percentages per file | P2 | CodeScene | **Implemented** |
+| 14 | Contributor Experience | Relative share of codebase activity by the target developer | P3 | CodeScene | **Implemented** |
 
 ### A3. DORA & Deployment (The Delivery Foundation)
 

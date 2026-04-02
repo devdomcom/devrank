@@ -433,6 +433,26 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x > 0.75,
         "scores": [(0.0, 100), (0.35, 75), (0.55, 50), (0.75, 25), (0.9, 0)],
     },
+    # Entity Ownership: avg top-owner pct across files; lower = more distributed
+    # (i.e., good for bus factor / knowledge sharing). Higher = concentrated risk.
+    "entity_ownership": {
+        "key": "avg_top_owner_pct",
+        "excellent": lambda x: x <= 50,
+        "good": lambda x: 50 < x <= 65,
+        "neutral": lambda x: 65 < x <= 80,
+        "bad": lambda x: x > 80,
+        "scores": [(0, 100), (50, 75), (65, 50), (80, 25), (100, 0)],
+    },
+    # Contributor Experience: relative share of codebase activity by the target
+    # developer. Higher = deeper familiarity with the codebase.
+    "contributor_experience": {
+        "key": "experience_pct",
+        "excellent": lambda x: x >= 30,
+        "good": lambda x: 15 <= x < 30,
+        "neutral": lambda x: 5 <= x < 15,
+        "bad": lambda x: x < 5,
+        "scores": [(0, 0), (5, 25), (15, 50), (30, 75), (50, 100)],
+    },
     # Complexity Trend: lower std dev implies stable complexity
     "complexity_trend": {
         "key": "max_std_dev",
