@@ -391,6 +391,28 @@ METRIC_THRESHOLDS = {
         "key": "sharing_index",
         "no_rating": True,
     },
+    # Main Developer (by revisions): descriptive per-file ownership metric
+    # Primary author per file by commit count; informative only
+    "main_developer_by_revisions": {
+        "key": "ownership_pct",
+        "no_rating": True,
+    },
+    # Main Developer (by lines): descriptive per-file ownership metric
+    # Primary author per file by line changes; informative only
+    "main_developer_by_lines": {
+        "key": "ownership_pct",
+        "no_rating": True,
+    },
+    # Code Familiarity: % of codebase known by current active team
+    # Higher is better — measures diffusion of knowledge across the active team
+    "code_familiarity": {
+        "key": "familiarity_pct",
+        "excellent": lambda x: x >= 80,
+        "good": lambda x: 60 <= x < 80,
+        "neutral": lambda x: 40 <= x < 60,
+        "bad": lambda x: x < 40,
+        "scores": [(0, 0), (40, 25), (60, 50), (80, 75), (100, 100)],
+    },
     # Temporal/Logical Coupling: lower max ratio = fewer hidden dependencies
     # Note: coupling_ratio = shared_revisions / avg_revisions × 100, max is 100
     "temporal_logical_coupling": {

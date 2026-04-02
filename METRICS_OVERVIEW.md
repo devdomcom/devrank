@@ -131,9 +131,9 @@ In the AI-assisted development era, metric priorities shift significantly from t
 | 7 | AI Phantom Ownership | Code primarily touched by AI with low human review depth | P0 | DevRank | **Implemented** |
 | 8 | Knowledge Loss | Code where 50%+ written by departed/inactive contributors | P1 | CodeScene | **Implemented** |
 | 9 | Knowledge Sharing Index | How evenly reviews distribute across team (0-1) | P1 | Network | **Implemented** |
-| 10 | Code Familiarity | % of codebase known by current active team | P1 | CodeScene | Planned |
-| 11 | Main Developer (by lines) | Primary author per file by lines added | P2 | CodeScene | Planned |
-| 12 | Main Developer (by revisions) | Primary author per file by commit count | P2 | CodeScene | Planned |
+| 10 | Code Familiarity | % of codebase known by current active team | P1 | CodeScene | **Implemented** |
+| 11 | Main Developer (by lines) | Primary author per file by lines added | P2 | CodeScene | **Implemented** |
+| 12 | Main Developer (by revisions) | Primary author per file by commit count | P2 | CodeScene | **Implemented** |
 | 13 | Entity Ownership | Per-author contribution percentages per file | P2 | CodeScene | Planned |
 | 14 | Contributor Experience | % of lines by the top contributor per file | P3 | CodeScene | Planned |
 
