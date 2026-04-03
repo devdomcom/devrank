@@ -129,6 +129,13 @@ HIDDEN_KEYS = frozenset({
     "defect_commit_samples",
     "per_cohort",
     "phantom_files",
+    "ai_prs", "tools_used",
+    "ai_pr_numbers", "human_pr_numbers",
+    "islands", "unfamiliar_files", "active_contributors",
+    "main_developers", "files",
+    "nontrivial_pr_numbers",
+    "daily_wip", "incidents",
+    "ai_bots_detected",
 })
 
 # ---------------------------------------------------------------------------
@@ -145,6 +152,14 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
             ("total_pr_count", "Total", "count"),
         ],
     },
+    "ai_adoption_rate": {
+        "name": "AI Adoption Rate",
+        "stats": [
+            ("has_adopted_ai", "Adopted AI", "bool"),
+            ("ai_pr_count", "AI PRs", "count"),
+            ("total_pr_count", "Total PRs", "count"),
+        ],
+    },
     "ai_phantom_ownership": {
         "name": "AI Phantom Ownership",
         "stats": [
@@ -153,6 +168,25 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
             ("total_ai_files", "AI-Touched Files", "count"),
             ("ai_pr_count", "AI PRs", "count"),
             ("phantom_line_rate", "Phantom Line Rate", "pct"),
+        ],
+    },
+    "ai_code_quality": {
+        "name": "AI Code Quality",
+        "stats": [
+            ("quality_ratio", "Quality Ratio", "ratio"),
+            ("ai_avg_review_iterations", "AI Avg Iterations", "ratio"),
+            ("human_avg_review_iterations", "Human Avg Iterations", "ratio"),
+            ("ai_first_pass_rate", "AI First-Pass", "pct"),
+            ("human_first_pass_rate", "Human First-Pass", "pct"),
+        ],
+    },
+    "ai_suggestion_acceptance": {
+        "name": "AI Suggestion Acceptance",
+        "stats": [
+            ("acceptance_rate", "Acceptance Rate", "pct"),
+            ("suggestions_made", "Suggestions", "count"),
+            ("suggestions_accepted", "Accepted", "count"),
+            ("suggestions_dismissed", "Dismissed", "count"),
         ],
     },
     # ---- Code Quality & Risk ----
@@ -174,6 +208,14 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
             ("active_contributors_count", "Active Contributors", "count"),
         ],
     },
+    "knowledge_islands": {
+        "name": "Knowledge Islands",
+        "stats": [
+            ("island_pct", "Island Rate", "pct"),
+            ("island_count", "Islands", "count"),
+            ("total_files", "Total Files", "count"),
+        ],
+    },
     "knowledge_sharing_index": {
         "name": "Knowledge Sharing Index",
         "stats": [
@@ -184,12 +226,36 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
         ],
     },
     # ---- Productivity & Throughput ----
+    "delivery_volume": {
+        "name": "Delivery Volume",
+        "stats": [
+            ("nontrivial_merged", "Nontrivial Merged", "count"),
+            ("total_merged", "Total Merged", "count"),
+            ("merged_per_week", "Merged/Week", "ratio"),
+            ("trivial_excluded", "Trivial Excluded", "count"),
+        ],
+    },
     "pr_throughput": {
         "name": "PR Throughput",
         "stats": [
             ("merge_ratio", "Merge Rate", "pct"),
             ("opened_count", "Opened", "count"),
             ("merged_count", "Merged", "count"),
+        ],
+    },
+    "wip_load": {
+        "name": "WIP Load",
+        "stats": [
+            ("max_concurrent_prs", "Max Concurrent", "count"),
+            ("avg_concurrent_prs", "Avg Concurrent", "ratio"),
+            ("total_prs_in_period", "Total PRs", "count"),
+        ],
+    },
+    "flow_efficiency": {
+        "name": "Flow Efficiency",
+        "stats": [
+            ("median_efficiency", "Median Efficiency", "pct"),
+            ("pr_count", "PRs", "count"),
         ],
     },
     "cycle_time": {
@@ -287,6 +353,44 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
             ("churned_lines", "Churned Lines", "count"),
             ("total_lines", "Total Lines", "count"),
             ("pr_count", "PRs", "count"),
+        ],
+    },
+    "code_familiarity": {
+        "name": "Code Familiarity",
+        "stats": [
+            ("familiarity_pct", "Familiarity", "pct"),
+            ("familiar_file_count", "Familiar Files", "count"),
+            ("total_files", "Total Files", "count"),
+            ("unfamiliar_file_count", "Unfamiliar Files", "count"),
+        ],
+    },
+    "main_developer_by_revisions": {
+        "name": "Main Developer (Revisions)",
+        "stats": [
+            ("files_with_main_developer", "Files w/ Main Dev", "count"),
+            ("total_files", "Total Files", "count"),
+        ],
+    },
+    "main_developer_by_lines": {
+        "name": "Main Developer (Lines)",
+        "stats": [
+            ("files_with_main_developer", "Files w/ Main Dev", "count"),
+            ("total_files", "Total Files", "count"),
+        ],
+    },
+    "contributor_experience": {
+        "name": "Contributor Experience",
+        "stats": [
+            ("experience_pct", "Experience", "pct"),
+            ("user_lines", "User Lines", "count"),
+            ("total_lines", "Total Lines", "count"),
+        ],
+    },
+    "entity_ownership": {
+        "name": "Entity Ownership",
+        "stats": [
+            ("avg_top_owner_pct", "Avg Top Owner", "pct"),
+            ("total_files", "Files Analyzed", "count"),
         ],
     },
     # ---- PR Hygiene & Process ----
@@ -624,6 +728,16 @@ METRIC_DISPLAY_CONFIG: dict[str, dict[str, Any]] = {
             ("total_churned", "Churned Lines", "count"),
         ],
     },
+    # ---- Reliability ----
+    "time_to_restore": {
+        "name": "Time to Restore",
+        "stats": [
+            ("median_restore_hours", "Median", "hours"),
+            ("p75_restore_hours", "P75", "hours"),
+            ("revert_count", "Reverts", "count"),
+            ("incidents_with_fix", "Incidents Fixed", "count"),
+        ],
+    },
     # ---- Review Coverage ----
     "review_coverage": {
         "name": "Review Coverage",
@@ -686,6 +800,12 @@ def _fmt_score(v: Any) -> str:
     return f"{float(v):.1f}/100"
 
 
+def _fmt_bool(v: Any) -> str:
+    if v is None:
+        return "N/A"
+    return "Yes" if v else "No"
+
+
 FORMATTERS = {
     "pct": _fmt_pct,
     "hours": _fmt_hours,
@@ -693,6 +813,7 @@ FORMATTERS = {
     "ratio": _fmt_ratio,
     "count": _fmt_count,
     "score": _fmt_score,
+    "bool": _fmt_bool,
 }
 
 

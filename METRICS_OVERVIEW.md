@@ -92,6 +92,44 @@
 
 ---
 
+## Data Scope: Metrics Requiring Repo-Wide Data
+
+The current fetch pipeline (`impact/providers/github_live.py`) is **user-centric**: it only fetches PRs authored by, assigned to, or reviewed by the assessed engineer. This means `bundle.pull_requests`, `bundle.commits`, `bundle.reviews`, and `bundle.files` do **not** contain the full repository picture.
+
+The following 12 metrics access bundle-level data to compute cross-contributor statistics (e.g. ownership distributions, contributor counts, team-level review patterns). Because the bundle only contains user-related PRs, these metrics operate on **incomplete data** and their results should be interpreted with that caveat.
+
+### Hybrid Scope (user's files + all-contributor context needed)
+
+These metrics scope to files the assessed user touched, then attempt to build the full contributor picture for those files. With user-centric fetch data, contributors who touched the same files via unrelated PRs are invisible.
+
+| Metric | What It Needs | Impact of User-Centric Data |
+|--------|--------------|----------------------------|
+| Bus Factor | All contributors to user's files | Underestimates — misses contributors from PRs not involving the user |
+| Knowledge Islands | All commits per file for ownership % | Overestimates — other owners' contributions invisible |
+| Knowledge Loss | All active contributors in the repo | Overestimates — active contributors invisible if they didn't touch user's PRs |
+| Main Developer (by revisions) | Full commit distribution per file | Skewed — may misidentify main developer |
+| Main Developer (by lines) | Full line-contribution distribution per file | Skewed — may misidentify main developer |
+| Entity Ownership | Full ownership breakdown per file | Skewed — ownership percentages inflated for visible authors |
+| Code Familiarity | Whether other active contributors know user's files | Underestimates — team members only visible if they appeared in user-related PRs |
+| Contributor Experience | user_lines / total_repo_lines | Grossly inflated — denominator is user-related lines, not repo-wide |
+| Revert Introduction Rate | All reverts of user's code (by anyone) | Underestimates — misses reverts in PRs not involving the user |
+| Self-Merge Rate | Repo-wide self-merge baseline for culture context | `repo_self_merge_rate` field is skewed (only user-related PRs in denominator) |
+
+### Repo-Wide Scope (all-repo data needed)
+
+These metrics operate on full bundle data without user-scoping. They are fundamentally team/repo-level metrics.
+
+| Metric | What It Needs | Impact of User-Centric Data |
+|--------|--------------|----------------------------|
+| Time to Restore (DORA MTTR) | All repo commits to detect revert→fix cycles | Misses most incidents — only sees reverts in user-related PRs |
+| Knowledge Sharing Index | All reviews from all reviewers | Fundamentally broken — measures distribution only across reviewers visible in user-related PRs, not the full team |
+
+### Remaining 61 Metrics — Correctly User-Scoped
+
+All other metrics use `ledger.get_prs_for_user()`, `get_reviews_for_user()`, or `get_commits_for_user()` to filter to the assessed engineer's own activity. These work correctly with the user-centric fetch pipeline.
+
+---
+
 ## Planned Metrics (56)
 
 ### AI-Era Prioritization Rationale
