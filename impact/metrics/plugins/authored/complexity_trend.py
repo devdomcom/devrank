@@ -5,29 +5,11 @@ from statistics import mean, pstdev
 
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import filter_prs_for_contribution, is_generated_file
-
-
-def _indent_level(line: str) -> float:
-    expanded = line.replace("\t", "    ")
-    indent_spaces = len(expanded) - len(expanded.lstrip(" "))
-    return indent_spaces / 4
-
-
-def _complexity_from_patch(patch: str | None) -> float | None:
-    if not patch:
-        return None
-    indent_levels: list[float] = []
-    for line in patch.splitlines():
-        if not line.startswith("+") or line.startswith("+++"):
-            continue
-        content = line[1:]
-        if not content.strip():
-            continue
-        indent_levels.append(_indent_level(content))
-    if not indent_levels:
-        return None
-    return sum(indent_levels) / len(indent_levels)
+from impact.metrics.utils import (
+    complexity_from_patch,
+    filter_prs_for_contribution,
+    is_generated_file,
+)
 
 
 class ComplexityTrend(Metric):
@@ -72,7 +54,7 @@ class ComplexityTrend(Metric):
             for file in files:
                 if is_generated_file(file.filename, file.patch):
                     continue
-                complexity = _complexity_from_patch(file.patch)
+                complexity = complexity_from_patch(file.patch)
                 if complexity is None:
                     continue
                 file_samples[file.filename].append((pr.number, complexity))

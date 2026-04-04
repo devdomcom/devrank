@@ -57,6 +57,7 @@ from impact.metrics.plugins.authored.review_coverage import ReviewCoverage
 from impact.metrics.plugins.authored.wip_load import WIPLoad
 from impact.metrics.plugins.authored.flow_efficiency import FlowEfficiency
 from impact.metrics.plugins.authored.time_to_restore import TimeToRestore
+from impact.metrics.plugins.authored.delivery_risk_score import DeliveryRiskScore
 from impact.metrics.plugins.influence.approval_to_merge_ratio import ApprovalToMergeRatio
 from impact.metrics.plugins.influence.blocking_comment_rate import BlockingCommentRate
 from impact.metrics.plugins.influence.change_inducing_review_rate import ChangeInducingReviewRate
@@ -108,6 +109,7 @@ def get_metrics():
         "review_leverage": ReviewLeverage,
         "pr_throughput": PRThroughput,
         "delivery_volume": DeliveryVolume,
+        "delivery_risk_score": DeliveryRiskScore,
         "cycle_time": CycleTime,
         "coding_time_to_pr": CodingTimeToPR,
         "coding_days": CodingDays,

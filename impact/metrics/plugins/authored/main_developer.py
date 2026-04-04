@@ -15,74 +15,11 @@ from typing import Literal
 
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.utils import filter_prs_for_contribution, is_generated_file
-
-
-def _build_file_contributors(
-    files_in_scope: set[str],
-    bundle,
-    ledger,
-    *,
-    by: Literal["revisions", "lines"],
-) -> dict[str, dict[str, float]]:
-    """
-    Build a filename -> author -> contribution map.
-
-    This is the shared scaffolding used by both Main Developer metrics.
-
-    Args:
-        files_in_scope: Set of filenames to analyze.
-        bundle: The CanonicalBundle containing all repo data.
-        ledger: The Ledger for querying PRs/files.
-        by: "revisions" counts commits per author; "lines" weights by file.changes.
-
-    Returns:
-        A dict mapping each filename to a dict of author -> contribution score.
-    """
-    file_contributors: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
-
-    # Build file -> set of PR numbers
-    file_to_prs: dict[str, set[int]] = defaultdict(set)
-    for f in getattr(bundle, "files", []):
-        if f.filename in files_in_scope and not is_generated_file(f.filename, getattr(f, "patch", None)):
-            file_to_prs[f.filename].add(f.pull_request_number)
-
-    # Build PR -> commits mapping
-    pr_to_commits: dict[int, list] = defaultdict(list)
-    for commit in bundle.commits:
-        if commit.pull_request_number is not None:
-            pr_to_commits[commit.pull_request_number].append(commit)
-
-    if by == "revisions":
-        # Count commits per author per file
-        for filename, pr_numbers in file_to_prs.items():
-            for pr_num in pr_numbers:
-                for commit in pr_to_commits.get(pr_num, []):
-                    author = getattr(commit.author, "login", None) or str(commit.author)
-                    if author:
-                        file_contributors[filename][author] += 1
-
-        # Fallback: credit PR authors for files with no linked commits
-        for pr in bundle.pull_requests:
-            for f in ledger.get_files_for_pr(pr.number):
-                if f.filename in files_in_scope and not is_generated_file(f.filename, getattr(f, "patch", None)):
-                    if not file_contributors[f.filename]:
-                        file_contributors[f.filename][pr.user.login] += 1
-
-    elif by == "lines":
-        # Weight by file.changes per PR author
-        for pr in bundle.pull_requests:
-            pr_author = pr.user.login
-            for f in ledger.get_files_for_pr(pr.number):
-                if f.filename not in files_in_scope:
-                    continue
-                if is_generated_file(f.filename, getattr(f, "patch", None)):
-                    continue
-                change_weight = f.changes if f.changes else (f.additions + f.deletions)
-                contribution_score = max(1.0, float(change_weight))
-                file_contributors[f.filename][pr_author] += contribution_score
-
-    return file_contributors
+from impact.metrics.utils import (
+    build_file_contributors,
+    filter_prs_for_contribution,
+    is_generated_file,
+)
 
 
 def _find_main_developer(contributors: dict[str, float]) -> tuple[str | None, float, float]:
@@ -174,7 +111,7 @@ class MainDeveloperByRevisions(Metric):
             )
 
         # Step 2: Build per-file contributor attribution by revisions (commit count)
-        file_contributors = _build_file_contributors(
+        file_contributors = build_file_contributors(
             files_in_scope, bundle, context.ledger, by="revisions"
         )
 
@@ -290,7 +227,7 @@ class MainDeveloperByLines(Metric):
             )
 
         # Step 2: Build per-file contributor attribution by lines (weighted changes)
-        file_contributors = _build_file_contributors(
+        file_contributors = build_file_contributors(
             files_in_scope, bundle, context.ledger, by="lines"
         )
 

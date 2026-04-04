@@ -4,9 +4,9 @@
 
 ---
 
-## Implemented Metrics (66)
+## Implemented Metrics (67)
 
-### Authored (51)
+### Authored (52)
 
 | # | Metric | Description | Framework |
 |---|--------|-------------|-----------|
@@ -63,6 +63,7 @@
 | 49 | Flow Efficiency | Active coding time / total lead time for merged PRs (Kanban flow health) | Lean |
 | 50 | WIP Load | Concurrent open PRs per day (Lean WIP indicator; high WIP = context-switching overhead) | Lean |
 | 51 | Review Coverage | % of PR files with at least one human inline review comment | DevRank |
+| 52 | Delivery Risk Score (1-10) | Per-commit risk based on code, file count, diffusion, experience | DevRank |
 
 ### Influence (15)
 
@@ -185,7 +186,7 @@ In the AI-assisted development era, metric priorities shift significantly from t
 
 | # | Metric | Description | Priority | Framework |
 |---|--------|-------------|----------|-----------|
-| 20 | Delivery Risk Score (1-10) | Per-commit risk based on code, file count, diffusion, experience | P0 | DevRank |
+| 20 | Delivery Risk Score (1-10) | Per-commit risk based on code, file count, diffusion, experience | P0 | DevRank | **Implemented** |
 | 21 | Review Coverage | % of PR files/hunks with at least one review comment | P0 | DevRank | **Implemented** |
 | 22 | PR Maturity Ratio | How much a PR changes between open and merge | P1 | DevRank |
 | 23 | Discussion Cycles | Alternating-person comment exchanges | P1 | DevRank |

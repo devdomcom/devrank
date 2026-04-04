@@ -2592,3 +2592,101 @@ def compute_code_survival(
         result["no_data"] = True
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Shared private functions promoted from metric plugins
+# ---------------------------------------------------------------------------
+
+def indent_level(line: str) -> float:
+    """Compute indentation level (in units of 4 spaces) for a code line.
+
+    Tabs are converted to 4 spaces. Used for whitespace-based complexity estimation.
+    """
+    expanded = line.replace("\t", "    ")
+    indent_spaces = len(expanded) - len(expanded.lstrip(" "))
+    return indent_spaces / 4
+
+
+def complexity_from_patch(patch: str | None) -> float | None:
+    """Estimate average nesting depth (complexity proxy) from a unified diff patch.
+
+    Returns the mean indentation level of added lines, or None if no added lines.
+    """
+    if not patch:
+        return None
+    indent_levels: list[float] = []
+    for line in patch.splitlines():
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        content = line[1:]
+        if not content.strip():
+            continue
+        indent_levels.append(indent_level(content))
+    if not indent_levels:
+        return None
+    return sum(indent_levels) / len(indent_levels)
+
+
+def build_file_contributors(
+    files_in_scope: set[str],
+    bundle,
+    ledger,
+    *,
+    by: str,
+) -> dict[str, dict[str, float]]:
+    """Build a filename -> author -> contribution map.
+
+    Args:
+        files_in_scope: Set of filenames to analyze.
+        bundle: The CanonicalBundle containing all repo data.
+        ledger: The Ledger for querying PRs/files.
+        by: "revisions" counts commits per author; "lines" weights by file.changes.
+
+    Returns:
+        A dict mapping each filename to a dict of author -> contribution score.
+    """
+    file_contributors: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+
+    # Build file -> set of PR numbers
+    file_to_prs: dict[str, set[int]] = defaultdict(set)
+    for f in getattr(bundle, "files", []):
+        if f.filename in files_in_scope and not is_generated_file(f.filename, getattr(f, "patch", None)):
+            file_to_prs[f.filename].add(f.pull_request_number)
+
+    # Build PR -> commits mapping
+    pr_to_commits: dict[int, list] = defaultdict(list)
+    for commit in bundle.commits:
+        if commit.pull_request_number is not None:
+            pr_to_commits[commit.pull_request_number].append(commit)
+
+    if by == "revisions":
+        # Count commits per author per file
+        for filename, pr_numbers in file_to_prs.items():
+            for pr_num in pr_numbers:
+                for commit in pr_to_commits.get(pr_num, []):
+                    author = getattr(commit.author, "login", None) or str(commit.author)
+                    if author:
+                        file_contributors[filename][author] += 1
+
+        # Fallback: credit PR authors for files with no linked commits
+        for pr in bundle.pull_requests:
+            for f in ledger.get_files_for_pr(pr.number):
+                if f.filename in files_in_scope and not is_generated_file(f.filename, getattr(f, "patch", None)):
+                    if not file_contributors[f.filename]:
+                        file_contributors[f.filename][pr.user.login] += 1
+
+    elif by == "lines":
+        # Weight by file.changes per PR author
+        for pr in bundle.pull_requests:
+            pr_author = pr.user.login
+            for f in ledger.get_files_for_pr(pr.number):
+                if f.filename not in files_in_scope:
+                    continue
+                if is_generated_file(f.filename, getattr(f, "patch", None)):
+                    continue
+                change_weight = f.changes if f.changes else (f.additions + f.deletions)
+                contribution_score = max(1.0, float(change_weight))
+                file_contributors[f.filename][pr_author] += contribution_score
+
+    return file_contributors

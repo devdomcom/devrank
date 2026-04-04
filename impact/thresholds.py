@@ -531,6 +531,16 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x > 30,         # Highly scattered changes
         "scores": [(0, 100), (5, 75), (15, 50), (30, 25), (60, 0)],
     },
+    # Delivery Risk Score (1-10): lower = safer, higher = riskier
+    # Combines file count, complexity, diffusion, experience, risk labels
+    "delivery_risk_score": {
+        "key": "risk_score",
+        "excellent": lambda x: x <= 3,    # Low risk (1-3)
+        "good": lambda x: 3 < x <= 5,     # Moderate-low risk
+        "neutral": lambda x: 5 < x <= 7,  # Moderate risk
+        "bad": lambda x: x > 7,           # High risk (8-10)
+        "scores": [(1, 100), (3, 75), (5, 50), (7, 25), (10, 0)],
+    },
     # Sum of Coupling: lower max coupling = fewer entanglements
     "sum_of_coupling": {
         "key": "max_coupling_score",

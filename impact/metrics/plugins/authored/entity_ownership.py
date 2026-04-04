@@ -6,14 +6,17 @@ ownership breakdown. Unlike Main Developer (which picks the top contributor)
 or Knowledge Islands (which flags extreme concentration), Entity Ownership
 exposes the full distribution for every file in scope.
 
-DRY: Reuses _build_file_contributors from main_developer.py for the heavy
+DRY: Reuses build_file_contributors from main_developer.py for the heavy
 lifting of attributing contributions to authors.
 """
 
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.plugins.authored.main_developer import _build_file_contributors
-from impact.metrics.utils import filter_prs_for_contribution, is_generated_file
+from impact.metrics.utils import (
+    build_file_contributors,
+    filter_prs_for_contribution,
+    is_generated_file,
+)
 
 
 class EntityOwnership(Metric):
@@ -96,7 +99,7 @@ class EntityOwnership(Metric):
             )
 
         # Step 2: Build per-file contributor attribution (reuses DRY helper)
-        file_contributors = _build_file_contributors(
+        file_contributors = build_file_contributors(
             files_in_scope, bundle, context.ledger, by=self._by  # type: ignore[arg-type]
         )
 

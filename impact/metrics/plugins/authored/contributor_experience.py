@@ -12,7 +12,7 @@ high experience. This metric captures that as:
 
     experience_pct = user_lines / total_lines * 100
 
-DRY: Reuses _build_file_contributors(by="lines") from main_developer.py to
+DRY: Reuses build_file_contributors(by="lines") from main_developer.py to
 attribute line contributions to PR authors across all bundle files.
 """
 
@@ -20,7 +20,7 @@ from collections import defaultdict
 
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
-from impact.metrics.plugins.authored.main_developer import _build_file_contributors
+from impact.metrics.utils import build_file_contributors
 from impact.metrics.utils import filter_prs_for_contribution, is_generated_file
 
 
@@ -88,7 +88,7 @@ class ContributorExperience(Metric):
                 },
             )
 
-        file_contributors = _build_file_contributors(
+        file_contributors = build_file_contributors(
             all_files, bundle, context.ledger, by="lines"
         )
 
