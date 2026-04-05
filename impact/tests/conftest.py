@@ -222,6 +222,9 @@ def make_bundle(
     comments: list | None = None,
     files: list | None = None,
     timeline: list | None = None,
+    releases: list | None = None,
+    deployments: list | None = None,
+    ci_runs: list | None = None,
     user_timezone: str | None = None,
 ) -> CanonicalBundle:
     """Create a CanonicalBundle for testing with sensible defaults."""
@@ -234,6 +237,9 @@ def make_bundle(
         comments=comments or [],
         files=files or [],
         timeline=timeline or [],
+        releases=releases or [],
+        deployments=deployments or [],
+        ci_runs=ci_runs or [],
         user_timezone=user_timezone,
     )
 

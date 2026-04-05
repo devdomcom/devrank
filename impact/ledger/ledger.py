@@ -4,10 +4,13 @@ from datetime import UTC, datetime
 
 from impact.domain.models import (
     CanonicalBundle,
+    CIRunRecord,
     CommentRecord,
     Commit,
+    DeploymentRecord,
     FileRecord,
     PullRequest,
+    ReleaseRecord,
     ReviewRecord,
 )
 
@@ -64,6 +67,22 @@ class Ledger:
         # Timeline indexes
         self.pr_timeline: dict[int, list] = defaultdict(list)
         self._build_timeline_indexes()
+
+        # DORA data indexes (repo-scoped, time-ordered)
+        self.releases: list[ReleaseRecord] = sorted(
+            bundle.releases, key=lambda r: r.created_at,
+        )
+        self.deployments: list[DeploymentRecord] = sorted(
+            bundle.deployments, key=lambda d: d.created_at,
+        )
+        self.ci_runs: list[CIRunRecord] = sorted(
+            bundle.ci_runs, key=lambda c: c.created_at,
+        )
+        # CI runs by PR for per-PR lead-time decomposition
+        self.pr_ci_runs: dict[int, list[CIRunRecord]] = defaultdict(list)
+        for ci in self.ci_runs:
+            if ci.pull_request_number is not None:
+                self.pr_ci_runs[ci.pull_request_number].append(ci)
 
     def _build_indexes(self):
         # PRs by user
@@ -206,3 +225,29 @@ class Ledger:
         # Filter merged first, then apply date range (reuses helper)
         merged_prs = [pr for pr in prs if pr.merged and pr.merged_at]
         return self._filter_by_date(merged_prs, start_date, end_date, "merged_at")
+
+    def get_releases(
+        self, start_date: datetime | None = None, end_date: datetime | None = None,
+    ) -> list[ReleaseRecord]:
+        """Get releases within an optional time period."""
+        return self._filter_by_date(self.releases, start_date, end_date, "created_at")
+
+    def get_deployments(
+        self, start_date: datetime | None = None, end_date: datetime | None = None,
+        *, environment: str | None = None,
+    ) -> list[DeploymentRecord]:
+        """Get deployments within an optional time period, optionally filtered by environment."""
+        deploys = self._filter_by_date(self.deployments, start_date, end_date, "created_at")
+        if environment:
+            deploys = [d for d in deploys if d.environment == environment]
+        return deploys
+
+    def get_ci_runs_for_pr(self, pr_number: int) -> list[CIRunRecord]:
+        """Get CI runs associated with a PR, time-ordered."""
+        return self.pr_ci_runs.get(pr_number, [])
+
+    def get_ci_runs(
+        self, start_date: datetime | None = None, end_date: datetime | None = None,
+    ) -> list[CIRunRecord]:
+        """Get CI runs within an optional time period."""
+        return self._filter_by_date(self.ci_runs, start_date, end_date, "created_at")
