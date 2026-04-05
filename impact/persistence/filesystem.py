@@ -12,6 +12,9 @@ _CANONICAL_FILES = (
     "commits.jsonl",
     "files.jsonl",
     "timeline.jsonl",
+    "releases.jsonl",
+    "deployments.jsonl",
+    "ci_runs.jsonl",
 )
 
 
@@ -70,3 +73,24 @@ class FileSystemDumpWriter:
                         f.write(json.dumps(item) + "\n")
                 else:
                     f.write(json.dumps(data) + "\n")
+
+    def write_repo_data(self, kind: str, records: list[dict], repo: str):
+        """Write repo-scoped records (releases, deployments, ci_runs) to JSONL.
+
+        Each record is enriched with the source ``repository`` full name so the
+        adapter can group/filter by repo downstream.
+        """
+        fname_map = {
+            "releases": "releases.jsonl",
+            "deployments": "deployments.jsonl",
+            "ci_runs": "ci_runs.jsonl",
+        }
+        fname = fname_map.get(kind)
+        if not fname or not records:
+            return
+        path = self.canonical_dir / fname
+        with path.open("a") as f:
+            for record in records:
+                record = dict(record)
+                record["_repository"] = repo
+                f.write(json.dumps(record) + "\n")

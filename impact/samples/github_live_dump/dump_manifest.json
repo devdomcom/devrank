@@ -3,11 +3,11 @@
   "api_version": "2022-11-28",
   "user": "msyavuz",
   "from": "2026-01-01T00:00:00Z",
-  "to": "2026-01-31T23:59:59Z",
+  "to": "2026-03-31T23:59:59Z",
   "repositories": [
     "apache/superset"
   ],
-  "generated_at": "2026-02-15T13:35:01.338155Z",
-  "notes": "Live fetch dump",
+  "generated_at": "2026-04-03T17:06:19.774655Z",
+  "notes": "3-month fetch with DORA data (releases, deployments, CI runs)",
   "user_timezone": "Europe/Istanbul"
 }

@@ -167,23 +167,48 @@ class GitHubFetcher:
         return results
 
     def fetch_workflow_runs(
-        self, repo: str, *, since: datetime | None = None
+        self, repo: str, *, since: datetime | None = None, until: datetime | None = None,
+        max_pages: int = 10,
     ) -> list[dict[str, Any]]:
         """Fetch GitHub Actions workflow runs (Kanban Flow Efficiency -- CI wait).
 
         GET /repos/{owner}/{repo}/actions/runs
+        Paginates up to ``max_pages`` (default 10 = 1000 runs) to stay within
+        rate limits on high-volume repos like apache/superset (~250K runs/quarter).
         """
         params: dict[str, Any] = {"per_page": 100}
-        if since:
-            params["created"] = f">={self._since_param(since)}"
+        # Actions API `created` filter uses YYYY-MM-DD..YYYY-MM-DD format
+        if since and until:
+            params["created"] = f"{since.strftime('%Y-%m-%d')}..{until.strftime('%Y-%m-%d')}"
+        elif since:
+            params["created"] = f">={since.strftime('%Y-%m-%d')}"
+        elif until:
+            params["created"] = f"<={until.strftime('%Y-%m-%d')}"
+
         results = []
-        resp = self.client.get(f"/repos/{repo}/actions/runs", params=params)
-        data = resp.json()
-        for run in data.get("workflow_runs", []):
-            results.append(run)
-        # Note: pagination for Actions uses total_count; we fetch first page only
-        # to stay within rate limits. Expand if needed.
-        log.info("Fetched %d workflow runs for %s", len(results), repo)
+        path: str | None = f"/repos/{repo}/actions/runs"
+        pages_fetched = 0
+        while path and pages_fetched < max_pages:
+            resp = self.client.get(path, params=params)
+            data = resp.json()
+            runs = data.get("workflow_runs", [])
+            if not runs:
+                break
+            results.extend(runs)
+            pages_fetched += 1
+            # Follow Link header pagination (same pattern as client.paginate)
+            links = resp.headers.get("Link", "")
+            next_link = None
+            for part in links.split(","):
+                if 'rel="next"' in part:
+                    next_link = part[part.find("<") + 1 : part.find(">")]
+                    break
+            if next_link:
+                path = next_link.replace(self.client.base_url, "")
+                params = None  # next URL already contains query params
+            else:
+                path = None
+        log.info("Fetched %d workflow runs for %s (%d pages)", len(results), repo, pages_fetched)
         return results
 
 

@@ -127,6 +127,23 @@ class GitHubLiveFetcher(ProviderFetcher):
                     self.cfg.user_login, repo, exc,
                 )
 
+        # ------------------------------------------------------------------
+        # Repo-scoped data: releases, deployments (DORA)
+        # These are NOT user-scoped — we fetch all for each repo.
+        # ------------------------------------------------------------------
+        for repo in self.cfg.repos:
+            try:
+                releases = fetcher.fetch_releases(repo, since=self.cfg.start)
+                writer.write_repo_data("releases", releases, repo)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Failed fetching releases for %s: %s", repo, exc)
+
+            try:
+                deployments = fetcher.fetch_deployments(repo, since=self.cfg.start)
+                writer.write_repo_data("deployments", deployments, repo)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Failed fetching deployments for %s: %s", repo, exc)
+
         log.info(
             "Queued %s pull requests for fetch after author/activity/review prefilter",
             len(pr_numbers),

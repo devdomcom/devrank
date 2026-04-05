@@ -11,12 +11,15 @@ log = logging.getLogger(__name__)
 from impact.domain.models import (
     Branch,
     CanonicalBundle,
+    CIRunRecord,
     CommentRecord,
     CommentType,
     Commit,
+    DeploymentRecord,
     FileRecord,
     PullRequest,
     PullRequestState,
+    ReleaseRecord,
     Repository,
     ReviewRecord,
     ReviewState,
@@ -424,7 +427,7 @@ class GitHubAdapter(ProviderAdapter):
                 for line in f:
                     file_dict = json.loads(line)
                     pr_number = file_dict.get("pull_request_number")
-                    if pr_number in pr_raw:
+                    if pr_number in pr_raw and file_dict.get("sha") is not None:
                         files.append(
                             FileRecord(
                                 sha=file_dict["sha"],
@@ -440,6 +443,134 @@ class GitHubAdapter(ProviderAdapter):
                                 content=file_dict.get("content"),
                             )
                         )
+
+        # ---------------------------
+        # Releases (repo-scoped, DORA)
+        # ---------------------------
+        release_records: list[ReleaseRecord] = []
+        rel_file = canonical_path / "releases.jsonl"
+        if rel_file.exists():
+            with rel_file.open() as f:
+                for line in f:
+                    rel = json.loads(line)
+                    created_at = datetime.fromisoformat(
+                        rel["created_at"].replace("Z", "+00:00")
+                    )
+                    if created_at < start_dt or created_at > end_dt:
+                        continue
+                    author = None
+                    if rel.get("author"):
+                        try:
+                            author = ensure_user(rel["author"])
+                        except (ValueError, KeyError, TypeError):
+                            pass
+                    published_at = None
+                    if rel.get("published_at"):
+                        published_at = datetime.fromisoformat(
+                            rel["published_at"].replace("Z", "+00:00")
+                        )
+                    release_records.append(
+                        ReleaseRecord(
+                            id=rel["id"],
+                            tag_name=rel["tag_name"],
+                            name=rel.get("name"),
+                            created_at=created_at,
+                            published_at=published_at,
+                            draft=rel.get("draft", False),
+                            prerelease=rel.get("prerelease", False),
+                            author=author,
+                            target_commitish=rel.get("target_commitish"),
+                        )
+                    )
+
+        # ---------------------------
+        # Deployments (repo-scoped, DORA)
+        # ---------------------------
+        deployment_records: list[DeploymentRecord] = []
+        dep_file = canonical_path / "deployments.jsonl"
+        if dep_file.exists():
+            with dep_file.open() as f:
+                for line in f:
+                    dep = json.loads(line)
+                    created_at = datetime.fromisoformat(
+                        dep["created_at"].replace("Z", "+00:00")
+                    )
+                    if created_at < start_dt or created_at > end_dt:
+                        continue
+                    creator = None
+                    if dep.get("creator"):
+                        try:
+                            creator = ensure_user(dep["creator"])
+                        except (ValueError, KeyError, TypeError):
+                            pass
+                    updated_at = None
+                    if dep.get("updated_at"):
+                        updated_at = datetime.fromisoformat(
+                            dep["updated_at"].replace("Z", "+00:00")
+                        )
+                    deployment_records.append(
+                        DeploymentRecord(
+                            id=dep["id"],
+                            sha=dep["sha"],
+                            ref=dep["ref"],
+                            environment=dep.get("environment", "unknown"),
+                            created_at=created_at,
+                            updated_at=updated_at,
+                            creator=creator,
+                            description=dep.get("description"),
+                        )
+                    )
+
+        # ---------------------------
+        # CI runs (repo-scoped, DORA / flow)
+        # ---------------------------
+        ci_run_records: list[CIRunRecord] = []
+        ci_file = canonical_path / "ci_runs.jsonl"
+        if ci_file.exists():
+            with ci_file.open() as f:
+                for line in f:
+                    run = json.loads(line)
+                    created_at = datetime.fromisoformat(
+                        run["created_at"].replace("Z", "+00:00")
+                    )
+                    if created_at < start_dt or created_at > end_dt:
+                        continue
+                    updated_at = None
+                    if run.get("updated_at"):
+                        updated_at = datetime.fromisoformat(
+                            run["updated_at"].replace("Z", "+00:00")
+                        )
+                    run_started_at = None
+                    if run.get("run_started_at"):
+                        run_started_at = datetime.fromisoformat(
+                            run["run_started_at"].replace("Z", "+00:00")
+                        )
+                    # Compute duration from run_started_at to updated_at (completed)
+                    duration_seconds = None
+                    if run_started_at and updated_at:
+                        duration_seconds = int(
+                            (updated_at - run_started_at).total_seconds()
+                        )
+                    # Extract PR number from pull_requests array if present
+                    pr_number = None
+                    pr_list = run.get("pull_requests", [])
+                    if pr_list:
+                        pr_number = pr_list[0].get("number")
+                    ci_run_records.append(
+                        CIRunRecord(
+                            id=run["id"],
+                            name=run.get("name"),
+                            head_sha=run.get("head_sha", ""),
+                            event=run.get("event"),
+                            status=run.get("status"),
+                            conclusion=run.get("conclusion"),
+                            created_at=created_at,
+                            updated_at=updated_at,
+                            run_started_at=run_started_at,
+                            pull_request_number=pr_number,
+                            duration_seconds=duration_seconds,
+                        )
+                    )
 
         # ---------------------------
         # Build PR objects now that acted_pr_numbers is known
@@ -545,5 +676,8 @@ class GitHubAdapter(ProviderAdapter):
             comments=comments,
             files=files,
             timeline=timeline_events,
+            releases=release_records,
+            deployments=deployment_records,
+            ci_runs=ci_run_records,
             user_timezone=user_tz,
         )
