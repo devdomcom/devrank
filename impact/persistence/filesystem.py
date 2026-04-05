@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from impact.persistence.redact import scrub_record
+
 
 _CANONICAL_FILES = (
     "pull_requests.jsonl",
@@ -70,9 +72,9 @@ class FileSystemDumpWriter:
                         if key == "timeline":
                             item = dict(item)
                             item["pull_request_number"] = pr_number
-                        f.write(json.dumps(item) + "\n")
+                        f.write(json.dumps(scrub_record(item)) + "\n")
                 else:
-                    f.write(json.dumps(data) + "\n")
+                    f.write(json.dumps(scrub_record(data)) + "\n")
 
     def write_repo_data(self, kind: str, records: list[dict], repo: str):
         """Write repo-scoped records (releases, deployments, ci_runs) to JSONL.
@@ -93,4 +95,4 @@ class FileSystemDumpWriter:
             for record in records:
                 record = dict(record)
                 record["_repository"] = repo
-                f.write(json.dumps(record) + "\n")
+                f.write(json.dumps(scrub_record(record)) + "\n")
