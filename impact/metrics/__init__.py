@@ -55,7 +55,9 @@ from impact.metrics.plugins.authored.commit_message_mining import CommitMessageM
 from impact.metrics.plugins.authored.code_survival import CodeSurvival
 from impact.metrics.plugins.authored.review_coverage import ReviewCoverage
 from impact.metrics.plugins.authored.wip_load import WIPLoad
+from impact.metrics.plugins.authored.discussion_cycles import DiscussionCycles
 from impact.metrics.plugins.authored.flow_efficiency import FlowEfficiency
+from impact.metrics.plugins.authored.pickup_time import PickupTime
 from impact.metrics.plugins.authored.time_to_restore import TimeToRestore
 from impact.metrics.plugins.authored.delivery_risk_score import DeliveryRiskScore
 from impact.metrics.plugins.influence.approval_to_merge_ratio import ApprovalToMergeRatio
@@ -171,4 +173,6 @@ def get_metrics():
         "flow_efficiency": FlowEfficiency,
         "time_to_restore": TimeToRestore,
         "knowledge_sharing_index": KnowledgeSharingIndex,
+        "pickup_time": PickupTime,
+        "discussion_cycles": DiscussionCycles,
     }

@@ -108,6 +108,24 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x > 4,
         "scores": [(0, 100), (1, 75), (2, 50), (4, 25), (8, 0)],
     },
+    # Pickup Time: time from PR opened to first non-author review activity (lower = faster pickup)
+    "pickup_time": {
+        "key": "median_hours",
+        "excellent": lambda x: x <= 2,
+        "good": lambda x: 2 < x <= 8,
+        "neutral": lambda x: 8 < x <= 24,
+        "bad": lambda x: x > 24,
+        "scores": [(0, 100), (2, 75), (8, 50), (24, 25), (48, 0)],
+    },
+    # Discussion Cycles: alternating-person comment exchanges per merged PR (lower = cleaner PRs)
+    "discussion_cycles": {
+        "key": "average_cycles",
+        "excellent": lambda x: x <= 2,
+        "good": lambda x: 2 < x <= 4,
+        "neutral": lambda x: 4 < x <= 8,
+        "bad": lambda x: x > 8,
+        "scores": [(0, 100), (2, 75), (4, 50), (8, 25), (16, 0)],
+    },
     "time_to_first_review": {
         "key": "median_hours",
         "excellent": lambda x: x <= 1,
