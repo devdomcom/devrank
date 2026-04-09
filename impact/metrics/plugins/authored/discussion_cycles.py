@@ -1,5 +1,11 @@
+from datetime import timedelta
+
 from impact.domain.models import MetricContext, MetricResult
 from impact.metrics.base import Metric
+
+# Events within this window by the same side are collapsed into one turn.
+# This prevents interleaved thread replies from inflating the count.
+_TURN_GAP = timedelta(hours=1)
 
 
 class DiscussionCycles(Metric):
@@ -7,9 +13,13 @@ class DiscussionCycles(Metric):
     Count alternating-person comment exchanges on the user's merged PRs.
 
     A "cycle" is a change of speaker between author and reviewer(s) in the
-    comment stream (reviews + review comments + issue comments), with
-    consecutive comments by the same party collapsed into one turn.
-    Measures how much back-and-forth discussion a PR generates before merge.
+    comment stream (reviews + review comments + issue comments).
+
+    To handle GitHub's nested review-comment threads — where interleaved
+    replies across multiple threads would inflate a naive alternation count —
+    events are collapsed into **turns**: a contiguous block of same-side
+    activity with no gap longer than ``_TURN_GAP``.  Each turn switch
+    (author-turn → reviewer-turn or vice versa) counts as one cycle.
     """
 
     @property
@@ -66,11 +76,16 @@ class DiscussionCycles(Metric):
 
     @staticmethod
     def _count_cycles(pr, context) -> int:
-        """Count speaker alternations in the comment timeline.
+        """Count turn-based speaker alternations in the comment timeline.
 
-        Collects all review submissions, review comments, and issue comments,
-        sorts by time, classifies each as "author" or "reviewer", and counts
-        how many times the speaker changes.
+        Events are first sorted chronologically, then collapsed into turns:
+        consecutive same-side (author vs reviewer) events within ``_TURN_GAP``
+        form a single turn.  Only transitions between turns count as cycles.
+
+        This handles GitHub's nested review-comment threads where a reviewer
+        posts N inline comments in one review and the author replies to each
+        one individually — that's 1 review turn + 1 author turn = 1 cycle,
+        not 2N alternations.
         """
         author = pr.user.login
 
@@ -92,11 +107,23 @@ class DiscussionCycles(Metric):
 
         events.sort(key=lambda e: e[0])
 
+        # Collapse into turns: a turn is a contiguous block of same-side
+        # events where no gap exceeds _TURN_GAP.
         cycles = 0
-        prev_is_author = events[0][1]
-        for _, is_author in events[1:]:
-            if is_author != prev_is_author:
+        turn_is_author = events[0][1]
+        turn_end = events[0][0]
+
+        for ts, is_author in events[1:]:
+            if is_author == turn_is_author and (ts - turn_end) <= _TURN_GAP:
+                # Same side, within gap — extend the current turn
+                turn_end = ts
+            elif is_author == turn_is_author:
+                # Same side but gap too large — new turn by same side (no cycle)
+                turn_end = ts
+            else:
+                # Side changed — new turn, count a cycle
                 cycles += 1
-                prev_is_author = is_author
+                turn_is_author = is_author
+                turn_end = ts
 
         return cycles
