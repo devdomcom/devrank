@@ -189,7 +189,7 @@ In the AI-assisted development era, metric priorities shift significantly from t
 | 20 | Delivery Risk Score (1-10) | Per-commit risk based on code, file count, diffusion, experience | P0 | DevRank | **Implemented** |
 | 21 | Review Coverage | % of PR files/hunks with at least one review comment | P0 | DevRank | **Implemented** |
 | 22 | PR Maturity Ratio | How much a PR changes between open and merge | P1 | DevRank |
-| 23 | Discussion Cycles | Alternating-person comment exchanges | P1 | DevRank |
+| 23 | Discussion Cycles | Alternating-person comment exchanges | P1 | DevRank | **Implemented** |
 | 24 | Estimated Review Time | ML-based minutes estimate per PR | P1 | DevRank |
 | 25 | Idle Completion Time | Time from rework complete to merge | P1 | Lean |
 | 26 | Productive Impact | Impact minus rework: Impact × (1 - Rework Rate) | P1 | Lean |
@@ -226,7 +226,7 @@ In the AI-assisted development era, metric priorities shift significantly from t
 
 | # | Metric | Description | Priority | Framework |
 |---|--------|-------------|----------|-----------|
-| 43 | Pickup Time | PR opened to first non-author review activity | P0 | Lean |
+| 43 | Pickup Time | PR opened to first non-author review activity | P0 | Lean | **Implemented** |
 | 44 | Time to Approve | First review activity to first approval | P1 | Lean |
 
 ### A8. Graph/Network Collaboration (Human-AI Team Dynamics)
