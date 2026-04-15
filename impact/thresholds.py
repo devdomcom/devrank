@@ -512,6 +512,15 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x < 2,
         "scores": [(0, 0), (2, 25), (5, 50), (8, 75), (12, 100)],
     },
+    # Degree Centrality: unique collaborators in review network (in+out)
+    "degree_centrality": {
+        "key": "unique_collaborators",
+        "excellent": lambda x: x >= 10,
+        "good": lambda x: 6 <= x < 10,
+        "neutral": lambda x: 3 <= x < 6,
+        "bad": lambda x: x < 3,
+        "scores": [(0, 0), (3, 25), (6, 50), (10, 75), (15, 100)],
+    },
     # Review Comment Substance: higher score = more actionable/detailed feedback
     "review_comment_substance": {
         "key": "avg_substance_score",
