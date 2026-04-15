@@ -1,6 +1,6 @@
 # DevRank Metrics Overview
 
-**67 implemented | 55 planned | 122 total**
+**68 implemented | 54 planned | 122 total**
 
 ---
 
@@ -193,7 +193,7 @@ In the AI-assisted development era, metric priorities shift significantly from t
 | 24 | Estimated Review Time | ML-based minutes estimate per PR | P1 | DevRank |
 | 25 | Idle Completion Time | Time from rework complete to merge | P1 | Lean |
 | 26 | Productive Impact | Impact minus rework: Impact × (1 - Rework Rate) | P1 | Lean |
-| 27 | PRs Unlinked | % PRs not linked to issue tracker | P2 | DevRank |
+| 27 | PRs Unlinked | % PRs not linked to issue tracker | P2 | DevRank | **Implemented** |
 | 28 | tt100 (Time to 100) | Time to write 100 lines of productive code | P2 | Lean |
 
 > **Notes:**

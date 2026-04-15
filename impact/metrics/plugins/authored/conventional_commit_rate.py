@@ -45,7 +45,7 @@ class ConventionalCommitRate(Metric):
             "total_commits": total,
             "commit_messages_sample": [c.message[:100] for c in commits[:5]],  # for verify
         }
-        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 0
+        period_days = (context.end_date - context.start_date).total_seconds() / 86400 if context.start_date and context.end_date else 30
         details["period_days"] = period_days
         if total == 0 or (period_days < 14 and total < 5):
             details["no_data"] = True

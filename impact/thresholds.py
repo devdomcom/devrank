@@ -366,7 +366,14 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x > 60,
         "scores": [(0, 100), (10, 75), (30, 50), (60, 25), (100, 0)],
     },
-    # Doc Touch Rate: touches/month (neutral/low ok; no BAD default per role config)
+    "unlinked_pr_rate": {
+        "key": "unlinked_rate",
+        "excellent": lambda x: x <= 10,
+        "good": lambda x: 10 < x <= 30,
+        "neutral": lambda x: 30 < x <= 60,
+        "bad": lambda x: x > 60,
+        "scores": [(0, 100), (10, 75), (30, 50), (60, 25), (100, 0)],
+    },
     "documentation_touch_rate": {
         "key": "doc_per_month",
         "good": lambda x: x >= 0.5,

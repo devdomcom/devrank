@@ -35,6 +35,7 @@ from impact.metrics.plugins.authored.code_familiarity import CodeFamiliarity
 from impact.metrics.plugins.authored.rework_rate import ReworkRate
 from impact.metrics.plugins.authored.self_merge_rate import SelfMergeRate
 from impact.metrics.plugins.authored.abandoned_pr_rate import AbandonedPRRate
+from impact.metrics.plugins.authored.unlinked_pr_rate import UnlinkedPRRate
 from impact.metrics.plugins.authored.documentation_touch_rate import DocumentationTouchRate
 from impact.metrics.plugins.authored.net_code_contribution import NetCodeContribution
 from impact.metrics.plugins.authored.off_hours_activity_rate import OffHoursActivityRate
@@ -137,6 +138,7 @@ def get_metrics():
         "rework_rate": ReworkRate,
         "self_merge_rate": SelfMergeRate,
         "abandoned_pr_rate": AbandonedPRRate,
+        "unlinked_pr_rate": UnlinkedPRRate,
         "documentation_touch_rate": DocumentationTouchRate,
         "net_code_contribution": NetCodeContribution,
         "off_hours_activity_rate": OffHoursActivityRate,
