@@ -521,6 +521,15 @@ METRIC_THRESHOLDS = {
         "bad": lambda x: x < 3,
         "scores": [(0, 0), (3, 25), (6, 50), (10, 75), (15, 100)],
     },
+    # Betweenness Centrality: normalized 0-1 (higher = bridges more disconnected teams)
+    "betweenness_centrality": {
+        "key": "normalized_betweenness",
+        "excellent": lambda x: x >= 0.15,
+        "good": lambda x: 0.08 <= x < 0.15,
+        "neutral": lambda x: 0.02 <= x < 0.08,
+        "bad": lambda x: x < 0.02,
+        "scores": [(0, 0), (0.02, 25), (0.08, 50), (0.15, 75), (0.30, 100)],
+    },
     # Review Comment Substance: higher score = more actionable/detailed feedback
     "review_comment_substance": {
         "key": "avg_substance_score",

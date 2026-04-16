@@ -74,6 +74,7 @@ from impact.metrics.plugins.influence.reviews_given import ReviewsGiven
 from impact.metrics.plugins.influence.unblock_time import UnblockTime
 from impact.metrics.plugins.influence.review_breadth import ReviewBreadth
 from impact.metrics.plugins.influence.degree_centrality import DegreeCentrality
+from impact.metrics.plugins.influence.betweenness_centrality import BetweennessCentrality
 from impact.metrics.plugins.influence.review_comment_substance import ReviewCommentSubstance
 from impact.metrics.plugins.influence.mentorship_signal import MentorshipSignal
 from impact.metrics.plugins.influence.review_demand import ReviewDemand
@@ -153,6 +154,7 @@ def get_metrics():
         "first_time_approval_rate": FirstTimeApprovalRate,
         "review_breadth": ReviewBreadth,
         "degree_centrality": DegreeCentrality,
+        "betweenness_centrality": BetweennessCentrality,
         "review_comment_substance": ReviewCommentSubstance,
         "mentorship_signal": MentorshipSignal,
         "review_demand": ReviewDemand,
