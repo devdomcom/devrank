@@ -72,10 +72,10 @@ Engineer-owned PRs and activity. All metrics work with the user-centric fetch pi
 
 | # | Metric | Description | AI Status | Structure | Framework |
 |---|--------|-------------|-----------|-----------|-----------|
-| 1 | AI-Assisted PR Rate | % PRs created with AI tools (Copilot/Cursor/Claude) | 🔄 Evolved | 🌐 Universal | DevRank |
-| 2 | AI Adoption Rate | Per-engineer AI tool usage (inferred from commit/PR signatures) | 🔄 Evolved | 🌐 Universal | DevRank |
-| 3 | AI Code Quality | Rework rate on AI-assisted vs human PRs | ✅ Unchanged | 🌐 Universal | DevRank |
-| 4 | AI Phantom Ownership | Code primarily touched by AI with low human review depth | ⚠️ Caution | 🌐 Universal | DevRank |
+| 1 | AI-Assisted PR Rate | % PRs created with AI assistance (Copilot/Cursor/Claude/etc.), detected via commit/PR signatures | 🔄 Evolved | 🌐 Universal | DevRank |
+| 2 | AI Adoption Rate | Per-engineer indicator of AI tool usage (inferred from commit/PR signatures) | 🔄 Evolved | 🌐 Universal | DevRank |
+| 3 | AI Code Quality | Rework rate comparison: AI-assisted PRs vs human PRs (review iterations) | ✅ Unchanged | 🌐 Universal | DevRank |
+| 4 | AI Phantom Ownership | Code primarily touched by AI with low human review depth (descriptive — no value judgment) | ⚠️ Caution | 🌐 Universal | DevRank |
 | 5 | AI Suggestion Acceptance | Ratio of accepted vs dismissed AI suggestions from review bots | 🔄 Evolved | 🌐 Universal | DevRank |
 | 6 | PR Throughput | PRs merged in the period | ⚠️ Caution | 🌐 Universal | SPACE • Lean |
 | 7 | Delivery Volume | Total lines added+deleted across merged PRs | ⚠️ Caution | 🌐 Universal | SPACE |
@@ -84,8 +84,8 @@ Engineer-owned PRs and activity. All metrics work with the user-centric fetch pi
 | 10 | Coding Time To PR | Time from first commit to PR creation | ✅ Unchanged | 🌐 Universal | Lean |
 | 11 | Merge Delay | Time from first approval to merge | ✅ Unchanged | 🌐 Universal | Lean |
 | 12 | Pickup Time | PR opened to first non-author review activity | ✅ Unchanged | 🌐 Universal | Lean |
-| 13 | PR Size Distribution | Statistical distribution of PR sizes | 🔄 Evolved | 🌐 Universal | DevRank |
-| 14 | Trivial Contribution Rate | % of PRs that are trivial | 🔄 Evolved | 🌐 Universal | DevRank |
+| 13 | PR Size Distribution | Statistical distribution of PR sizes (small/medium/large/XL) | 🔄 Evolved | 🌐 Universal | DevRank |
+| 14 | Trivial Contribution Rate | % of PRs that are trivial (auto-generated, tiny, boilerplate) | 🔄 Evolved | 🌐 Universal | DevRank |
 | 15 | Code Churn Rate | % of recently written lines overwritten | 🔄 Evolved | 🌐 Universal | SPACE • CodeScene |
 | 16 | Rework Rate | % of changes that rewrite author's own recent code | 🔄 Evolved | 🌐 Universal | SPACE • Lean |
 | 17 | First-Time Approval Rate | % of PRs approved without change requests | ✅ Unchanged | 🌐 Universal | SPACE • DevRank |
@@ -97,41 +97,41 @@ Engineer-owned PRs and activity. All metrics work with the user-centric fetch pi
 | 23 | Self-Merge Rate | % of PRs merged without non-author approval | ⚠️ Caution | 🌐 Universal | DevRank |
 | 24 | Abandoned PR Rate | % of PRs closed without merging | ✅ Unchanged | 🌐 Universal | Lean |
 | 25 | PR Merge Effectiveness | Ratio of merged PRs to total PRs opened | ✅ Unchanged | 🌐 Universal | SPACE |
-| 26 | PR Body Quality Score | Quality of PR descriptions | ✅ Unchanged | 🌐 Universal | DevRank |
+| 26 | PR Body Quality Score | Quality of PR descriptions (length, structure, links) | ✅ Unchanged | 🌐 Universal | DevRank |
 | 27 | Conventional Commit Rate | % of commits following conventional commit format | ✅ Unchanged | 🌐 Universal | DevRank |
 | 28 | Test File Ratio | Ratio of test file changes to production file changes | ⚠️ Caution | 🌐 Universal | Traditional |
 | 29 | Documentation Touch Rate | % of PRs that include documentation changes | ✅ Unchanged | 🌐 Universal | DevRank |
 | 30 | Dependency Change Rate | % of PRs modifying dependency/manifest files | ✅ Unchanged | 🌐 Universal | DevRank |
 | 31 | Module / Area Breadth | Number of distinct modules/areas touched | ✅ Unchanged | 🌐 Universal | DevRank |
-| 32 | PR Category Diversity | Diversity of PR types | ✅ Unchanged | 🌐 Universal | DevRank |
+| 32 | PR Category Diversity | Diversity of PR types (features, fixes, refactors, etc.) | ✅ Unchanged | 🌐 Universal | DevRank |
 | 33 | Bug Fix Focus Rate | % of PRs addressing bug fixes | ✅ Unchanged | 🌐 Universal | DevRank |
 | 34 | Coding Days | Number of days with commit activity | ✅ Unchanged | 🌐 Universal | SPACE |
 | 35 | Active Weeks | Number of weeks with at least one contribution | ✅ Unchanged | 🌐 Universal | SPACE |
 | 36 | Off-Hours Activity Rate | % of commits made outside business hours | ✅ Unchanged | 🌐 Universal | SPACE |
-| 37 | Burstiness | Ratio of max weekly activity to average | ✅ Unchanged | 🌐 Universal | DevRank |
+| 37 | Burstiness | Ratio of max weekly activity to average — pacing/sustainability signal | ✅ Unchanged | 🌐 Universal | DevRank |
 | 38 | Revert Introduction Rate | % of PRs that introduce reverts | 🔄 Evolved | 🌐 Universal | DevRank |
 | 39 | Hotspot Detection | Files with highest revision frequency × complexity | 🔄 Evolved | 🌐 Universal | CodeScene |
 | 40 | Bus Factor | Min developers who could leave before code is unmaintainable | 🔄 Evolved | 🌐 Universal | CodeScene |
-| 41 | Knowledge Islands | Files where 95%+ written by one person | ⚠️ Caution | 🌐 Universal | CodeScene |
-| 42 | Knowledge Loss | Code where 50%+ written by departed contributors | ✅ Unchanged | 🌐 Universal | CodeScene |
+| 41 | Knowledge Islands | Files/modules where 95%+ written by one person — ownership concentration risk | ⚠️ Caution | 🌐 Universal | CodeScene |
+| 42 | Knowledge Loss | Code where 50%+ written by departed/inactive contributors | ✅ Unchanged | 🌐 Universal | CodeScene |
 | 43 | Code Familiarity | % of codebase known by current active team | ⚠️ Caution | 🌐 Universal | CodeScene |
 | 44 | Main Developer (by lines) | Primary author per file by lines added | 🔄 Evolved | 🌐 Universal | CodeScene |
 | 45 | Main Developer (by revisions) | Primary author per file by commit count | ✅ Unchanged | 🌐 Universal | CodeScene |
 | 46 | Entity Ownership | Per-author contribution percentages per file | 🔄 Evolved | 🌐 Universal | CodeScene |
 | 47 | Contributor Experience | Relative share of codebase activity by the target developer | 🔄 Evolved | 🌐 Universal | CodeScene |
-| 48 | Temporal / Logical Coupling | Files that always change together | ✅ Unchanged | 🌐 Universal | CodeScene |
+| 48 | Temporal / Logical Coupling | Files that always change together (hidden dependencies) | ✅ Unchanged | 🌐 Universal | CodeScene |
 | 49 | Entity Fragmentation | Herfindahl-like index of author scatter per file | ✅ Unchanged | 🌐 Universal | CodeScene |
 | 50 | Complexity Trend | Whitespace-based complexity tracked per file over time | ✅ Unchanged | 🌐 Universal | Traditional |
 | 51 | Change Proximity | Sum of distances between changed lines within a file | ✅ Unchanged | 🌐 Universal | CodeScene |
 | 52 | Sum of Coupling | Per-entity total coupling score across all revisions | ✅ Unchanged | 🌐 Universal | CodeScene |
-| 53 | Absolute Churn Trend | Lines added/deleted per date | ✅ Unchanged | 🌐 Universal | CodeScene |
+| 53 | Absolute Churn Trend | Lines added/deleted per date — detects integration bottlenecks | ✅ Unchanged | 🌐 Universal | CodeScene |
 | 54 | Commit Message Mining | Regex search of commit messages for defect indicators | ✅ Unchanged | 🌐 Universal | CodeScene |
 | 55 | Code Survival | % of contributed lines still alive over time | 🔄 Evolved | 🌐 Universal | CodeScene |
-| 56 | Flow Efficiency | Active coding time / total lead time for merged PRs | ✅ Unchanged | 🌐 Universal | Lean |
-| 57 | WIP Load | Concurrent open PRs per day | ✅ Unchanged | 🌐 Universal | Lean |
-| 58 | Review Coverage | % of PR files/hunks with at least one review comment | ⚠️ Caution | 🌐 Universal | DevRank |
+| 56 | Flow Efficiency | Active coding time / total lead time for merged PRs (Kanban flow health) | ✅ Unchanged | 🌐 Universal | Lean |
+| 57 | WIP Load | Concurrent open PRs per day (Lean WIP indicator; high WIP = context-switching overhead) | ✅ Unchanged | 🌐 Universal | Lean |
+| 58 | Review Coverage | % of PR files with at least one human inline review comment | ⚠️ Caution | 🌐 Universal | DevRank |
 | 59 | Delivery Risk Score (1-10) | Per-commit risk based on code, file count, diffusion, experience | 🔄 Evolved | 🌐 Universal | DevRank |
-| 60 | Time to Restore (MTTR) | Time from revert to fix on the same files | 🔁 Renamed | 🌐 Universal | DORA |
+| 60 | Time to Restore (MTTR / Mean Time to Recovery) | Time from revert to fix on the same files (DORA MTTR proxy from revert→fix cycles; deployment-aware version pending — see D1) | 🔁 Renamed | 🌐 Universal | DORA |
 
 ## Implemented — Influence (17)
 
@@ -146,14 +146,14 @@ Impact on others' work — reviewing, mentorship, network position.
 | 65 | Review Comment Substance | Pygments-based scoring of code content in review comments | 🔄 Evolved | 🌐 Universal | DevRank |
 | 66 | Review Leverage | Lines of code influenced per review given | ✅ Unchanged | 🌐 Universal | DevRank |
 | 67 | Review Breadth | Number of distinct PR authors reviewed | ✅ Unchanged | 🌐 Universal | SPACE • Network |
-| 68 | Review Demand | How sought-after as a reviewer (requests received) | ✅ Unchanged | 🌐 Universal | Network |
+| 68 | Review Demand | How sought-after as a reviewer (review requests received) | ✅ Unchanged | 🌐 Universal | Network |
 | 69 | PR Merge Rate | % of reviewed PRs that ultimately merged | ✅ Unchanged | 🌐 Universal | DevRank |
 | 70 | Approval To Merge Ratio | Ratio of approvals given to actual merges | ⚠️ Caution | 🌐 Universal | DevRank |
 | 71 | Change-Inducing Review Rate | % of reviews that led to code changes | ✅ Unchanged | 🌐 Universal | DevRank |
 | 72 | Blocking Comment Rate | % of review comments that block merge | ✅ Unchanged | 🌐 Universal | DevRank |
 | 73 | First Reviewer Rate | % of reviews where person was first reviewer | ✅ Unchanged | 🌐 Universal | DevRank |
 | 74 | Mentorship Signal | Reviews targeting PRs from low-activity contributors | ✅ Unchanged | 🌐 Universal | SPACE • Network |
-| 75 | Knowledge Sharing Index | How evenly reviews distribute across team (0-1 entropy-based) | ✅ Unchanged | 🌐 Universal | Network |
+| 75 | Knowledge Sharing Index | How evenly code reviews distribute across team (0-1 entropy-based) | ✅ Unchanged | 🌐 Universal | Network |
 | 76 | Degree Centrality | Number of direct collaborators | ✅ Unchanged | 🌐 Universal | Network |
 | 77 | Betweenness Centrality | Whether developer bridges disconnected teams | ✅ Unchanged | 🌐 Universal | Network |
 
@@ -292,13 +292,39 @@ These exist only for one methodology. Calculated only for teams configured with 
 
 ---
 
+## AI-Era Prioritization Rationale
+
+In the AI-assisted development era, metric priorities shift significantly from traditional software engineering. The priorities below explain why specific themes are P0/P1 vs P2/P3 in the planned sections.
+
+**P0 (Critical) — Implement First:**
+
+1. **AI Transparency** — Without visibility into AI contribution (AI-Assisted PR Rate, AI Code Quality, AI Phantom Ownership), teams cannot assess AI tool ROI or risks.
+2. **Knowledge Risk** — AI-generated code creates "phantom ownership" where no human truly understands the code. Bus Factor and Knowledge Islands become existential risks.
+3. **DORA Fundamentals** — Lead Time and Deployment Frequency remain the ultimate measures of delivery performance.
+4. **Quality Gates** — With AI producing code faster, Delivery Risk Score, Review Coverage, and Code Health Score prevent quality collapse.
+
+**P1 (High) — Implement Second:**
+
+1. **Work Classification** — Understanding what work AI does vs humans enables resource allocation decisions (Work Type Breakdown, Innovation Rate).
+2. **Flow Efficiency** — AI-human handoffs in the PR process create new bottlenecks (Pickup Time, Flow Efficiency, Discussion Cycles).
+3. **Code Quality** — Cognitive complexity matters more when AI generates verbose solutions.
+4. **Network Health** — Collaboration patterns reveal whether AI is isolating developers or enhancing teamwork (Knowledge Sharing Index, Centrality measures).
+
+**P2/P3 (Medium/Low) — Implement Later:**
+
+- **Traditional complexity metrics** (cyclomatic, LCOM4) — AI-generated code often has different complexity patterns; the legacy thresholds may not directly apply.
+- **Meeting time tracking** — Less relevant as AI reduces certain coordination needs.
+- **Code age/entropy** — Long-term metrics that matter less in rapidly evolving AI-assisted codebases.
+
+---
+
 ## Planned — A1. Codebase Evolution (4)
 
 | # | Metric | Description | AI Status | Structure | Framework | Priority |
 |---|--------|-------------|-----------|-----------|-----------|----------|
 | A1-1 | Code Age | Months since last modification per file | ✅ Unchanged | 🌐 Universal | CodeScene | P1 |
 | A1-2 | History Complexity (Entropy) | Normalized entropy of changes across files | ✅ Unchanged | 🌐 Universal | CodeScene | P2 |
-| A1-3 | Hunks Count | Median diff hunks per file | ✅ Unchanged | 🌐 Universal | CodeScene | P3 |
+| A1-3 | Hunks Count (Change Fragmentation) | Median diff hunks per file — scattered hunks signal higher risk | ✅ Unchanged | 🌐 Universal | CodeScene | P3 |
 | A1-4 | Delta Maintainability Model | Per-function cyclomatic complexity | ✅ Unchanged | 🌐 Universal | Traditional | P2 |
 
 ## Planned — A3. Graph/Network Collaboration (4)
@@ -349,7 +375,7 @@ _Note: closeness, eigenvector, communication strength require custom D3.js/Cytos
 | A6-1 | Code Health Score (1-10) | 25-30 factor aggregate | ✅ Unchanged | 🌐 Universal | Traditional | P0 |
 | A6-2 | Cognitive Complexity | How difficult code is for a human to understand | 🔄 Evolved | 🌐 Universal | Traditional | P2 |
 | A6-3 | Cyclomatic Complexity | Linearly independent paths through code | ✅ Unchanged | 🌐 Universal | Traditional | P2 |
-| A6-4 | LCOM4 | Connected components within a class — God Class detector | ✅ Unchanged | 🌐 Universal | Traditional | P2 |
+| A6-4 | LCOM4 (Lack of Cohesion) | Connected components within a class — God Class detector | ✅ Unchanged | 🌐 Universal | Traditional | P2 |
 | A6-5 | Technical Debt Ratio | Remediation time / estimated rewrite time | 🔄 Evolved | 🌐 Universal | Traditional | P2 |
 | A6-6 | AST-Based Duplication | Structural hashing for duplicate code blocks | 🔄 Evolved | 🌐 Universal | Traditional | P3 |
 | A6-7 | Maintainability Rating (A-F) | Based on technical debt ratio thresholds | ✅ Unchanged | 🌐 Universal | Traditional | P3 |
@@ -393,6 +419,10 @@ _Note: closeness, eigenvector, communication strength require custom D3.js/Cytos
 | A9-6 | Idle Completion Time | Time from rework complete to merge | ✅ Unchanged | 🌐 Universal | Lean | P2 |
 | A9-7 | PRs Unlinked | % PRs not linked to issue tracker | ✅ Unchanged | 🌐 Universal | DevRank | P2 |
 | A9-8 | Batch Size Classification | Small/Medium/Large/Gigantic weighted blend | 🔄 Evolved | 🌐 Universal | DevRank | P3 |
+
+> **Notes on overlap with implemented metrics:**
+> - **Unreviewed PR Rate** (A9-3) overlaps with **Self-Merge Rate** (#23). A merged PR with no non-author review *is* a self-merge by definition. Consider this a refinement that breaks Self-Merge Rate down by approval state, not a fully independent signal.
+> - **Batch Size Classification** (A9-8) overlaps with **PR Size Distribution** (#13). PR Size Distribution already buckets PRs into small/medium/large/XL — Batch Size Classification adds a weighted blend (e.g. additions + 0.5×deletions) and a coarser "Gigantic" tier.
 
 ---
 
@@ -487,30 +517,44 @@ Metrics identified from competitive analysis of GitKraken Insights official docu
 
 Following metrics are blocked by missing data in the current pipeline. Domain models exist or are easy to add — the gating factor is upstream data ingestion.
 
-### D1. Issue Tracker / PM Tool Data Required
+### D1. Deployment Status / DORA Production Data Required
 
-PM-tool metrics (PM1–PM15, V1–V3, K1–K6, S1–S2, W1–W3) require Jira/Linear/Asana adapter. Define an `IssueRecord` domain model with fields for issue type, sprint, status transitions, and timestamps. Partial inference from PR labels and conventional commit prefixes (`fix:`, `feat:`, `chore:`) is possible but insufficient for sprint-level accuracy.
+The remaining DORA deployment metrics (Deployment Frequency, Lead Time for Changes, Change Failure Rate, Time to Deploy, Deploy Time — A4-1 through A4-5) require deployment lifecycle data with success/failure status.
 
-### D2. CI/CD Pipeline Data Required
+**Status:** the fetcher already pulls `releases.jsonl` and `deployments.jsonl` via the GitHub Releases and Deployments APIs. Domain models `ReleaseRecord`, `DeploymentRecord`, and `CIRunRecord` are defined in `impact/domain/models.py` and indexed by the ledger. **What's still missing:** no metric implementations consume this data yet, and the deployments fetched do not consistently carry success/failure status (many GitHub-Actions-driven teams never call `POST /deployments` so the data is sparse — see [the DORA pipeline notes](AGENTS.md)). For these metrics to be useful, the customer's CI/CD pipeline must register Deployment objects via the GitHub API or an equivalent platform.
 
-CI/CD metrics (CI1–CI3) require GitHub Actions / Jenkins / GitLab CI integration. The fetcher's `fetch_workflow_runs()` exists but is not wired (no metric currently consumes CI data). Re-enable and add the three metrics above.
+> **Time to Restore (#60)** is implemented as a revert→fix proxy from commit history alone. It is not deployment-aware. When deployment status data is consistently available, MTTR can be enhanced to detect deployment failure → recovery cycles directly.
 
-### D3. AI Tool API Data Required
+### D2. Issue Tracker / PM Tool Data Required
 
-Advanced AI metrics (AI-A1 through AI-A9, ★1–★6 partially) require integration with Copilot Metrics API, Cursor API, or Claude Code billing logs. ROI metrics (AI-A1, AI-A2, AI-A3) need both license costs and token consumption.
+PM-tool metrics (PM1–PM15, V1–V3, K1–K6, S1–S2, W1–W3) and Investment Balance (A7-4) require sprint, ticket, and issue-type data from external project-management tools (Jira, Linear, Asana, Azure DevOps Boards, GitHub Projects, etc.).
 
-### D4. External Platform Integration Required
+> **Unblock path:** Add a Jira/Linear adapter under `impact/providers/`. Define an `IssueRecord` domain model with fields for issue type, sprint, status transitions, and timestamps. Partial inference from PR labels and conventional commit prefixes (`fix:`, `feat:`, `chore:`) is possible for crude type tagging but insufficient for sprint-level accuracy or workflow regression detection.
 
-Some Developer Experience metrics need data from systems entirely outside Git/code-review:
+### D3. CI/CD Pipeline Data Required
+
+CI/CD metrics (CI1–CI3) require GitHub Actions / Jenkins / GitLab CI integration.
+
+> **Status:** the fetcher's `fetch_workflow_runs()` exists in `impact/providers/github/fetcher.py` and the `CIRunRecord` model + ledger index are in place, but the call is currently disabled in the orchestrator (no metric consumes CI data yet). To unblock: re-enable in `GitHubLiveFetcher.run()` and implement CI1–CI3.
+
+### D4. AI Tool API Data Required
+
+Advanced AI metrics (AI-A1 through AI-A9, ★1–★6 partially) require integration with Copilot Metrics API, Cursor API, or Claude Code billing logs. ROI metrics (AI-A1, AI-A2, AI-A3) need both license costs and token consumption per developer.
+
+> **Unblock path:** Add per-platform clients under `impact/providers/ai/` (e.g. `copilot_metrics.py`, `cursor.py`, `claude_code.py`). Each platform uses its own auth model and rate limits. Tag commits/PRs with the AI tool source (commit trailer, PR label, or paste-detection heuristic) so survival/quality metrics can scope to AI-generated code.
+
+### D5. External Platform Integration Required
+
+Some Developer Experience metrics need data from systems entirely outside Git/code-review and PM tools:
 
 | Metric | Needs |
 |--------|-------|
 | On-Call Burden (A8-5) | PagerDuty, OpsGenie, or Grafana OnCall schedule data |
 | Onboarding Time (A8-7) | Employee start dates from HR system or directory service |
 | Time Spent in Meetings (A8-6) | Calendar data from Google Calendar, Outlook, etc. |
-| Comprehension Debt (★3), DXI (★5) | Survey infrastructure |
+| Comprehension Debt (★3), DXI (★5) | Survey infrastructure (custom or third-party like CultureAmp) |
 
-> **Lowest-effort approach:** accept CSV/YAML imports for on-call schedules, employee directories, and survey results.
+> **Unblock path:** These require purpose-built integrations with external services, each with their own authentication, rate limiting, and data models. Recommended approach: define a plugin interface in `impact/providers/` for non-Git data sources, with adapters per platform. **Lowest-effort fallback:** accept CSV/YAML imports for on-call schedules, employee directories, and survey results — many customers already export these from their internal systems.
 
 ---
 
@@ -625,6 +669,14 @@ Superset:
 | Traditional | 1 | 8 | 9 | ~11% |
 | Network | 5 | 7 | 12 | ~15% |
 | DevRank | 35 | 11 | 46 | ~58% |
+
+### Notes on Framework Overlap
+
+- **DORA metrics** are a subset of SPACE (Performance/Efficiency) and Lean (flow metrics).
+- **CodeScene metrics** often overlap with SPACE's Communication dimension (knowledge sharing, ownership distribution).
+- **Lean metrics** heavily overlap with SPACE's Efficiency and Activity dimensions.
+- **Network metrics** primarily map to SPACE's Communication & Collaboration dimension.
+- **DevRank-specific metrics** fill gaps in existing frameworks, particularly around AI-assisted development and PR-level quality signals (PR Body Quality Score, Discussion Cycles, AI Phantom Ownership).
 
 ---
 
