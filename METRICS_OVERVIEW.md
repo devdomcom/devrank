@@ -1,8 +1,8 @@
 # DevRank Metrics Overview v5
 
-**78 implemented | 73 planned | 17 PM tool | 11 methodology-specific | 3 CI/CD | 9 AI advanced | 11 competitive gap | 6 new AI era | 208 total**
+**78 implemented | 21 ready to implement | 24 planned | 15 PM tool | 1 methodology variant | 11 methodology-specific | 3 CI/CD | 9 AI advanced | 9 competitive gap | 6 new AI era | 1 extension | 178 total**
 
-_Updated: April 2026 — incorporates competitive analysis (GitKraken Insights, March 2026), 2026 AI metrics research, and PM tool integration design._
+_Updated: April 2026 — incorporates competitive analysis (GitKraken Insights, March 2026), 2026 AI metrics research, PM tool integration design, and audit-driven reclassification of planned vs ready metrics._
 
 ---
 
@@ -41,10 +41,11 @@ Metrics are tagged with their originating or primary framework(s):
 
 | Framework | Description | Example Metrics |
 |-----------|-------------|-----------------|
-| **DORA** | DevOps Research & Assessment — the 4 core metrics for software delivery performance | Deployment Frequency, Lead Time for Changes, Change Failure Rate, MTTR |
+| **DORA** | DevOps Research & Assessment — the 4 core metrics for software delivery performance | Deployment Frequency, Lead Time for Changes, Change Failure Rate, MTTR. _DORA¹ marker_ on a metric (e.g. #9 Cycle Time) means it is a *partial* / pre-production proxy of a DORA concept rather than the canonical end-to-end metric. |
 | **SPACE** | Developer productivity framework covering Satisfaction, Performance, Activity, Communication, Efficiency | Coding Days, Review Turnaround Time, Flow Efficiency, On-Call Burden |
 | **CodeScene** | Adam Tornhill's research on code evolution, knowledge ownership, and hotspots | Hotspot Detection, Temporal Coupling, Bus Factor, Code Age, Knowledge Islands |
-| **Lean** | Lean manufacturing principles applied to software — flow, waste reduction, cycle times | Cycle Time, Pickup Time, Deploy Time, Rework Rate, Flow Efficiency, tt100 |
+| **Lean** | Lean manufacturing principles applied to software — flow, waste reduction, cycle times | Cycle Time, Pickup Time, Deploy Time, Rework Rate, tt100 |
+| **Kanban** | Pull-based flow management with WIP limits and continuous delivery | WIP Load, Flow Efficiency, Aging WIP, WIP Compliance Rate |
 | **Traditional** | Classic software engineering metrics (McCabe, Chidamber & Kemerer, SIG) | Cyclomatic Complexity, LCOM4, Technical Debt Ratio, Maintainability Rating |
 | **Network** | Social graph analysis applied to developer collaboration | Centrality measures, Review Network Density, Communication Strength, Team Coupling |
 | **DevRank** | Custom metrics specific to this platform — novel combinations or AI-era innovations | AI-Assisted PR Rate, Review Leverage, PR Body Quality Score, Discussion Cycles |
@@ -64,6 +65,8 @@ Metrics not present in earlier documents. No competitor has them.
 | ★5 | Developer Experience Index (DXI) | Survey on perceived productivity, interruptions, AI usefulness | 🆕 New | 🌐 Universal | SPACE | P1 |
 | ★6 | Feature Throughput to Customer | Real features → business goals achieved | 🆕 New | 🌐 Universal | DevRank | P1 |
 
+> **All 6 New AI-Era metrics are deferred** — they require external data sources (AI tool APIs, survey infrastructure, or business outcome tracking). See **Deferred D4** (AI Tool API Data) and **Deferred D5** (External Platform Integration) for unblock paths. ★4 specifically is a derived comparison rather than a standalone metric (see Cross-Section Relationships near Competitive Gap).
+
 ---
 
 ## Implemented — Authored (60)
@@ -77,10 +80,10 @@ Engineer-owned PRs and activity. All metrics work with the user-centric fetch pi
 | 3 | AI Code Quality | Rework rate comparison: AI-assisted PRs vs human PRs (review iterations) | ✅ Unchanged | 🌐 Universal | DevRank |
 | 4 | AI Phantom Ownership | Code primarily touched by AI with low human review depth (descriptive — no value judgment) | ⚠️ Caution | 🌐 Universal | DevRank |
 | 5 | AI Suggestion Acceptance | Ratio of accepted vs dismissed AI suggestions from review bots | 🔄 Evolved | 🌐 Universal | DevRank |
-| 6 | PR Throughput | PRs merged in the period | ⚠️ Caution | 🌐 Universal | SPACE • Lean |
+| 6 | PR Throughput | PR merge ratio (merged/opened); conversion rate, not volume — see #7 Delivery Volume for absolute count | ⚠️ Caution | 🌐 Universal | SPACE • Lean |
 | 7 | Delivery Volume | Total lines added+deleted across merged PRs | ⚠️ Caution | 🌐 Universal | SPACE |
 | 8 | Net Code Contribution | Lines added minus lines deleted | ⚠️ Caution | 🌐 Universal | SPACE |
-| 9 | Cycle Time | Time from PR creation to merge | 🔄 Evolved | 🌐 Universal | DORA • SPACE • Lean |
+| 9 | Cycle Time | Time from PR creation to merge — **PR-level cycle time, not full DORA Lead Time** (commit→production); see A4-2 for the canonical DORA Lead Time for Changes | 🔄 Evolved | 🌐 Universal | DORA¹ • SPACE • Lean |
 | 10 | Coding Time To PR | Time from first commit to PR creation | ✅ Unchanged | 🌐 Universal | Lean |
 | 11 | Merge Delay | Time from first approval to merge | ✅ Unchanged | 🌐 Universal | Lean |
 | 12 | Pickup Time | PR opened to first non-author review activity | ✅ Unchanged | 🌐 Universal | Lean |
@@ -127,8 +130,8 @@ Engineer-owned PRs and activity. All metrics work with the user-centric fetch pi
 | 53 | Absolute Churn Trend | Lines added/deleted per date — detects integration bottlenecks | ✅ Unchanged | 🌐 Universal | CodeScene |
 | 54 | Commit Message Mining | Regex search of commit messages for defect indicators | ✅ Unchanged | 🌐 Universal | CodeScene |
 | 55 | Code Survival | % of contributed lines still alive over time | 🔄 Evolved | 🌐 Universal | CodeScene |
-| 56 | Flow Efficiency | Active coding time / total lead time for merged PRs (Kanban flow health) | ✅ Unchanged | 🌐 Universal | Lean |
-| 57 | WIP Load | Concurrent open PRs per day (Lean WIP indicator; high WIP = context-switching overhead) | ✅ Unchanged | 🌐 Universal | Lean |
+| 56 | Flow Efficiency | Active coding time / total lead time for merged PRs (Kanban flow health) | ✅ Unchanged | 🌐 Universal | Kanban • Lean |
+| 57 | WIP Load | Concurrent open PRs per day (Lean WIP indicator; high WIP = context-switching overhead) | ✅ Unchanged | 🌐 Universal | Lean • Kanban |
 | 58 | Review Coverage | % of PR files with at least one human inline review comment | ⚠️ Caution | 🌐 Universal | DevRank |
 | 59 | Delivery Risk Score (1-10) | Per-commit risk based on code, file count, diffusion, experience | 🔄 Evolved | 🌐 Universal | DevRank |
 | 60 | Time to Restore (MTTR / Mean Time to Recovery) | Time from revert to fix on the same files (DORA MTTR proxy from revert→fix cycles; deployment-aware version pending — see D1) | 🔁 Renamed | 🌐 Universal | DORA |
@@ -167,6 +170,45 @@ Both authored and influence signals.
 
 ---
 
+## Ready to Implement (21)
+
+These metrics have **all required infrastructure already present** — utility functions, dependencies, sample data, ledger indexes — but no plugin file yet. Each one is implementable in 1–3 days and unblocks immediately. Effort labels: 🟢 Low (<100 LOC), 🟡 Medium (100–300 LOC).
+
+| # | Metric | Description | Effort | Existing Infrastructure | Section / Framework |
+|---|--------|-------------|--------|-------------------------|----------------------|
+| R1 | Code Age | Months since last **file-level** modification (file age, not line survival — see #55 Code Survival for line-level) | 🟢 | `Commit.date` field; per-file aggregation | A1 / CodeScene |
+| R2 | History Complexity (Entropy) | Normalized entropy of changes across files | 🟡 | `_shannon_entropy()` at `utils.py:854` | A1 / CodeScene |
+| R3 | Hunks Count (Change Fragmentation) | Median diff hunks per file | 🟢 | `parse_hunks()` at `utils.py:1182` | A1 / CodeScene |
+| R4 | Delta Maintainability Model | Per-function cyclomatic complexity | 🟡 | `parse_functions()` at `utils.py:2018` (statement count exists; needs decision-point counting) | A1 / Traditional |
+| R5 | Cyclomatic Complexity | Linearly independent paths through code | 🟡 | tree-sitter already in deps; extend AST walker | A6 / Traditional |
+| R6 | AST-Based Duplication | Structural hashing for duplicate code blocks | 🟡 | tree-sitter ready; needs ~150 LOC normalization + hash | A6 / Traditional |
+| R7 | Time to Approve | First review activity → first approval | 🟢 | Filter `ReviewRecord.state == APPROVED` | A5 / Lean |
+| R8 | Innovation Rate | % merged PRs representing new feature work | 🟢 | Apply existing `pr_category_diversity` classifier to merged + `category=feat` | A7 / DevRank |
+| R9 | Inefficiency Pool | Synthesis: PR idle time + friction + wasted effort | 🟡 | Combine #11 Merge Delay + #18 Review Iterations + #16 Rework Rate + #12 Pickup Time | A7 / Lean |
+| R10 | Context Switch Frequency | Intra-day switches between repos/projects | 🟡 | Same timezone infra as #36 Off-Hours Activity Rate | A8 / SPACE |
+| R11 | Productive Impact | Impact × (1 − Rework Rate) | 🟢 | #16 Rework Rate available; "Impact" = #7 Delivery Volume or #59 Delivery Risk Score | A9 / Lean |
+| R12 | tt100 (Time to 100) | Time to write 100 lines of productive code | 🟡 | #9 Cycle Time + #7 Delivery Volume + boilerplate filter | A9 / Lean |
+| R13 | Closeness Centrality | How quickly a developer reaches entire org | 🟡 | Hand-rolled BFS (extend `betweenness_centrality.py` pattern); NetworkX dependency planned for future refactor | A3 / Network |
+| R14 | Eigenvector Centrality | Influence through association | 🟡 | Add `networkx>=3.0` to deps for power-method calc | A3 / Network |
+| R15 | Communication Strength | Conway's Law via shared commits | 🟡 | Co-author data via #78 + commit-to-file mapping | A3 / Network |
+| R16 | Review Network Density | How interconnected the review graph is | 🟢 | Reuse review graph from `betweenness_centrality.py`; density = 2·E/(N·(N−1)) | A3 / Network |
+| R17 | Deployment Frequency | Count of production deployments / period | 🟢 | `ledger.get_deployments()` exists; **see caveat note below** | A4 / DORA |
+| R18 | PR Comments Count | Total comments left on PRs per period | 🟢 | `ledger.get_comments_for_pr()` already used in #64 | CG / DevRank |
+| R19 | Commit Count | Total commits pushed in period (already used as denominator) | 🟢 | Trivially `len(bundle.commits)` per period filter | CG / DevRank |
+| R20 | PR Maturity Ratio | How much a PR changes between open and merge (size delta, distinct from #16 self-rewrite) | 🟢 | Compare PR.created additions vs final additions; data in `pr_raw` already | A9 / DevRank |
+| R21 | Idle Completion Time | Time from rework complete → merge (post-rework window, distinct from #11 post-approval) | 🟢 | Use last commit timestamp on PR + merged_at | A9 / Lean |
+
+> **R17 Deployment Frequency — sample data caveat:** the apache/superset reference dump contains only **1 deployment in 3 months**, all to `github-pages` (documentation environment, not production). Implementing this metric requires strict guards:
+> - `no_data: True` if fewer than 3 deployments in the period
+> - `no_data: True` if no deployment matches a production-environment allow-list (e.g. `production`, `prod`, `live`, customer-configurable)
+> - Mitigation: customer onboarding should validate that their CI/CD pipeline calls `POST /repos/{owner}/{repo}/deployments` for production releases. Many teams using GitHub Actions skip this and only use `Releases` — in which case we should fall back to release-based frequency.
+
+> **R20 PR Maturity Ratio vs #16 Rework Rate:** Rework Rate measures lines that *overwrite the author's own past lines* (line-level overlap). PR Maturity Ratio measures *total diff growth* between PR open and merge — a PR can mature heavily (lots of new commits) without rewriting any past lines. Both signals are useful; implement together for fuller PR-volatility picture.
+
+> **R21 Idle Completion Time vs #11 Merge Delay:** Merge Delay = first approval → merge. Idle Completion Time = last code change → merge. They differ when a PR has rework after approval (common pattern: approve → request small change → rework → merge). Idle Completion isolates the pure waiting period.
+
+---
+
 ## Data Scope: Metrics Requiring Repo-Wide Data
 
 The current fetch pipeline (`impact/providers/github_live.py`) is **user-centric**: it only fetches PRs authored by, assigned to, or reviewed by the assessed engineer. This means `bundle.pull_requests`, `bundle.commits`, `bundle.reviews`, and `bundle.files` do **not** contain the full repository picture.
@@ -199,7 +241,7 @@ The remaining 66 metrics use `ledger.get_prs_for_user()`, `get_reviews_for_user(
 
 ---
 
-## New PM Tool Metrics (17)
+## New PM Tool Metrics (15)
 
 Require Jira/Linear/Asana integration. Map to typical project-management questions analysts get from clients.
 
@@ -220,13 +262,15 @@ Require Jira/Linear/Asana integration. Map to typical project-management questio
 
 | # | Metric | Description | AI Status | Structure | Priority |
 |---|--------|-------------|-----------|-----------|----------|
-| PM9 | Estimation Accuracy | Original estimates vs actual time spent | 🆕 New | 🔀 Variant | P2 |
-| PM10 | Unplanned Work Rate (ex Injected Work Rate) | % of unplanned work | 🆕 New | 🔀 Variant | P2 |
+| PM9 | Estimation Accuracy *(= V3)* | Original estimates vs actual time spent | 🆕 New | 🔀 Variant | P2 |
+| PM10 | Unplanned Work Rate (ex Injected Work Rate) *(= V2)* | % of unplanned work | 🆕 New | 🔀 Variant | P2 |
 | PM11 | Requirements Change Rate | Frequency of requirements changes after work begins | 🆕 New | 🌐 Universal | P2 |
 
 **Variant notes:**
 - **Estimation Accuracy**: Scrum = story points estimated vs real. Kanban = real cycle time vs historical percentile (p50/p85). Waterfall = phase duration estimated vs real.
 - **Unplanned Work Rate**: Scrum = work injected mid-sprint. Kanban = expedited tickets bypassing the flow. Waterfall = change requests after requirements sign-off.
+
+> **PM9 = V3 and PM10 = V2** — these are the same metrics listed under both naming schemes (PM-tool perspective and methodology-variant perspective). Counted **once** in totals (counted under PM Tool here, NOT double-counted under Methodology Variants below). V1 (Planning Reliability ex CRR) has no PM-numbered equivalent.
 
 ### Group 3 — Git + PM Tool combined (4) — UNIQUE DIFFERENTIATOR
 
@@ -248,15 +292,17 @@ No competitor can compute these because they require both data sources.
 
 ---
 
-## Methodology Variant Metrics (3)
+## Methodology Variant Metrics (1 unique + 2 cross-references)
 
 These metrics exist for all teams but the calculation changes based on the methodology configured in `team_config.methodology`. The ETL applies the right formula. Superset receives the precomputed value.
 
-| # | Metric | Scrum | Kanban | Waterfall |
-|---|--------|-------|--------|-----------|
-| V1 | **Planning Reliability** (ex CRR) | % of planned work completed in sprint | Throughput stability per week (coefficient of variation) | Adherence to phase milestones |
-| V2 | **Unplanned Work Rate** (ex PM10) | % of work injected mid-sprint | % of expedited/urgent tickets that bypass the flow | % change requests after requirements sign-off |
-| V3 | **Estimation Accuracy** (PM9) | Story points estimated vs real time | Real cycle time vs historical percentile (p50/p85) | Phase duration estimated vs real |
+| # | Metric | Scrum | Kanban | Waterfall | Counted Under |
+|---|--------|-------|--------|-----------|---------------|
+| V1 | **Planning Reliability** (ex CRR) | % of planned work completed in sprint | Throughput stability per week (coefficient of variation) | Adherence to phase milestones | **Methodology Variants** (this section) |
+| V2 | **Unplanned Work Rate** (= PM10) | % of work injected mid-sprint | % of expedited/urgent tickets that bypass the flow | % change requests after requirements sign-off | PM Tool (cross-reference only) |
+| V3 | **Estimation Accuracy** (= PM9) | Story points estimated vs real time | Real cycle time vs historical percentile (p50/p85) | Phase duration estimated vs real | PM Tool (cross-reference only) |
+
+> **V2 = PM10 and V3 = PM9** — to avoid double-counting, only V1 is counted under "Methodology Variants" in totals. V2 and V3 are listed here for the methodology view but counted under "PM Tool" above.
 
 ---
 
@@ -318,117 +364,135 @@ In the AI-assisted development era, metric priorities shift significantly from t
 
 ---
 
-## Planned — A1. Codebase Evolution (4)
+## Planned — A1. Codebase Evolution (0)
+
+> All 4 metrics in this section have moved to **Ready to Implement** (R1-R4) — utility functions and data exist; only plugin files needed.
+
+## Planned — A3. Graph/Network Collaboration (0)
+
+> Degree Centrality (#76) and Betweenness Centrality (#77) are implemented. The remaining 4 (Closeness, Eigenvector, Communication Strength, Review Network Density) have moved to **Ready to Implement** (R13–R16).
+>
+> _Visualization note:_ Closeness, Eigenvector, Communication Strength would benefit from a custom D3.js / Cytoscape.js graph component; Superset alone is insufficient for force-directed layouts. Review Network Density (a single scalar) renders fine in Superset.
+
+## Planned — A3bis. Graph/Network in Superset (2)
 
 | # | Metric | Description | AI Status | Structure | Framework | Priority |
 |---|--------|-------------|-----------|-----------|-----------|----------|
-| A1-1 | Code Age | Months since last modification per file | ✅ Unchanged | 🌐 Universal | CodeScene | P1 |
-| A1-2 | History Complexity (Entropy) | Normalized entropy of changes across files | ✅ Unchanged | 🌐 Universal | CodeScene | P2 |
-| A1-3 | Hunks Count (Change Fragmentation) | Median diff hunks per file — scattered hunks signal higher risk | ✅ Unchanged | 🌐 Universal | CodeScene | P3 |
-| A1-4 | Delta Maintainability Model | Per-function cyclomatic complexity | ✅ Unchanged | 🌐 Universal | Traditional | P2 |
-
-## Planned — A3. Graph/Network Collaboration (4)
-
-Two centrality measures (degree, betweenness) are already implemented. Remaining four require advanced graph analysis.
-
-| # | Metric | Description | AI Status | Structure | Framework | Priority |
-|---|--------|-------------|-----------|-----------|-----------|----------|
-| A3-1 | Closeness Centrality | How quickly a developer can reach entire org | ✅ Unchanged | 🌐 Universal | Network | P2 |
-| A3-2 | Eigenvector Centrality | Influence through association with influential devs | ✅ Unchanged | 🌐 Universal | Network | P2 |
-| A3-3 | Communication Strength | Conway's Law heuristic via shared commits | ✅ Unchanged | 🌐 Universal | Network | P2 |
-| A3-4 | Review Network Density | How interconnected the review graph is | ✅ Unchanged | 🌐 Universal | Network | P2 |
-
-_Note: closeness, eigenvector, communication strength require custom D3.js/Cytoscape.js component (not natively supported by Superset)._
-
-## Planned — A3bis. Graph/Network in Superset (3)
-
-| # | Metric | Description | AI Status | Structure | Framework | Priority |
-|---|--------|-------------|-----------|-----------|-----------|----------|
-| A3-5 | Collaboration Asymmetry Index | Help-giving vs help-receiving ratio | ✅ Unchanged | 🌐 Universal | Network | P2 |
 | A3-6 | Team Coupling | Overlap in commits to same code by different teams | ✅ Unchanged | 🌐 Universal | Network | P2 |
 | A3-7 | Team Cohesion | Whether team members work in same code areas | ✅ Unchanged | 🌐 Universal | Network | P2 |
 
-## Planned — A4. DORA & Deployment (5)
+> **A3-5 (Collaboration Asymmetry Index) is already partially covered by #78 Co-Author Contribution Rate** (which tracks inbound vs outbound co-authorship). Extracting the explicit ratio is trivial — see also A8-4 below which is a duplicate of this metric.
+>
+> **A3-6 and A3-7 require team membership data** (Jira teams, LDAP groups, or CSV import). Without it, these are not computable. See deferred section D2.
 
-> Deployment data (releases + deployments) is now collected by the fetcher. Time to Restore is implemented (see #60). The metrics below remain blocked on production-grade deployment status tracking.
+## Planned — A4. DORA & Deployment (4)
+
+> Deployment data (releases + deployments) is now collected by the fetcher. Time to Restore is implemented (see #60). Deployment Frequency moved to **Ready to Implement** (R17). The 4 metrics below have additional unblock requirements:
+
+| # | Metric | Description | AI Status | Structure | Framework | Priority | Blocker |
+|---|--------|-------------|-----------|-----------|-----------|----------|---------|
+| A4-2 | Lead Time for Changes | Commit to production duration | ✅ Unchanged | 🌐 Universal | DORA | P1 | Sparse deployment data + SHA→PR linkage. Implementable as "deployments-only beta" with caveats. |
+| A4-3 | Change Failure Rate | % deployments causing failures | 🔄 Evolved | 🌐 Universal | DORA | P0 | **Missing `status` field** on `DeploymentRecord`. Unblock: extend `fetch_deployments()` to also call `GET /repos/{owner}/{repo}/deployments/{id}/statuses` and store latest status. ~30 LOC fetcher change, then trivial implementation. |
+| A4-4 | Time to Deploy | PR merge to production deployment | ✅ Unchanged | 🌐 Universal | DORA | P2 | Same SHA-linkage problem as A4-2. |
+| A4-5 | Deploy Time | Merge to production release | ✅ Unchanged | 🌐 Universal | DORA | P2 | `target_commitish` is branch name ("master") not SHA — requires commit ancestry index to link releases to specific PRs. Substantial work to unblock. |
+
+## Planned — A5. Cycle Time Sub-Phases (0)
+
+> Pickup Time (#12) implemented. Time to Approve moved to **Ready to Implement** (R7).
+
+## Planned — A6. Code Quality & Complexity (5)
+
+> Cyclomatic Complexity (A6-3) and AST-Based Duplication (A6-6) moved to **Ready to Implement** (R5, R6) — tree-sitter infrastructure already in deps.
 
 | # | Metric | Description | AI Status | Structure | Framework | Priority |
 |---|--------|-------------|-----------|-----------|-----------|----------|
-| A4-1 | Deployment Frequency | How often code deploys to production | 🔄 Evolved | 🌐 Universal | DORA | P1 |
-| A4-2 | Lead Time for Changes | Commit to production duration | ✅ Unchanged | 🌐 Universal | DORA | P1 |
-| A4-3 | Change Failure Rate | % deployments causing failures | 🔄 Evolved | 🌐 Universal | DORA | P0 |
-| A4-4 | Time to Deploy | PR merge to production deployment | ✅ Unchanged | 🌐 Universal | DORA | P2 |
-| A4-5 | Deploy Time | Merge to production release | ✅ Unchanged | 🌐 Universal | DORA | P2 |
-
-## Planned — A5. Cycle Time Sub-Phases (1)
-
-> Pickup Time is implemented (see #12).
-
-| # | Metric | Description | AI Status | Structure | Framework | Priority |
-|---|--------|-------------|-----------|-----------|-----------|----------|
-| A5-1 | Time to Approve | First review activity to first approval | 🔄 Evolved | 🌐 Universal | Lean | P2 |
-
-## Planned — A6. Code Quality & Complexity (7)
-
-| # | Metric | Description | AI Status | Structure | Framework | Priority |
-|---|--------|-------------|-----------|-----------|-----------|----------|
-| A6-1 | Code Health Score (1-10) | 25-30 factor aggregate | ✅ Unchanged | 🌐 Universal | Traditional | P0 |
+| A6-1 | Code Health Score (1-10) | 25-30 factor aggregate (composite of remaining A6 planned metrics + R5 Cyclomatic Complexity + R6 AST Duplication once those land) | ✅ Unchanged | 🌐 Universal | Traditional | P0 |
 | A6-2 | Cognitive Complexity | How difficult code is for a human to understand | 🔄 Evolved | 🌐 Universal | Traditional | P2 |
-| A6-3 | Cyclomatic Complexity | Linearly independent paths through code | ✅ Unchanged | 🌐 Universal | Traditional | P2 |
 | A6-4 | LCOM4 (Lack of Cohesion) | Connected components within a class — God Class detector | ✅ Unchanged | 🌐 Universal | Traditional | P2 |
 | A6-5 | Technical Debt Ratio | Remediation time / estimated rewrite time | 🔄 Evolved | 🌐 Universal | Traditional | P2 |
-| A6-6 | AST-Based Duplication | Structural hashing for duplicate code blocks | 🔄 Evolved | 🌐 Universal | Traditional | P3 |
 | A6-7 | Maintainability Rating (A-F) | Based on technical debt ratio thresholds | ✅ Unchanged | 🌐 Universal | Traditional | P3 |
 
-## Planned — A7. Work Classification (5)
+> **A6-1 Code Health Score** is a *composite metric* — it requires several of the others (A6-2 through A6-7) to be implemented first, plus aggregation logic. P0 priority refers to its strategic value once the components are available.
+>
+> **A6-2 Cognitive Complexity is partially covered by #50 Complexity Trend** (whitespace-based proxy). True cognitive complexity (per SonarQube/Codacy definition) counts break-the-flow statements; #50 measures indentation depth. They correlate but are not equivalent.
+>
+> **A6-4 LCOM4, A6-5 Technical Debt Ratio, A6-7 Maintainability Rating** are best served by integrating an external static-analysis tool (SonarQube, Codacy). LCOM4 requires interprocedural class-level analysis; tech debt requires multi-factor estimation.
+
+## Planned — A7. Work Classification (3)
+
+> Innovation Rate (A7-2) and Inefficiency Pool (A7-5) moved to **Ready to Implement** (R8, R9).
 
 | # | Metric | Description | AI Status | Structure | Framework | Priority |
 |---|--------|-------------|-----------|-----------|-----------|----------|
 | A7-1 | Work Type Breakdown | New Work vs Refactor vs Rework vs Help Others | ✅ Unchanged | 🌐 Universal | Lean | P1 |
-| A7-2 | Innovation Rate | % merged PRs representing new feature work | ✅ Unchanged | 🌐 Universal | DevRank | P2 |
-| A7-3 | Defect Rate | % merged PRs addressing defects | 🔄 Evolved | 🌐 Universal | DevRank | P2 |
+| A7-3 | Defect Rate | % merged PRs addressing defects (post-production) | 🔄 Evolved | 🌐 Universal | DevRank | P2 |
 | A7-4 | Investment Balance | Time allocation: roadmap vs bugs vs tech debt | ✅ Unchanged | 🌐 Universal | Lean | P2 |
-| A7-5 | Inefficiency Pool | PR idle time, friction, wasted effort | 🔄 Evolved | 🌐 Universal | Lean | P3 |
 
-## Planned — A8. Developer Experience (8)
+> **A7-1 Work Type Breakdown is partially covered by #32 PR Category Diversity** which classifies PRs into feat/fix/refactor/etc. via conventional commits. A7-1 adds "Help Others" (reviews given to teammates), which would need synthesis with #61 Reviews Given. Implementation = #32 + Reviews Given aggregation.
+>
+> **A7-3 Defect Rate is partially covered by #33 Bug Fix Focus Rate** (any bug repair, pre- or post-production). True post-production defect rate requires deployment + incident data — see deferred section.
+>
+> **A7-4 Investment Balance requires PM-tool sprint data** to categorize work items as roadmap/bug/tech-debt/unplanned. See deferred D2.
 
-> Flow Efficiency is implemented (see #56).
+## Planned — A8. Developer Experience (6)
+
+> Flow Efficiency (#56) implemented. Context Switch Frequency (A8-1) moved to **Ready to Implement** (R10). Collaboration Asymmetry (A8-4) is a duplicate of A3-5 — **removed from this section**.
 
 | # | Metric | Description | AI Status | Structure | Framework | Priority |
 |---|--------|-------------|-----------|-----------|-----------|----------|
-| A8-1 | Context Switch Frequency | Intra-day switches between repos/projects | ✅ Unchanged | 🌐 Universal | SPACE | P2 |
 | A8-2 | Cognitive Load Distribution | How evenly complex work distributes | 🔄 Evolved | 🌐 Universal | SPACE | P2 |
 | A8-3 | Decision Latency | Time from problem identification to decision | ✅ Unchanged | 🌐 Universal | DevRank | P3 |
-| A8-4 | Collaboration Asymmetry | Help-given vs help-received ratio | ✅ Unchanged | 🌐 Universal | Network | P3 |
 | A8-5 | On-Call Burden | Time/frequency of on-call rotations | ✅ Unchanged | 🌐 Universal | SPACE | P3 |
 | A8-6 | Time Spent in Meetings | Meeting load as productivity drain | ✅ Unchanged | 🌐 Universal | SPACE | P3 |
 | A8-7 | Onboarding Time | Time for new hires to reach first productive contribution | ✅ Unchanged | 🌐 Universal | SPACE | P3 |
 | A8-8 | Work-Life Balance Signals | Late-night/weekend patterns | ✅ Unchanged | 🌐 Universal | SPACE | P3 |
 
-## Planned — A9. PR Quality & Risk (8)
+> **A8-2 Cognitive Load Distribution** requires per-PR complexity estimates (depends on A6-2 or A6-3 being implemented first).
+>
+> **A8-3 Decision Latency** has no clear data source in Git or PR metadata. Could be inferred from issue tracker (D2) or discussion cycles, but the "problem identification" timestamp is undefined.
+>
+> **A8-8 Work-Life Balance Signals is partially covered by #36 Off-Hours Activity Rate** (basic weekend/night detection). A8-8 could extend to momentum patterns (Monday surges, Friday drops, sustained fatigue) — but the core off-hours signal is already there.
 
-> Discussion Cycles, Delivery Risk Score, Review Coverage are implemented (see #19, #58, #59).
+## Planned — A9. PR Quality & Risk (4)
+
+> Discussion Cycles (#19), Delivery Risk Score (#59), Review Coverage (#58) implemented. Productive Impact (A9-4), tt100 (A9-5), PR Maturity Ratio (A9-2), and Idle Completion Time (A9-6) moved to **Ready to Implement** (R11, R12, R20, R21).
 
 | # | Metric | Description | AI Status | Structure | Framework | Priority |
 |---|--------|-------------|-----------|-----------|-----------|----------|
 | A9-1 | Estimated Review Time | ML-based minutes estimate per PR | 🔄 Evolved | 🌐 Universal | DevRank | P2 |
-| A9-2 | PR Maturity Ratio | How much a PR changes between open and merge | ✅ Unchanged | 🌐 Universal | DevRank | P2 |
 | A9-3 | Unreviewed PR Rate | % PRs merged with zero review | ⚠️ Caution | 🌐 Universal | DevRank | P2 |
-| A9-4 | Productive Impact | Impact × (1 - Rework Rate) | 🔄 Evolved | 🌐 Universal | Lean | P2 |
-| A9-5 | tt100 (Time to 100) | Time to write 100 lines of productive code | ✅ Unchanged | 🌐 Universal | Lean | P3 |
-| A9-6 | Idle Completion Time | Time from rework complete to merge | ✅ Unchanged | 🌐 Universal | Lean | P2 |
 | A9-7 | PRs Unlinked | % PRs not linked to issue tracker | ✅ Unchanged | 🌐 Universal | DevRank | P2 |
 | A9-8 | Batch Size Classification | Small/Medium/Large/Gigantic weighted blend | 🔄 Evolved | 🌐 Universal | DevRank | P3 |
 
-> **Notes on overlap with implemented metrics:**
-> - **Unreviewed PR Rate** (A9-3) overlaps with **Self-Merge Rate** (#23). A merged PR with no non-author review *is* a self-merge by definition. Consider this a refinement that breaks Self-Merge Rate down by approval state, not a fully independent signal.
-> - **Batch Size Classification** (A9-8) overlaps with **PR Size Distribution** (#13). PR Size Distribution already buckets PRs into small/medium/large/XL — Batch Size Classification adds a weighted blend (e.g. additions + 0.5×deletions) and a coarser "Gigantic" tier.
+> **A9-1 Estimated Review Time** requires training a regression model on historical PR data (size, complexity, file count → review duration). Possible but ML-investment intensive.
+>
+> **A9-3 Unreviewed PR Rate is partially covered by #23 Self-Merge Rate.** A merged PR with no non-author review *is* a self-merge by definition. The subtle difference: Unreviewed = "zero non-author activity", Self-Merge = "zero non-author approval". A reviewer who comments without approving counts in one but not the other. Implementation = boolean refinement of #23.
+>
+> **A9-7 PRs Unlinked** requires Jira/Linear integration to verify link validity. Heuristic regex matching (already in `utils.py:515` `_CROSS_REF_RE`) gives a partial signal but high false-negative rate — valid links to issues outside the connected tracker won't match.
+>
+> **A9-8 Batch Size Classification is partially covered by #13 PR Size Distribution** which already buckets into small/medium/large/XL. A9-8 adds weighted blend (additions + 0.5·deletions) and "Gigantic" tier. Implementation = enhancement to #13.
 
 ---
 
-## CI/CD Build Metrics (3)
+## CI/CD Build Metrics (3) — Deferred Pending Orchestrator Re-Enable
 
-Standard CI/CD metrics. Require connection to GitHub Actions, GitLab CI, or Jenkins.
+**Status:** Infrastructure exists but disabled. The `fetch_workflow_runs()` method in `impact/providers/github/fetcher.py`, the `CIRunRecord` domain model, the ledger index (`ledger.ci_runs`, `get_ci_runs_for_pr()`), and the writer support (`write_repo_data("ci_runs", ...)`) are all in place. The fetch call in `GitHubLiveFetcher.run()` is commented out.
+
+**What was the problem:**
+1. **No metric currently consumes CI data** — fetching ~250K workflow runs/quarter for apache/superset would burn API quota for no user-visible benefit.
+2. **PR linkage via `pull_requests[]` field is unreliable** — GitHub's Actions API returns PR numbers from fork repositories (e.g. `TheTechOddBug/superset#280`), not the upstream `apache/superset` PR number. The correct link is via `head_sha` matching, not the `pull_requests[]` array.
+3. **High-volume repos require pagination capping** — `fetch_workflow_runs()` already supports `max_pages` (default 10 = 1000 runs); without it a quarterly fetch would page indefinitely.
+4. **Date filter format** — Actions API uses `created=YYYY-MM-DD..YYYY-MM-DD`, not the ISO 8601 with `>=`/`<=` qualifiers used elsewhere. This was fixed in the fetcher but documented here for future maintainers.
+
+**What needs to be done to finalize:**
+1. Re-enable the `fetch_workflow_runs()` call in `GitHubLiveFetcher.run()` (currently commented out around line 147).
+2. Implement three plugin files under `impact/metrics/plugins/authored/`:
+   - `build_count.py` — `len(ledger.get_ci_runs(start, end))` per period
+   - `build_duration.py` — median + p95 of `run.duration_seconds`
+   - `build_success_rate.py` — `count(conclusion='success') / total_completed`
+3. Each plugin needs a `no_data` guard for repos with zero CI runs (i.e. teams not using GitHub Actions / GitLab CI / Jenkins).
+4. Add thresholds in `impact/thresholds.py`.
+5. Use `head_sha` matching (not `pull_requests[]`) when linking CI runs to user PRs for per-PR build status.
 
 | # | Metric | Description | AI Status | Structure | Priority |
 |---|--------|-------------|-----------|-----------|----------|
@@ -468,22 +532,22 @@ Emerging in 2026, measuring real AI impact on development. Beyond adoption rate 
 
 ---
 
-## Competitive Gap Metrics — GitKraken Insights (11)
+## Competitive Gap Metrics — GitKraken Insights (9)
 
 Metrics identified from competitive analysis of GitKraken Insights official documentation (March 2026). Close specific gaps GitKraken uses as sales messaging that are becoming market standard.
 
-### Group 1 — Pull Request extended (2)
+> CG1 (PR Comments Count) and CG3 (Commit Count) moved to **Ready to Implement** (R18, R19) — both are trivial counts on existing bundle data with no external dependencies.
+
+### Group 1 — Pull Request extended (1)
 
 | # | Metric | Description | AI Status | Structure | Priority |
 |---|--------|-------------|-----------|-----------|----------|
-| CG1 | PR Comments Count | Total comments left on PRs per period, per team/repo/dev. Measures review engagement and feedback depth. Complements Inline Comment Density (#64, ratio) and Review Comment Substance (#65, quality) — PR Comments Count is raw volume. High volume can indicate thorough reviews or PRs too large to grok. Correlate with PR Size Distribution to interpret correctly. | 🆕 New | 🌐 Universal | P2 |
 | CG2 | Code Review Hours (Cumulative) | Average hours spent in review per committer (Total review hours ÷ committers). Differs from Review Turnaround Time (#62, single-review duration) and Reviews Given (#61, count). CRH measures cumulative review load — reveals if a team has few "review bottleneck" devs doing most of the work or if load is distributed. Lets a leader balance workload and identify dev overloaded with review vs dev focused on writing code. | 🆕 New | 🌐 Universal | P1 |
 
-### Group 2 — Velocity extended (2)
+### Group 2 — Velocity extended (1)
 
 | # | Metric | Description | AI Status | Structure | Priority |
 |---|--------|-------------|-----------|-----------|----------|
-| CG3 | Commit Count | Total commits pushed per period across all connected repos. Volume metric — not productivity standalone (more commits ≠ more productive, can indicate too-small commits) but useful as denominator/context for other metrics. Every competitor (GitKraken, LinearB, Jellyfish) exposes it explicitly despite low standalone analytical value. Include for completeness and competitive parity. | ⚠️ Caution | 🌐 Universal | P2 |
 | CG4 | Estimated Coding Hours | Estimated real coding hours per dev/team, derived from commit temporal patterns (gaps between consecutive commits, activity clustering, exclusion of inactive periods). Not "hours worked" but "hours actually spent writing code". Use alongside DORA and PR metrics, not standalone — higher hours don't mean higher productivity. Controversial because it can feel like surveillance, so present at team/aggregate level not individual. Useful for understanding real team capacity vs formal hours. | ⚠️ Caution | 🌐 Universal | P3 |
 
 ### Group 3 — Code Quality extended (2)
@@ -503,6 +567,18 @@ Metrics identified from competitive analysis of GitKraken Insights official docu
 | CG10 | AI Prompt Acceptance Rate | % of AI suggestions from prompts (chat, AI-assisted composition) accepted. Specialization of AI Acceptance Rate (AI-A6) — GitKraken measures Prompt Acceptance and Tab Acceptance separately. Fundamentally different behaviors: Prompt Acceptance measures prompting capability and conversational AI use, Tab Acceptance measures AI integration in the coding flow. High Prompt + low Tab = uses AI for specific tasks. High Tab + low Prompt = uses AI as advanced autocomplete. Requires Cursor/Copilot APIs that distinguish the two events. | 🆕 New | 🌐 Universal | P1 |
 | CG11 | AI Tab Acceptance Rate | % of AI suggestions from inline autocomplete (tab completion in editor) accepted. Specialization of AI Acceptance Rate (AI-A6) — see CG10 description for comparison with Prompt Acceptance. Tab Acceptance is generally higher than Prompt Acceptance (autocompletions are small and contextual; prompts are larger and can fail). Market average for Tab Acceptance is 27–34% — historic reference metric in GitHub Copilot studies. Requires Cursor/Copilot APIs that expose separate inline-completion events. | 🆕 New | 🌐 Universal | P1 |
 
+### Cross-Section Relationships
+
+> **AI-A6 (AI Acceptance Rate) ⊃ CG10 (Prompt Acceptance) + CG11 (Tab Acceptance):** AI-A6 is the parent metric — overall acceptance rate across all suggestion types. CG10 and CG11 are specializations split by suggestion source. Implementation order: AI-A6 first (general) once any AI tool API is connected; CG10/CG11 only viable when the API distinguishes prompt vs tab events (Cursor and recent Copilot SDKs do).
+>
+> **★1 (AI Retention Rate) ≠ AI-A7 (AI Code Survival Rate):** ★1 measures whether *developers* keep using AI tools after 20 weeks (engagement metric). AI-A7 measures whether *AI-generated code* survives in the codebase at 30/60/90 days (quality metric). Both deferred but for different reasons — ★1 needs WAU tracking; AI-A7 needs AI commit tagging.
+>
+> **CG7 (Post PR Work Occurring) ≠ #22 (Follow-Up Commit Rate):** CG7 captures work *after* merge on the same files/ticket (post-deploy fixes, emergency patches). #22 captures *pre-merge* commits added in response to review feedback. Different windows, different signals — both useful.
+>
+> **★2 (AI Code Authorship %) is partially covered by #1 (AI-Assisted PR Rate):** #1 measures % PRs created with AI tools (PR-level). ★2 measures % production *lines* written by AI (line-level). Implementing ★2 requires per-line AI tagging which is harder than PR-level detection.
+>
+> **★4 (AI Acceptance vs Merge Rate) is a derived comparison, not a standalone metric:** It compares two existing values (#5 AI Suggestion Acceptance vs PR merge rate). Implement as a Superset chart overlay rather than a separate metric plugin.
+
 ---
 
 ## Lead Time Percentiles (extension of an existing metric)
@@ -519,11 +595,16 @@ Following metrics are blocked by missing data in the current pipeline. Domain mo
 
 ### D1. Deployment Status / DORA Production Data Required
 
-The remaining DORA deployment metrics (Deployment Frequency, Lead Time for Changes, Change Failure Rate, Time to Deploy, Deploy Time — A4-1 through A4-5) require deployment lifecycle data with success/failure status.
+The DORA deployment metrics (A4-2 Lead Time for Changes, A4-3 Change Failure Rate, A4-4 Time to Deploy, A4-5 Deploy Time) need either status data on deployments or improved commit-to-deployment linkage.
 
-**Status:** the fetcher already pulls `releases.jsonl` and `deployments.jsonl` via the GitHub Releases and Deployments APIs. Domain models `ReleaseRecord`, `DeploymentRecord`, and `CIRunRecord` are defined in `impact/domain/models.py` and indexed by the ledger. **What's still missing:** no metric implementations consume this data yet, and the deployments fetched do not consistently carry success/failure status (many GitHub-Actions-driven teams never call `POST /deployments` so the data is sparse — see [the DORA pipeline notes](AGENTS.md)). For these metrics to be useful, the customer's CI/CD pipeline must register Deployment objects via the GitHub API or an equivalent platform.
+**Status:** the fetcher already pulls `releases.jsonl` and `deployments.jsonl` via the GitHub Releases and Deployments APIs. Domain models `ReleaseRecord`, `DeploymentRecord`, and `CIRunRecord` are defined in `impact/domain/models.py` and indexed by the ledger. Deployment Frequency (A4-1) is now in **Ready to Implement** (R17) with strict no-data guards.
 
-> **Time to Restore (#60)** is implemented as a revert→fix proxy from commit history alone. It is not deployment-aware. When deployment status data is consistently available, MTTR can be enhanced to detect deployment failure → recovery cycles directly.
+**What's still missing per metric:**
+- **A4-3 Change Failure Rate** is the easiest to unblock: extend `fetch_deployments()` in `impact/providers/github/fetcher.py` to also call `GET /repos/{owner}/{repo}/deployments/{id}/statuses` for each deployment, and store the latest status on `DeploymentRecord`. ~30 LOC fetcher change, then trivial implementation.
+- **A4-2, A4-4** depend on commit-to-deployment SHA linkage. The data exists (`deployment.sha` matches `commit.sha`) but most apache/superset-style customers won't have enough deployments for meaningful percentile statistics.
+- **A4-5 Deploy Time** is the hardest: releases use `target_commitish` which is often a branch name ("master") not a SHA, so linking releases to specific PRs requires a commit ancestry index.
+
+> **Time to Restore (#60)** is implemented as a revert→fix proxy from commit history alone. It is not deployment-aware. When deployment status data is consistently available (after A4-3 unblock), MTTR can be enhanced to detect deployment failure → recovery cycles directly.
 
 ### D2. Issue Tracker / PM Tool Data Required
 
@@ -533,9 +614,7 @@ PM-tool metrics (PM1–PM15, V1–V3, K1–K6, S1–S2, W1–W3) and Investment 
 
 ### D3. CI/CD Pipeline Data Required
 
-CI/CD metrics (CI1–CI3) require GitHub Actions / Jenkins / GitLab CI integration.
-
-> **Status:** the fetcher's `fetch_workflow_runs()` exists in `impact/providers/github/fetcher.py` and the `CIRunRecord` model + ledger index are in place, but the call is currently disabled in the orchestrator (no metric consumes CI data yet). To unblock: re-enable in `GitHubLiveFetcher.run()` and implement CI1–CI3.
+CI/CD metrics (CI1–CI3) require GitHub Actions / Jenkins / GitLab CI data. **Detailed problem description and unblock plan are documented inline with the CI/CD Build Metrics section above.** Summary: infrastructure (fetcher, model, ledger) all exist; only the fetch call and three plugins remain.
 
 ### D4. AI Tool API Data Required
 
@@ -622,53 +701,55 @@ Superset:
 | Category | Count |
 |----------|-------|
 | **Implemented (Authored 60 + Influence 17 + Mixed 1)** | **78** |
-| Planned (A1-A9) | 40 |
+| **Ready to Implement (R1–R21)** | **21** |
+| Planned (A3bis 2 + A4 4 + A6 5 + A7 3 + A8 6 + A9 4) | 24 |
 | New AI-Era (★1–★6) | 6 |
-| New PM Tool (Groups 1+2+3) | 17 |
-| Methodology Variants (V1–V3) | 3 |
+| New PM Tool (PM1–PM15, includes V2=PM10 and V3=PM9) | 15 |
+| Methodology Variants (V1 only — V2/V3 counted under PM Tool) | 1 |
 | Kanban-only (K1–K6) | 6 |
 | Scrum-only (S1–S2) | 2 |
 | Waterfall-only (W1–W3) | 3 |
-| New CI/CD Build (CI1–CI3) | 3 |
+| CI/CD Build (CI1–CI3) | 3 |
 | Advanced AI (AI-A1–AI-A9) | 9 |
-| Competitive Gap GitKraken (CG1–CG11) | 11 |
+| Competitive Gap GitKraken (CG2, CG4–CG11) | 9 |
 | Lead Time Percentiles (extension) | 1 |
-| **Total** | **179** |
+| **Total** | **178** |
 
 | By structural category | Count |
 |------------------------|-------|
 | 🌐 Universal | ~163 |
-| 🔀 Variant | 3 |
+| 🔀 Variant | 3 (V1 + PM9/V3 + PM10/V2 — last two counted as PM, not double-counted) |
 | 📋 Kanban-only | 6 |
 | 🏃 Scrum-only | 2 |
 | 🏗️ Waterfall-only | 3 |
-| Custom graph component (D3.js/Cytoscape) | 4 of A3 |
+| Custom graph component (D3.js/Cytoscape) | 3 (R13, R14, R15) |
 
 | By data source | Count |
 |----------------|-------|
-| Git only (GitHub/GitLab) | ~110 |
-| PM Tool (Jira/Linear) | ~17 |
-| Git + PM Tool combined | 4 |
+| Git only (GitHub/GitLab) | ~135 |
+| PM Tool (Jira/Linear) | 15 |
+| Git + PM Tool combined | 4 (PM12–PM15) |
 | CI/CD (GitHub Actions/Jenkins/GitLab CI) | 3 |
-| AI Tool API (Copilot/Cursor/Claude Code) | ~9 |
-| Survey (DXI, Comprehension Debt) | ~2 |
-| Custom graph component | 4 |
+| AI Tool API (Copilot/Cursor/Claude Code) | 9 (AI-A1–AI-A9) |
+| Survey (DXI ★5, Comprehension Debt ★3) | 2 |
+| Mixed Git + Custom Viz | 3 |
 
 ---
 
 ## Framework Coverage Summary
 
-> Note: metrics can belong to multiple frameworks (e.g., Cycle Time is DORA + SPACE + Lean). Totals exceed metric count due to multi-tagging.
+> Implemented counts come directly from the live metric registry (each plugin's `frameworks` property). Metrics can belong to multiple frameworks (e.g., Cycle Time is DORA + SPACE + Lean) so totals exceed metric count due to multi-tagging. Planned + Ready columns are estimates based on framework column in the planned tables.
 
-| Framework | Implemented | Planned | Total | % of All |
-|-----------|-------------|---------|-------|----------|
-| DORA | 2 | 5 | 7 | ~9% |
-| SPACE | 12 | 8 | 20 | ~25% |
-| CodeScene | 18 | 4 | 22 | ~28% |
-| Lean | 13 | 9 | 22 | ~28% |
-| Traditional | 1 | 8 | 9 | ~11% |
-| Network | 5 | 7 | 12 | ~15% |
-| DevRank | 35 | 11 | 46 | ~58% |
+| Framework | Implemented | Ready (R1–R21) | Planned (A-sections) | Other (PM/CI/AI/CG/etc.) |
+|-----------|-------------|----------------|----------------------|---------------------------|
+| DORA      | 2           | 1 (R17)        | 4 (A4-2, A4-3, A4-4, A4-5) | 0                   |
+| SPACE     | 18          | 1 (R10)        | 6 (A8-2,A8-3,A8-5,A8-6,A8-7,A8-8) | 1 (★5 DXI)     |
+| CodeScene | 17          | 3 (R1, R2, R3) | 0                    | 0                         |
+| Lean      | 15          | 5 (R7, R9, R11, R12, R21) | 2 (A7-1, A7-4) | 0                       |
+| Kanban    | 2           | 0              | 0                    | 6 (K1–K6)                 |
+| Traditional | 2         | 3 (R4, R5, R6) | 5 (A6-1, A6-2, A6-4, A6-5, A6-7) | 0             |
+| Network   | 6           | 4 (R13, R14, R15, R16) | 2 (A3-6, A3-7) | 0                       |
+| DevRank   | 30          | 4 (R8, R18, R19, R20) | 5 (A9-1, A9-3, A9-7, A9-8, A7-3) | many (CG, ★, AI-A) |
 
 ### Notes on Framework Overlap
 
