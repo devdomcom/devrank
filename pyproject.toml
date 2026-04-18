@@ -42,6 +42,11 @@ dependencies = [
     "tree-sitter-swift>=0.0.1",
     "tree-sitter-scala>=0.21",
     "pydantic-settings>=2.5.0",
+    # Graph algorithms — required for planned/Ready Network metrics
+    # (R14 Eigenvector Centrality, R13 Closeness Centrality refactor,
+    # A3-1/A3-2 closeness+eigenvector, A3-4 Review Network Density).
+    # See METRICS_OVERVIEW.md "Implemented with Caveats — TODO" + Ready section.
+    "networkx>=3.0",
 ]
 
 # Console script entry for unified CLI (devrank command)

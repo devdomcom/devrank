@@ -209,6 +209,66 @@ These metrics have **all required infrastructure already present** — utility f
 
 ---
 
+## Implemented with Caveats — TODO
+
+The following metrics are **implemented and registered** (counted in the 78) but have known issues surfaced during the multi-agent code audit. They produce results today but should be revisited for correctness, naming, or completeness before claiming production-grade quality. Each item is **scheduled for follow-up** — intentionally not auto-fixed because some changes are invasive (renaming) or require product judgment (semantics).
+
+### Type A — Metric name doesn't match implementation (4)
+
+The metric name suggests one thing; the code computes another. Doc descriptions now align to code, but **the metric name itself is misleading**.
+
+| # | Metric | Name implies | Code actually computes | Recommended action |
+|---|--------|--------------|------------------------|--------------------|
+| 25 | PR Merge Effectiveness | Generic "merge effectiveness" | Composite of merge speed + review interaction count | Acceptable — name is vague enough; document better in code docstring |
+| 64 | Inline Comment Density | A density (ratio per file/LOC/comment) | Simple average inline comments per PR | **Rename** to "Avg Inline Comments per PR" OR rewrite as a true density (inlines / total review comments) |
+| 66 | Review Leverage | Lines of code influenced per review (amplification metric) | Effectiveness rate of change requests in driving author updates | **Significant divergence.** Either rewrite to compute true LOC-influenced leverage, or rename to "Change Request Effectiveness" |
+| 70 | Approval To Merge Ratio | A:M numerical ratio | % approvals that were the *last activity* before merge (no subsequent reworks) | **Rename** to "Clean Approval Rate" or similar — current name implies a different calculation |
+
+> **Why deferred:** renaming a metric breaks: (a) slug in `get_metrics()` registry, (b) threshold key in `impact/thresholds.py`, (c) role config YAML files, (d) tests, (e) any external consumer (DB rows, dashboards). Needs a coordinated rename PR with migration.
+
+### Type B — Framework tags missing in code (1)
+
+Metric class is missing a framework tag that conceptually applies.
+
+| # | Metric | Code has | Should also have | Why |
+|---|--------|----------|-------------------|-----|
+| 78 | Co-Author Contribution Rate | `['SPACE']` | `'Network'` | Co-authorship is a core Network/collaboration signal — it measures the developer's social graph through commit pairing, not just SPACE Activity |
+
+> **Fix:** one-line change to `frameworks` property in `impact/metrics/plugins/mixed/co_author_contribution_rate.py`. After the change, restore "SPACE • Network" in the doc framework column for #78 and bump Network framework count from 6 → 7.
+
+### Type C — Code descriptions missing data-scope caveats (3)
+
+The metric's `description` property doesn't warn that the metric produces unreliable results under the user-centric fetch pipeline. The doc's "Data Scope" section has the warning, but anyone reading the metric in isolation (API response, tooltip, generated report) will not see it.
+
+| # | Metric | Caveat to append to code description |
+|---|--------|--------------------------------------|
+| 47 | Contributor Experience | "Grossly inflated under user-centric fetch — denominator only counts user-related PR lines, not full repo lines." |
+| 60 | Time to Restore | "Only sees reverts in PRs involving the assessed user — misses most repo-wide incidents." |
+| 75 | Knowledge Sharing Index | "Fundamentally limited under user-centric fetch — measures distribution only across reviewers visible in user-related PRs, not the full team." |
+
+> **Fix:** append the caveats to each metric's `description` property and consider adding a `details["caveat"]` field to `MetricResult` so downstream consumers (PDF report, API) can surface them prominently. Also add a `data_scope_caveat` flag to the `Metric` base class so all current/future metrics can declare scope limits in a structured way.
+
+### Type D — Ambiguous code descriptions (2)
+
+The metric's code description is unclear or contradicts implementation details.
+
+| # | Metric | Issue | Recommended description |
+|---|--------|-------|--------------------------|
+| 62 | Review Turnaround Time | Description "Median hours to first review/action on opened PRs" reads as author-side (PR opened → reviewed) but the metric is in `influence/` and is about the **reviewer's** response time | "Median hours from review request received to first response — measures the user's responsiveness as a reviewer (balanced by period)." |
+| 74 | Mentorship Signal | Description hardcodes "<5 PRs in period" but code dynamically scales the threshold by period: `max(2, int(5 * period_days / 30))` | "% of reviews targeting low-activity contributors (junior threshold scales with period: ~5 PRs / 30-day window)." |
+
+### Summary
+
+10 caveat items across 4 types. Recommended fix order:
+1. **Type C (3 items)** — append caveats to descriptions. Lowest risk, highest user-protection. ~5 LOC per metric.
+2. **Type B (1 item)** — add `'Network'` framework tag to #78. Trivial.
+3. **Type D (2 items)** — clarify wording in code descriptions. Trivial, no behavior change.
+4. **Type A (4 items)** — needs product call (rename vs rewrite). Coordinated PR with migration plan for #66, #70 (potential rename), and #64 (could go either way). #25 acceptable as-is with docstring polish.
+
+> **New dependency added for Ready-tier graph metrics:** `networkx>=3.0` is now in `pyproject.toml` and installs via `uv sync`. Used for R14 Eigenvector Centrality and the planned refactor of R13 Closeness Centrality + #77 Betweenness Centrality (currently hand-rolled Brandes BFS) to use NetworkX for consistency and performance.
+
+---
+
 ## Data Scope: Metrics Requiring Repo-Wide Data
 
 The current fetch pipeline (`impact/providers/github_live.py`) is **user-centric**: it only fetches PRs authored by, assigned to, or reviewed by the assessed engineer. This means `bundle.pull_requests`, `bundle.commits`, `bundle.reviews`, and `bundle.files` do **not** contain the full repository picture.
