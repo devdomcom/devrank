@@ -62,7 +62,7 @@ Metrics not present in earlier documents. No competitor has them.
 | ★2 | AI Code Authorship % | % of production code written by AI | 🆕 New | 🌐 Universal | DevRank | P1 |
 | ★3 | Comprehension Debt | % of code approved without being understood (survey) | 🆕 New | 🌐 Universal | DevRank | P1 |
 | ★4 | AI Acceptance vs Merge Rate | Delta between accepted AI suggestions and code that passes review | 🆕 New | 🌐 Universal | DevRank | P2 |
-| ★5 | Developer Experience Index (DXI) | Survey on perceived productivity, interruptions, AI usefulness | 🆕 New | 🌐 Universal | SPACE | P1 |
+| ★5 | Developer Experience Index (DXI) | Survey on perceived productivity, interruptions, AI usefulness — based on the SPACE-derived methodology developed by DX (Abi Noda / Margaret-Anne Storey) | 🆕 New | 🌐 Universal | SPACE | P1 |
 | ★6 | Feature Throughput to Customer | Real features → business goals achieved | 🆕 New | 🌐 Universal | DevRank | P1 |
 
 > **All 6 New AI-Era metrics are deferred** — they require external data sources (AI tool APIs, survey infrastructure, or business outcome tracking). See **Deferred D4** (AI Tool API Data) and **Deferred D5** (External Platform Integration) for unblock paths. ★4 specifically is a derived comparison rather than a standalone metric (see Cross-Section Relationships near Competitive Gap).
@@ -78,7 +78,7 @@ Engineer-owned PRs and activity. All metrics work with the user-centric fetch pi
 | 1 | AI-Assisted PR Rate | % PRs created with AI assistance (Copilot/Cursor/Claude/etc.), detected via commit/PR signatures | 🔄 Evolved | 🌐 Universal | DevRank |
 | 2 | AI Adoption Rate | Per-engineer indicator of AI tool usage (inferred from commit/PR signatures) | 🔄 Evolved | 🌐 Universal | DevRank |
 | 3 | AI Code Quality | Rework rate comparison: AI-assisted PRs vs human PRs (review iterations) | ✅ Unchanged | 🌐 Universal | DevRank |
-| 4 | AI Phantom Ownership | Code primarily touched by AI with low human review depth (descriptive — no value judgment) | ⚠️ Caution | 🌐 Universal | DevRank |
+| 4 | AI Phantom Ownership | Code primarily touched by AI with low human review depth — knowledge and maintenance risk indicator (no human truly understands the code in production) | ⚠️ Caution | 🌐 Universal | DevRank |
 | 5 | AI Suggestion Acceptance | Ratio of accepted vs dismissed AI suggestions from review bots | 🔄 Evolved | 🌐 Universal | DevRank |
 | 6 | PR Throughput | PR merge ratio (merged/opened); conversion rate, not volume — see #7 Delivery Volume for absolute count | ⚠️ Caution | 🌐 Universal | SPACE • Lean |
 | 7 | Delivery Volume | Total lines added+deleted across merged PRs | ⚠️ Caution | 🌐 Universal | SPACE |
@@ -99,7 +99,7 @@ Engineer-owned PRs and activity. All metrics work with the user-centric fetch pi
 | 22 | Follow-Up Commit Rate | % of PRs with post-review follow-up commits | ✅ Unchanged | 🌐 Universal | DevRank |
 | 23 | Self-Merge Rate | % of PRs merged without non-author approval | ⚠️ Caution | 🌐 Universal | DevRank |
 | 24 | Abandoned PR Rate | % of PRs closed without merging | ✅ Unchanged | 🌐 Universal | Lean |
-| 25 | PR Merge Effectiveness | Ratio of merged PRs to total PRs opened | ✅ Unchanged | 🌐 Universal | SPACE |
+| 25 | PR Merge Effectiveness | Combines merge speed with review interaction count for merge smoothness | ✅ Unchanged | 🌐 Universal | SPACE |
 | 26 | PR Body Quality Score | Quality of PR descriptions (length, structure, links) | ✅ Unchanged | 🌐 Universal | DevRank |
 | 27 | Conventional Commit Rate | % of commits following conventional commit format | ✅ Unchanged | 🌐 Universal | DevRank |
 | 28 | Test File Ratio | Ratio of test file changes to production file changes | ⚠️ Caution | 🌐 Universal | Traditional |
@@ -145,13 +145,13 @@ Impact on others' work — reviewing, mentorship, network position.
 | 61 | Reviews Given | Total reviews submitted for others' PRs | 🔄 Evolved | 🌐 Universal | SPACE |
 | 62 | Review Turnaround Time | Time from review request to submission | 🔄 Evolved | 🌐 Universal | SPACE • Lean |
 | 63 | Unblock Time | Time to unblock others via reviews/approvals | ✅ Unchanged | 🌐 Universal | Lean |
-| 64 | Inline Comment Density | Ratio of inline comments to total review comments | ✅ Unchanged | 🌐 Universal | DevRank |
+| 64 | Inline Comment Density | Average inline comments given per PR reviewed (review depth on others' PRs) | ✅ Unchanged | 🌐 Universal | DevRank |
 | 65 | Review Comment Substance | Pygments-based scoring of code content in review comments | 🔄 Evolved | 🌐 Universal | DevRank |
-| 66 | Review Leverage | Lines of code influenced per review given | ✅ Unchanged | 🌐 Universal | DevRank |
+| 66 | Review Leverage | Effectiveness of change requests in driving author updates (review impact rate) | ✅ Unchanged | 🌐 Universal | DevRank |
 | 67 | Review Breadth | Number of distinct PR authors reviewed | ✅ Unchanged | 🌐 Universal | SPACE • Network |
 | 68 | Review Demand | How sought-after as a reviewer (review requests received) | ✅ Unchanged | 🌐 Universal | Network |
-| 69 | PR Merge Rate | % of reviewed PRs that ultimately merged | ✅ Unchanged | 🌐 Universal | DevRank |
-| 70 | Approval To Merge Ratio | Ratio of approvals given to actual merges | ⚠️ Caution | 🌐 Universal | DevRank |
+| 69 | PR Merge Rate | Proportion of user's reviews followed by merge in close sequence (no other interveners) — measures review-to-merge causality | ✅ Unchanged | 🌐 Universal | SPACE • Lean |
+| 70 | Approval To Merge Ratio | % of user's approvals that were the last activity before merge (no subsequent reworks) — clean approval rate | ⚠️ Caution | 🌐 Universal | DevRank |
 | 71 | Change-Inducing Review Rate | % of reviews that led to code changes | ✅ Unchanged | 🌐 Universal | DevRank |
 | 72 | Blocking Comment Rate | % of review comments that block merge | ✅ Unchanged | 🌐 Universal | DevRank |
 | 73 | First Reviewer Rate | % of reviews where person was first reviewer | ✅ Unchanged | 🌐 Universal | DevRank |
@@ -166,7 +166,7 @@ Both authored and influence signals.
 
 | # | Metric | Description | AI Status | Structure | Framework |
 |---|--------|-------------|-----------|-----------|-----------|
-| 78 | Co-Author Contribution Rate | % of commits with co-author trailers | 🔄 Evolved | 🌐 Universal | SPACE • Network |
+| 78 | Co-Author Contribution Rate | Inbound/outbound co-author commit % (collaboration on user's own PRs and on others') | 🔄 Evolved | 🌐 Universal | SPACE |
 
 ---
 
@@ -176,7 +176,7 @@ These metrics have **all required infrastructure already present** — utility f
 
 | # | Metric | Description | Effort | Existing Infrastructure | Section / Framework |
 |---|--------|-------------|--------|-------------------------|----------------------|
-| R1 | Code Age | Months since last **file-level** modification (file age, not line survival — see #55 Code Survival for line-level) | 🟢 | `Commit.date` field; per-file aggregation | A1 / CodeScene |
+| R1 | Code Age | Months since last **file-level** modification (file age, not line survival — see #55 Code Survival for line-level) | 🟢 | `Commit.date` field; needs commit→file index built from `bundle.files` and `bundle.commits` join (no current per-file commit history index) | A1 / CodeScene |
 | R2 | History Complexity (Entropy) | Normalized entropy of changes across files | 🟡 | `_shannon_entropy()` at `utils.py:854` | A1 / CodeScene |
 | R3 | Hunks Count (Change Fragmentation) | Median diff hunks per file | 🟢 | `parse_hunks()` at `utils.py:1182` | A1 / CodeScene |
 | R4 | Delta Maintainability Model | Per-function cyclomatic complexity | 🟡 | `parse_functions()` at `utils.py:2018` (statement count exists; needs decision-point counting) | A1 / Traditional |
@@ -189,11 +189,11 @@ These metrics have **all required infrastructure already present** — utility f
 | R11 | Productive Impact | Impact × (1 − Rework Rate) | 🟢 | #16 Rework Rate available; "Impact" = #7 Delivery Volume or #59 Delivery Risk Score | A9 / Lean |
 | R12 | tt100 (Time to 100) | Time to write 100 lines of productive code | 🟡 | #9 Cycle Time + #7 Delivery Volume + boilerplate filter | A9 / Lean |
 | R13 | Closeness Centrality | How quickly a developer reaches entire org | 🟡 | Hand-rolled BFS (extend `betweenness_centrality.py` pattern); NetworkX dependency planned for future refactor | A3 / Network |
-| R14 | Eigenvector Centrality | Influence through association | 🟡 | Add `networkx>=3.0` to deps for power-method calc | A3 / Network |
+| R14 | Eigenvector Centrality | Influence through association | 🟡 | **Prerequisite blocker:** add `networkx>=3.0` to `pyproject.toml` (currently NOT in deps) for power-method calc | A3 / Network |
 | R15 | Communication Strength | Conway's Law via shared commits | 🟡 | Co-author data via #78 + commit-to-file mapping | A3 / Network |
 | R16 | Review Network Density | How interconnected the review graph is | 🟢 | Reuse review graph from `betweenness_centrality.py`; density = 2·E/(N·(N−1)) | A3 / Network |
 | R17 | Deployment Frequency | Count of production deployments / period | 🟢 | `ledger.get_deployments()` exists; **see caveat note below** | A4 / DORA |
-| R18 | PR Comments Count | Total comments left on PRs per period | 🟢 | `ledger.get_comments_for_pr()` already used in #64 | CG / DevRank |
+| R18 | PR Comments Count | Total comments left on PRs per period | 🟢 | `ledger.get_comments_for_pr()` exists at `ledger.py:183` (currently unused — most metrics call `get_review_comments_for_review()` instead) | CG / DevRank |
 | R19 | Commit Count | Total commits pushed in period (already used as denominator) | 🟢 | Trivially `len(bundle.commits)` per period filter | CG / DevRank |
 | R20 | PR Maturity Ratio | How much a PR changes between open and merge (size delta, distinct from #16 self-rewrite) | 🟢 | Compare PR.created additions vs final additions; data in `pr_raw` already | A9 / DevRank |
 | R21 | Idle Completion Time | Time from rework complete → merge (post-rework window, distinct from #11 post-approval) | 🟢 | Use last commit timestamp on PR + merged_at | A9 / Lean |
@@ -392,9 +392,9 @@ In the AI-assisted development era, metric priorities shift significantly from t
 | # | Metric | Description | AI Status | Structure | Framework | Priority | Blocker |
 |---|--------|-------------|-----------|-----------|-----------|----------|---------|
 | A4-2 | Lead Time for Changes | Commit to production duration | ✅ Unchanged | 🌐 Universal | DORA | P1 | Sparse deployment data + SHA→PR linkage. Implementable as "deployments-only beta" with caveats. |
-| A4-3 | Change Failure Rate | % deployments causing failures | 🔄 Evolved | 🌐 Universal | DORA | P0 | **Missing `status` field** on `DeploymentRecord`. Unblock: extend `fetch_deployments()` to also call `GET /repos/{owner}/{repo}/deployments/{id}/statuses` and store latest status. ~30 LOC fetcher change, then trivial implementation. |
+| A4-3 | Change Failure Rate | % deployments causing failures | 🔄 Evolved | 🌐 Universal | DORA | P0 | **Missing `status` field** on `DeploymentRecord`. Unblock: extend `fetch_deployments()` to follow each deployment's `statuses_url` field (returned in the base `/deployments` response) and store the latest status. ~30 LOC fetcher change, then trivial implementation. |
 | A4-4 | Time to Deploy | PR merge to production deployment | ✅ Unchanged | 🌐 Universal | DORA | P2 | Same SHA-linkage problem as A4-2. |
-| A4-5 | Deploy Time | Merge to production release | ✅ Unchanged | 🌐 Universal | DORA | P2 | `target_commitish` is branch name ("master") not SHA — requires commit ancestry index to link releases to specific PRs. Substantial work to unblock. |
+| A4-5 | Deploy Time | Merge to production release | ✅ Unchanged | 🌐 Universal | DORA | P2 | `target_commitish` is **inconsistent**: some releases use branch names (e.g. "master"), others use commit SHAs. SHA-based releases can be linked directly via `commit.sha` matching; branch-based releases require a commit ancestry index to determine which PRs were ancestors of the branch tip at release time. |
 
 ## Planned — A5. Cycle Time Sub-Phases (0)
 
@@ -406,7 +406,7 @@ In the AI-assisted development era, metric priorities shift significantly from t
 
 | # | Metric | Description | AI Status | Structure | Framework | Priority |
 |---|--------|-------------|-----------|-----------|-----------|----------|
-| A6-1 | Code Health Score (1-10) | 25-30 factor aggregate (composite of remaining A6 planned metrics + R5 Cyclomatic Complexity + R6 AST Duplication once those land) | ✅ Unchanged | 🌐 Universal | Traditional | P0 |
+| A6-1 | Code Health Score (1-10) | Multi-factor aggregate (CodeScene's canonical Code Health uses ~28 underlying factors). Implementation here = composite of A6-2, A6-4, A6-5, A6-7 (planned) + R5 Cyclomatic + R6 AST Duplication (ready) + scaling/weighting logic. The "25-30 factor" framing refers to underlying signal count across all components, not component count. | ✅ Unchanged | 🌐 Universal | Traditional | P0 |
 | A6-2 | Cognitive Complexity | How difficult code is for a human to understand | 🔄 Evolved | 🌐 Universal | Traditional | P2 |
 | A6-4 | LCOM4 (Lack of Cohesion) | Connected components within a class — God Class detector | ✅ Unchanged | 🌐 Universal | Traditional | P2 |
 | A6-5 | Technical Debt Ratio | Remediation time / estimated rewrite time | 🔄 Evolved | 🌐 Universal | Traditional | P2 |
@@ -505,6 +505,8 @@ In the AI-assisted development era, metric priorities shift significantly from t
 ## Advanced AI Metrics (9)
 
 Emerging in 2026, measuring real AI impact on development. Beyond adoption rate — they measure cost, efficiency, quality, and ROI. No competitor has all of them.
+
+> **Citation status:** specific market figures cited in this section (token cost ranges, ROI benchmarks, acceptance-rate trajectories, code-survival multipliers, the 304K-commit AI-issue study, GitClear's 211M LOC duplication analysis) are drawn from 2026 industry reports and vendor publications. They are intended as **directional benchmarks** for product positioning. When implementing thresholds for any of these metrics, treat the cited numbers as reference points only — validate against the specific customer's own historical data before setting alerts or scoring bands. Specific study attributions to be added once integrations land and we cite live sources from the AI tool API responses.
 
 ### Cost and consumption (3)
 
@@ -628,7 +630,7 @@ Some Developer Experience metrics need data from systems entirely outside Git/co
 
 | Metric | Needs |
 |--------|-------|
-| On-Call Burden (A8-5) | PagerDuty, OpsGenie, or Grafana OnCall schedule data |
+| On-Call Burden (A8-5) | PagerDuty, Opsgenie, or Grafana OnCall schedule data |
 | Onboarding Time (A8-7) | Employee start dates from HR system or directory service |
 | Time Spent in Meetings (A8-6) | Calendar data from Google Calendar, Outlook, etc. |
 | Comprehension Debt (★3), DXI (★5) | Survey infrastructure (custom or third-party like CultureAmp) |
